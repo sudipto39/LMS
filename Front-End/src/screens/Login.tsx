@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui';
-import { Mail, Lock, Layers, GitBranch, Shield, ArrowUpRight, Moon, Sun } from '@/components/Icons';
-import type { Role } from '@/types';
+import { Mail, Lock, Layers, GitBranch, Shield, ArrowUpRight, Moon, Sun, ChevronLeft } from '@/components/Icons';
+import type { Role, Page } from '@/types';
 
-export function Login({ onLogin, darkMode, setDarkMode }: { onLogin: (role: Role) => void; darkMode: boolean; setDarkMode: (v: boolean) => void }) {
+export function Login({ onLogin, onNavigate, goBack, darkMode, setDarkMode }: { 
+  onLogin: (role: Role) => void; 
+  onNavigate: (page: Page) => void;
+  goBack: () => void;
+  darkMode: boolean; 
+  setDarkMode: (v: boolean) => void;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showForgot, setShowForgot] = useState(false);
@@ -42,13 +48,22 @@ export function Login({ onLogin, darkMode, setDarkMode }: { onLogin: (role: Role
 
       {/* Right Panel */}
       <div className="flex-1 flex items-center justify-center p-8 bg-neutral-50 dark:bg-[#0d1117] relative">
-        {/* Dark mode toggle */}
-        <button
-          onClick={() => setDarkMode(!darkMode)}
-          className="absolute top-4 right-4 rounded-md p-2 hover:bg-neutral-100 dark:hover:bg-[#30363d] text-neutral-500 dark:text-[#8b949e] transition"
-        >
-          {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-        </button>
+        {/* Top buttons */}
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+          <button
+            onClick={goBack}
+            className="flex items-center gap-1 text-sm text-neutral-600 dark:text-[#8b949e] hover:text-neutral-900 dark:hover:text-[#f0f6fc] font-medium transition"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </button>
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="rounded-md p-2 hover:bg-neutral-100 dark:hover:bg-[#30363d] text-neutral-500 dark:text-[#8b949e] transition"
+          >
+            {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
+        </div>
 
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
@@ -119,8 +134,18 @@ export function Login({ onLogin, darkMode, setDarkMode }: { onLogin: (role: Role
                 </button>
               </div>
 
+              {/* Sign up link */}
+              <div className="mt-6 pt-4 border-t border-neutral-100 dark:border-[#30363d] text-center">
+                <p className="text-sm text-neutral-500 dark:text-[#8b949e]">
+                  Don&apos;t have an account?{' '}
+                  <button onClick={() => onNavigate('signup')} className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                    Request Account
+                  </button>
+                </p>
+              </div>
+
               {/* Demo login buttons */}
-              <div className="mt-6 pt-4 border-t border-neutral-100 dark:border-[#30363d]">
+              <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-[#30363d]">
                 <p className="text-xs text-neutral-400 dark:text-[#8b949e] text-center mb-3">Quick demo login:</p>
                 <div className="grid grid-cols-3 gap-2">
                   <button onClick={() => onLogin('student')} className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 px-3 py-2 text-xs font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition">

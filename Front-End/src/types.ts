@@ -67,6 +67,7 @@ export interface Comment {
 export type Page =
   | 'landing'
   | 'login'
+  | 'signup'
   | 'student-dashboard'
   | 'student-projects'
   | 'student-create-project'
