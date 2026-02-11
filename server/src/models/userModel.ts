@@ -5,14 +5,12 @@ const SALT_ROUNDS = 12;
 
 export interface User extends Document {
     name: string;
+    universityId: string;
     email: string;
     password: string;
     phoneNumber: number;
     department: string;
-    yearOfStudy: number;
-    semester: number;
-    yearOfPassingOut: number;
-    dateOfBirth: Date;
+    session: number;
     role: string;
     verifyCode: string;
     passwordChangedAt: number;
@@ -23,6 +21,11 @@ const userSchema: Schema<User> = new Schema({
     name: {
         type: String,
         required: [true, "Name is required"],
+    },
+    universityId: {
+        type: String,
+        required: [true, "University ID is required"],
+        unique: true
     },
     email: {
         type: String,
@@ -44,20 +47,8 @@ const userSchema: Schema<User> = new Schema({
         type: String,
         required: [true, "Department is required"]
     },
-    yearOfStudy: {
+    session: {
         type: Number,
-        required: [true, "Year of study is required"]
-    },
-    semester: {
-        type: Number,
-        required: true
-    },
-    yearOfPassingOut: {
-        type: Number,
-        required: true
-    },
-    dateOfBirth: {
-        type: Date,
         required: true
     },
     role :{
