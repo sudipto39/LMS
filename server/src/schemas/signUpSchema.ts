@@ -7,14 +7,12 @@ export const signUpValidation = z.object({
     .regex(
       /[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?/,
     ),
-  password: z.string().min(6, "Password must be at least 6 characters long"),
+  password: z.string().min(8, "Password must be at least 8 characters long"),
   phoneNumber: z.string().length(10, "Phone number must be 10 digits long"),
   department: z
     .string()
     .min(2, "Department must be at least 2 characters long"),
-  yearOfStudy: z
+  session: z
     .number()
-    .int()
-    .min(1, "Year of study must be at least 1")
-    .max(5, "Year of study must be at most 5"),
+    .int(),
 });
