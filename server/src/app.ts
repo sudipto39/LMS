@@ -7,6 +7,8 @@ import compression from 'compression';
 import authRouter from './routes/authRoutes.js';
 import connectDB from './config/db.js';
 import { config } from './config/env.js';
+import { globalErrorHandler } from './middlewares/globalErrorHandler.js';
+import { notFound } from './middlewares/notFound.js';
 
 export const app = express();
 
@@ -50,5 +52,10 @@ if (config.NODE_ENV === 'development') {
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api', apiLimiter);
 
+// 404 handler (NO route matched)
+app.use(notFound);
+
+// global error handler (LAST middleware)
+app.use(globalErrorHandler);
 
 export default app;
