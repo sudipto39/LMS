@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { config } from "./env.js";
 
 const connectDB = async (): Promise<void> => {
   try {
@@ -10,7 +11,14 @@ const connectDB = async (): Promise<void> => {
       maxPoolSize: 10,               // Maintain up to 10 socket connections
     };
 
-    await mongoose.connect(process.env.MongoDB_URI!, connOptions);
+    if (!process.env.MONGODB_URI) {
+        console.log('MONGODB_URI:', config.MONGODB_URI);
+  throw new Error("❌ MONGODB_URI is missing in .env");
+}
+
+
+    await mongoose.connect(config.MONGODB_URI, connOptions);
+    
     console.log("✅ MongoDB connected successfully");
     
     // Handle connection events after successful connection

@@ -1,13 +1,30 @@
-import express from "express";
 import dotenv from 'dotenv';
-import connectDB from "./config/db.js";
-
 dotenv.config();
+import { config } from './config/env.js';
+import { app } from './app.js';
 
-const app = express();
-const PORT = process.env.PORT ;
+const PORT = config.PORT;
 
-app.listen(PORT, async () => {
-      await connectDB();
-      console.log(`🚀 Server started successfully on port ${PORT}`);
-    });
+const server = app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🔧 Email Verification: ${config.EMAIL_VERIFICATION ? 'ENABLED' : 'DISABLED'}`);
+});
+
+// Graceful Shutdown
+process.on('SIGTERM', () => {
+  console.log('👋 SIGTERM - Shutting down gracefully');
+  server.close(() => {
+    console.log('📴 Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT (Ctrl+C) - Shutting down');
+  server.close(() => {
+    console.log('📴 Server closed');
+    process.exit(0);
+  });
+});
+
+export default server;
