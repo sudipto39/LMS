@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Role, Page } from './types';
 import { Sidebar } from './components/Sidebar';
-import { Topbar } from './components/ui';
+import { Topbar, Toast } from './components/ui';
 import { Landing } from './screens/Landing';
 import { Login } from './screens/Login';
 import { Signup } from './screens/Signup';
@@ -13,6 +13,7 @@ import {
   SettingsPage, ProfilePage
 } from './screens/Dashboards';
 import { ChevronLeft } from './components/Icons';
+import { preventClickjacking, startSessionTimeout, clearSessionTimeout, secureStorage } from './utils/security';
 
 const roleNames: Record<Role, string> = {
   student: 'Rahul Sharma',
@@ -81,12 +82,18 @@ export function App() {
   const [history, setHistory] = useState<Page[]>(['landing']);
   const [role, setRole] = useState<Role>('student');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sessionWarning, setSessionWarning] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('giteaforge-dark') === 'true';
     }
     return false;
   });
+
+  // Anti-clickjacking protection on mount
+  useEffect(() => {
+    try { preventClickjacking(); } catch { /* handled */ }
+  }, []);
 
   // Apply dark class to <html> element
   useEffect(() => {
@@ -98,6 +105,40 @@ export function App() {
     }
     localStorage.setItem('giteaforge-dark', String(darkMode));
   }, [darkMode]);
+
+  // Session timeout management — auto-logout after 30 min inactivity
+  useEffect(() => {
+    const isLoggedIn = !['landing', 'login', 'signup'].includes(page);
+    if (isLoggedIn) {
+      const handleActivity = () => {
+        setSessionWarning(false);
+        startSessionTimeout(
+          30 * 60 * 1000, // 30 minutes
+          () => {
+            // Session expired — force logout
+            secureStorage.clear();
+            localStorage.removeItem('giteaforge_token');
+            localStorage.removeItem('giteaforge_refresh_token');
+            setPage('login');
+            setHistory(['login']);
+          },
+          5 * 60 * 1000, // Show warning 5 min before
+          () => setSessionWarning(true),
+        );
+      };
+
+      handleActivity(); // Start on mount
+
+      // Reset timer on user activity
+      const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+      events.forEach(e => window.addEventListener(e, handleActivity, { passive: true }));
+
+      return () => {
+        events.forEach(e => window.removeEventListener(e, handleActivity));
+        clearSessionTimeout();
+      };
+    }
+  }, [page]);
 
   // Navigate to a page (push to history)
   const navigateTo = useCallback((newPage: Page) => {
@@ -279,6 +320,15 @@ export function App() {
           {renderContent()}
         </main>
       </div>
+
+      {/* Session timeout warning */}
+      {sessionWarning && (
+        <Toast
+          message="Your session will expire in 5 minutes due to inactivity. Move your mouse or press a key to stay logged in."
+          type="info"
+          onClose={() => setSessionWarning(false)}
+        />
+      )}
     </div>
   );
 }
