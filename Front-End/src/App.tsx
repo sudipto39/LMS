@@ -7,8 +7,8 @@ import { Login } from './screens/Login';
 import { Signup } from './screens/Signup';
 import {
   StudentDashboard, StudentProjects, CreateProject, StudentProjectDetail,
-  StudentSubmissions, ProfessorDashboard, ProfessorProjectDetail,
-  ProfessorReviews, ProfessorGrades, AdminDashboard, AdminUsers,
+  StudentSubmissions, StudentMessages, ProfessorDashboard, ProfessorProjectDetail,
+  ProfessorReviews, ProfessorGrades, ProfessorMessages, AdminDashboard, AdminUsers,
   AdminBatches, AdminGiteaSettings, AdminAuditLogs, ActivityPage,
   SettingsPage, ProfilePage
 } from './screens/Dashboards';
@@ -35,11 +35,13 @@ const parentPages: Partial<Record<Page, Page>> = {
   'student-create-project': 'student-projects',
   'student-project-detail': 'student-projects',
   'student-submissions': 'student-dashboard',
+  'student-messages': 'student-dashboard',
   'student-profile': 'student-dashboard',
   'professor-projects': 'professor-dashboard',
   'professor-project-detail': 'professor-dashboard',
   'professor-reviews': 'professor-dashboard',
   'professor-grades': 'professor-dashboard',
+  'professor-messages': 'professor-dashboard',
   'professor-profile': 'professor-dashboard',
   'admin-users': 'admin-dashboard',
   'admin-batches': 'admin-dashboard',
@@ -60,12 +62,14 @@ const pageTitles: Partial<Record<Page, string>> = {
   'student-create-project': 'Create Project',
   'student-project-detail': 'Project Detail',
   'student-submissions': 'Submissions',
+  'student-messages': 'Messages',
   'student-profile': 'Profile',
   'professor-dashboard': 'Dashboard',
   'professor-projects': 'Projects',
   'professor-project-detail': 'Project Detail',
   'professor-reviews': 'Reviews',
   'professor-grades': 'Grades',
+  'professor-messages': 'Messages',
   'professor-profile': 'Profile',
   'admin-dashboard': 'Dashboard',
   'admin-users': 'Users',
@@ -226,6 +230,8 @@ export function App() {
         return <StudentProjectDetail onNavigate={navigateTo} />;
       case 'student-submissions':
         return <StudentSubmissions onNavigate={navigateTo} />;
+      case 'student-messages':
+        return <StudentMessages />;
       case 'student-profile':
         return <ProfilePage />;
       case 'professor-dashboard':
@@ -238,6 +244,8 @@ export function App() {
         return <ProfessorReviews onNavigate={navigateTo} />;
       case 'professor-grades':
         return <ProfessorGrades onNavigate={navigateTo} />;
+      case 'professor-messages':
+        return <ProfessorMessages />;
       case 'professor-profile':
         return <ProfilePage />;
       case 'admin-dashboard':

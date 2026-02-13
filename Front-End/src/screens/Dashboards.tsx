@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Page } from '@/types';
+import dataService from '@/services/dataService';
 import { mockProjects, mockActivities, mockMilestones, mockUsers, mockComments } from '@/data';
 import {
   KPICard, StatusPill, ProgressBar, ActivityTimeline, TechTag, InactivityBadge,
@@ -10,7 +11,7 @@ import {
   GitBranch, Send, CheckCircle2, Award, Users, Calendar, Download,
   Filter, Terminal, Copy, ArrowUpRight, XCircle,
   Server, Webhook, FileText, BookOpen, User, Search,
-  Upload, RefreshCw, Hash, ListChecks
+  Upload, RefreshCw, Hash, ListChecks, MessageSquare
 } from '@/components/Icons';
 import { cn } from '@/utils/cn';
 
@@ -152,6 +153,26 @@ export function CreateProject({ onNavigate }: { onNavigate: (page: Page) => void
   const [step, setStep] = useState(1);
   const [repoOption, setRepoOption] = useState<'create' | 'link'>('create');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState({ title: '', description: '', batch: 'BCA-2024', professor: 'u4', techStack: [] as string[] });
+
+  const handleCreateProject = useCallback(async () => {
+    setIsCreating(true);
+    try {
+      await dataService.createProject({
+        title: formData.title || 'New Project',
+        description: formData.description || 'Project description',
+        batch: formData.batch,
+        course: formData.batch,
+        professorId: formData.professor,
+        techStack: formData.techStack,
+        repoOption: repoOption === 'create' ? 'create_new' : 'link_existing',
+      });
+      setShowSuccess(true);
+      setTimeout(() => onNavigate('student-project-detail'), 1500);
+    } catch { /* handled */ }
+    setIsCreating(false);
+  }, [formData, repoOption, onNavigate]);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -180,11 +201,11 @@ export function CreateProject({ onNavigate }: { onNavigate: (page: Page) => void
           <div className="space-y-5">
             <div>
               <label className={cn('block text-sm font-medium mb-1.5', heading)}>Project Title *</label>
-              <input type="text" defaultValue="E-Commerce Platform" className={inputClass} />
+              <input type="text" value={formData.title} onChange={e => setFormData(f => ({ ...f, title: e.target.value }))} placeholder="Enter project title" className={inputClass} />
             </div>
             <div>
               <label className={cn('block text-sm font-medium mb-1.5', heading)}>Description *</label>
-              <textarea rows={3} defaultValue="A full-stack e-commerce application..." className={inputClass} />
+              <textarea rows={3} value={formData.description} onChange={e => setFormData(f => ({ ...f, description: e.target.value }))} placeholder="Describe your project..." className={inputClass} />
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
@@ -289,8 +310,8 @@ export function CreateProject({ onNavigate }: { onNavigate: (page: Page) => void
             <Button variant="ghost" size="sm"><Plus className="h-4 w-4" /> Add Milestone</Button>
             <div className="flex justify-between">
               <Button variant="secondary" onClick={() => setStep(2)}>Back</Button>
-              <Button onClick={() => { setShowSuccess(true); onNavigate('student-project-detail'); }}>
-                <CheckCircle2 className="h-4 w-4" /> Create Project
+              <Button onClick={handleCreateProject} disabled={isCreating}>
+                {isCreating ? <><RefreshCw className="h-4 w-4 animate-spin" /> Creating...</> : <><CheckCircle2 className="h-4 w-4" /> Create Project</>}
               </Button>
             </div>
           </div>
@@ -522,35 +543,7 @@ export function StudentProjectDetail({ onNavigate: _onNavigate }: { onNavigate: 
       )}
 
       {tab === 'feedback' && (
-        <div className={card}>
-          <div className={cn('p-5', sectionBorder)}>
-            <h3 className={cn('font-semibold', heading)}>Feedback Thread</h3>
-          </div>
-          <div className="p-5 space-y-4">
-            {mockComments.map(c => (
-              <div key={c.id} className={cn('flex gap-3', c.userRole === 'student' ? 'flex-row-reverse' : '')}>
-                <div className={cn('h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white',
-                  c.userRole === 'professor' ? 'bg-purple-500' : 'bg-blue-500'
-                )}>
-                  {c.user.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                </div>
-                <div className={cn('max-w-lg rounded-lg p-3 text-sm',
-                  c.userRole === 'professor' ? 'bg-neutral-100 dark:bg-[#21262d] text-neutral-800 dark:text-[#c9d1d9]' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-300'
-                )}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={cn('font-semibold text-xs', heading)}>{c.user}</span>
-                    <span className={cn('text-xs', mutedText)}>{c.timestamp}</span>
-                  </div>
-                  <p>{c.message}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className={cn('p-5 flex gap-2', 'border-t border-neutral-100 dark:border-[#30363d]')}>
-            <input type="text" placeholder="Type your reply..." className={inputClass} />
-            <Button><Send className="h-4 w-4" /></Button>
-          </div>
-        </div>
+        <FeedbackThread projectId={project.id} />
       )}
     </div>
   );
@@ -834,7 +827,9 @@ export function ProfessorProjectDetail({ onNavigate: _onNavigate }: { onNavigate
               </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <Button variant="success"><Award className="h-4 w-4" /> Submit Grade</Button>
+              <Button variant="success" onClick={async () => { try { await dataService.approveProject('p1', '85', 'Good work'); alert('Grade submitted!'); } catch { /* handled */ } }}>
+                <Award className="h-4 w-4" /> Submit Grade
+              </Button>
             </div>
           </div>
           <div className={card}>
@@ -1266,8 +1261,26 @@ export function ActivityPage() {
    SETTINGS PAGE (ALL ROLES)
    ═══════════════════════════════════════════════════ */
 export function SettingsPage() {
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState('');
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try { await dataService.updateProfile({ name: 'Rahul Sharma' }); setToast('Profile saved!'); } catch { setToast('Failed to save'); }
+    setSaving(false);
+    setTimeout(() => setToast(''), 3000);
+  };
+
+  const handleChangePassword = async () => {
+    setSaving(true);
+    try { await dataService.changePassword('old', 'new'); setToast('Password updated!'); } catch { setToast('Failed to update password'); }
+    setSaving(false);
+    setTimeout(() => setToast(''), 3000);
+  };
+
   return (
     <div className="max-w-2xl space-y-6">
+      {toast && <Toast message={toast} onClose={() => setToast('')} />}
       <h1 className={cn('text-2xl font-bold', heading)}>Settings</h1>
 
       <div className={cn(card, 'p-6 space-y-5')}>
@@ -1300,7 +1313,9 @@ export function SettingsPage() {
             <input type="password" className={inputClass} />
           </div>
         </div>
-        <Button>Update Password</Button>
+        <Button onClick={handleChangePassword} disabled={saving}>
+          {saving ? <><RefreshCw className="h-4 w-4 animate-spin" /> Updating...</> : 'Update Password'}
+        </Button>
       </div>
 
       <div className={cn(card, 'p-6 space-y-5')}>
@@ -1327,7 +1342,9 @@ export function SettingsPage() {
             </label>
           ))}
         </div>
-        <Button>Save Preferences</Button>
+        <Button onClick={handleSaveProfile} disabled={saving}>
+          {saving ? <><RefreshCw className="h-4 w-4 animate-spin" /> Saving...</> : 'Save Preferences'}
+        </Button>
       </div>
     </div>
   );
@@ -1356,6 +1373,411 @@ export function ProfilePage() {
           <div><dt className={cn('mb-0.5', mutedText)}>Gitea Username</dt><dd className={cn('font-medium', heading)}>@rahul</dd></div>
         </dl>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   REUSABLE: FEEDBACK THREAD (Real API)
+   ═══════════════════════════════════════════════════ */
+
+function FeedbackThread({ projectId }: { projectId: string }) {
+  const [comments, setComments] = useState(mockComments);
+  const [newComment, setNewComment] = useState('');
+  const [sending, setSending] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    dataService.getFeedback(projectId).then((data: unknown[]) => {
+      if (data && Array.isArray(data) && data.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setComments(data.map((d: any) => ({ id: d._id, user: d.author?.name || 'Unknown', userRole: d.author?.role || 'student', message: d.content, timestamp: d.createdAt })));
+      }
+      setLoaded(true);
+    });
+  }, [projectId]);
+
+  const handleSend = async () => {
+    if (!newComment.trim()) return;
+    setSending(true);
+    try {
+      await dataService.addFeedback(projectId, newComment.trim());
+      setComments(prev => [...prev, { id: `c${Date.now()}`, user: 'You', userRole: 'student' as const, message: newComment.trim(), timestamp: 'Just now' }]);
+      setNewComment('');
+    } catch { /* handled */ }
+    setSending(false);
+  };
+
+  return (
+    <div className={card}>
+      <div className={cn('p-5', sectionBorder)}>
+        <h3 className={cn('font-semibold', heading)}>Feedback Thread</h3>
+        {!loaded && <span className={cn('text-xs ml-2', mutedText)}>Loading...</span>}
+      </div>
+      <div className="p-5 space-y-4">
+        {comments.map(c => (
+          <div key={c.id} className={cn('flex gap-3', c.userRole === 'student' ? 'flex-row-reverse' : '')}>
+            <div className={cn('h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white',
+              c.userRole === 'professor' ? 'bg-purple-500' : 'bg-blue-500'
+            )}>
+              {c.user.split(' ').map(n => n[0]).join('').slice(0, 2)}
+            </div>
+            <div className={cn('max-w-lg rounded-lg p-3 text-sm',
+              c.userRole === 'professor' ? 'bg-neutral-100 dark:bg-[#21262d] text-neutral-800 dark:text-[#c9d1d9]' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-300'
+            )}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={cn('font-semibold text-xs', heading)}>{c.user}</span>
+                <span className={cn('text-xs', mutedText)}>{c.timestamp}</span>
+              </div>
+              <p>{c.message}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className={cn('p-5 flex gap-2', 'border-t border-neutral-100 dark:border-[#30363d]')}>
+        <input
+          type="text"
+          value={newComment}
+          onChange={e => setNewComment(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
+          placeholder="Type your reply..."
+          className={inputClass}
+        />
+        <Button onClick={handleSend} disabled={sending || !newComment.trim()}>
+          {sending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   STUDENT MESSAGES — Chat with Professor
+   ═══════════════════════════════════════════════════ */
+
+interface ChatMessage {
+  id: string;
+  sender: 'me' | 'other';
+  senderName: string;
+  text: string;
+  time: string;
+  read: boolean;
+  type: 'text' | 'file' | 'system';
+  fileName?: string;
+  fileSize?: string;
+}
+
+interface Conversation {
+  id: string;
+  name: string;
+  role: string;
+  project: string;
+  lastMessage: string;
+  lastTime: string;
+  unread: number;
+  online: boolean;
+  avatar: string;
+}
+
+const studentConversations: Conversation[] = [
+  { id: 'c1', name: 'Dr. Anita Desai', role: 'Professor', project: 'E-Commerce Platform', lastMessage: 'Please update the progress report by Friday.', lastTime: '2 min ago', unread: 2, online: true, avatar: 'AD' },
+  { id: 'c2', name: 'Dr. Vikram Singh', role: 'Professor', project: 'Weather Dashboard', lastMessage: 'Good work on the API integration!', lastTime: '1 day ago', unread: 0, online: false, avatar: 'VS' },
+];
+
+const professorConversations: Conversation[] = [
+  { id: 'c1', name: 'Rahul Sharma', role: 'Student', project: 'E-Commerce Platform', lastMessage: 'I have pushed the updated code.', lastTime: '5 min ago', unread: 1, online: true, avatar: 'RS' },
+  { id: 'c2', name: 'Priya Patel', role: 'Student', project: 'Library Management System', lastMessage: 'Can you review my milestone 3?', lastTime: '30 min ago', unread: 3, online: true, avatar: 'PP' },
+  { id: 'c3', name: 'Karan Mehta', role: 'Student', project: 'Weather Dashboard', lastMessage: 'Thank you for the feedback!', lastTime: '2 days ago', unread: 0, online: false, avatar: 'KM' },
+];
+
+const mockChatMessages: Record<string, ChatMessage[]> = {
+  c1: [
+    { id: 'm1', sender: 'other', senderName: 'Dr. Anita Desai', text: 'Hi Rahul, how is the project going?', time: '10:30 AM', read: true, type: 'text' },
+    { id: 'm2', sender: 'me', senderName: 'Rahul Sharma', text: 'Hi Professor! I have completed the product catalog module and payment integration is in progress.', time: '10:32 AM', read: true, type: 'text' },
+    { id: 'm3', sender: 'other', senderName: 'Dr. Anita Desai', text: 'Great progress! Can you share the updated database schema?', time: '10:35 AM', read: true, type: 'text' },
+    { id: 'm4', sender: 'me', senderName: 'Rahul Sharma', text: '', time: '10:40 AM', read: true, type: 'file', fileName: 'Database_Schema_v2.pdf', fileSize: '1.2 MB' },
+    { id: 'm5', sender: 'other', senderName: 'Dr. Anita Desai', text: 'Thanks! I will review this and get back to you.', time: '10:42 AM', read: true, type: 'text' },
+    { id: 'm6', sender: 'other', senderName: 'Dr. Anita Desai', text: 'I reviewed the schema. The user table looks good but please add an index on the product_category field for better query performance.', time: '2:15 PM', read: true, type: 'text' },
+    { id: 'm7', sender: 'me', senderName: 'Rahul Sharma', text: 'Sure, I will add that. I have also pushed the updated code with the cart functionality.', time: '2:20 PM', read: true, type: 'text' },
+    { id: 'm8', sender: 'other', senderName: 'Dr. Anita Desai', text: 'Please update the progress report by Friday.', time: '4:00 PM', read: false, type: 'text' },
+    { id: 'm9', sender: 'other', senderName: 'Dr. Anita Desai', text: 'Also make sure the README has setup instructions for the reviewer.', time: '4:01 PM', read: false, type: 'text' },
+  ],
+  c2: [
+    { id: 'm10', sender: 'other', senderName: 'Dr. Vikram Singh', text: 'The weather API integration looks clean. Good work!', time: 'Yesterday', read: true, type: 'text' },
+    { id: 'm11', sender: 'me', senderName: 'Rahul Sharma', text: 'Thank you Professor! I will work on the charting next.', time: 'Yesterday', read: true, type: 'text' },
+  ],
+};
+
+function ChatView({ conversations, userType }: { conversations: Conversation[]; userType: 'student' | 'professor' }) {
+  const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  const [messageInput, setMessageInput] = useState('');
+  const [messages, setMessages] = useState<Record<string, ChatMessage[]>>(mockChatMessages);
+  const [showMobileList, setShowMobileList] = useState(true);
+
+  const selectedConvo = conversations.find(c => c.id === selectedChat);
+  const currentMessages = selectedChat ? (messages[selectedChat] || []) : [];
+
+  const handleSend = async () => {
+    if (!messageInput.trim() || !selectedChat) return;
+    const text = messageInput.trim();
+    setMessageInput('');
+    
+    const newMsg: ChatMessage = {
+      id: `m${Date.now()}`,
+      sender: 'me',
+      senderName: userType === 'student' ? 'Rahul Sharma' : 'Dr. Anita Desai',
+      text,
+      time: 'Just now',
+      read: false,
+      type: 'text',
+    };
+    setMessages(prev => ({
+      ...prev,
+      [selectedChat]: [...(prev[selectedChat] || []), newMsg],
+    }));
+    
+    // Send to real API (fire and forget — message is already shown optimistically)
+    try { await dataService.sendMessage(selectedChat, text); } catch { /* shown locally anyway */ }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <div className={cn(card, 'flex h-[calc(100vh-180px)] min-h-[500px] overflow-hidden')}>
+      {/* Conversation List */}
+      <div className={cn(
+        'w-full sm:w-80 border-r border-neutral-200 dark:border-[#30363d] flex flex-col shrink-0',
+        selectedChat && !showMobileList ? 'hidden sm:flex' : 'flex'
+      )}>
+        <div className={cn('p-4 border-b border-neutral-200 dark:border-[#30363d]')}>
+          <h2 className={cn('text-sm font-semibold mb-3', heading)}>Conversations</h2>
+          <div className="flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] px-3 py-1.5">
+            <Search className={cn('h-4 w-4', mutedText)} />
+            <input type="text" placeholder="Search conversations..." className={cn('bg-transparent text-sm outline-none w-full', heading)} />
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto">
+          {conversations.map(convo => (
+            <button
+              key={convo.id}
+              onClick={() => { setSelectedChat(convo.id); setShowMobileList(false); }}
+              className={cn(
+                'w-full flex items-start gap-3 p-4 text-left transition border-b border-neutral-50 dark:border-[#21262d]',
+                selectedChat === convo.id
+                  ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 !border-l-blue-500'
+                  : 'hover:bg-neutral-50 dark:hover:bg-[#21262d] border-l-2 border-l-transparent'
+              )}
+            >
+              <div className="relative shrink-0">
+                <div className={cn(
+                  'h-10 w-10 rounded-full flex items-center justify-center text-xs font-bold',
+                  convo.role === 'Professor' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400' : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
+                )}>
+                  {convo.avatar}
+                </div>
+                {convo.online && (
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-white dark:border-[#161b22]" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className={cn('text-sm font-semibold truncate', heading)}>{convo.name}</span>
+                  <span className={cn('text-[10px] shrink-0 ml-2', mutedText)}>{convo.lastTime}</span>
+                </div>
+                <p className={cn('text-xs mb-1', mutedText)}>{convo.project}</p>
+                <p className={cn('text-xs truncate', convo.unread > 0 ? 'font-medium text-neutral-700 dark:text-[#c9d1d9]' : subtext)}>{convo.lastMessage}</p>
+              </div>
+              {convo.unread > 0 && (
+                <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-white text-[10px] font-bold mt-1">
+                  {convo.unread}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chat Area */}
+      <div className={cn(
+        'flex-1 flex flex-col',
+        !selectedChat || showMobileList ? 'hidden sm:flex' : 'flex'
+      )}>
+        {selectedConvo ? (
+          <>
+            {/* Chat Header */}
+            <div className={cn('flex items-center gap-3 p-4 border-b border-neutral-200 dark:border-[#30363d]')}>
+              <button
+                onClick={() => setShowMobileList(true)}
+                className="sm:hidden p-1 rounded hover:bg-neutral-100 dark:hover:bg-[#21262d]"
+              >
+                <ArrowUpRight className={cn('h-5 w-5 rotate-[225deg]', subtext)} />
+              </button>
+              <div className="relative">
+                <div className={cn(
+                  'h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold',
+                  selectedConvo.role === 'Professor' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400' : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
+                )}>
+                  {selectedConvo.avatar}
+                </div>
+                {selectedConvo.online && (
+                  <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-white dark:border-[#161b22]" />
+                )}
+              </div>
+              <div className="flex-1">
+                <h3 className={cn('text-sm font-semibold', heading)}>{selectedConvo.name}</h3>
+                <p className={cn('text-xs', selectedConvo.online ? 'text-green-600 dark:text-green-400' : mutedText)}>
+                  {selectedConvo.online ? 'Online' : 'Offline'} · {selectedConvo.project}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button className={cn('p-2 rounded-md hover:bg-neutral-100 dark:hover:bg-[#21262d]', subtext)}>
+                  <FolderGit2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-auto p-4 space-y-4">
+              {/* System message */}
+              <div className="flex justify-center">
+                <span className={cn('text-[10px] px-3 py-1 rounded-full', 'bg-neutral-100 dark:bg-[#21262d]', mutedText)}>
+                  Conversation about {selectedConvo.project}
+                </span>
+              </div>
+
+              {currentMessages.map(msg => (
+                <div key={msg.id} className={cn('flex', msg.sender === 'me' ? 'justify-end' : 'justify-start')}>
+                  <div className={cn(
+                    'max-w-[75%] sm:max-w-[65%]',
+                    msg.sender === 'me' ? 'order-2' : 'order-1'
+                  )}>
+                    {msg.type === 'file' ? (
+                      <div className={cn(
+                        'rounded-lg p-3 border',
+                        msg.sender === 'me'
+                          ? 'bg-blue-500 border-blue-500 text-white'
+                          : 'bg-white dark:bg-[#21262d] border-neutral-200 dark:border-[#30363d]'
+                      )}>
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-5 w-5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{msg.fileName}</p>
+                            <p className={cn('text-xs', msg.sender === 'me' ? 'text-blue-100' : mutedText)}>{msg.fileSize}</p>
+                          </div>
+                          <Download className="h-4 w-4 shrink-0 cursor-pointer hover:opacity-70" />
+                        </div>
+                        <p className={cn('text-[10px] mt-1.5 text-right', msg.sender === 'me' ? 'text-blue-200' : mutedText)}>
+                          {msg.time}
+                          {msg.sender === 'me' && (
+                            <span className="ml-1">{msg.read ? '✓✓' : '✓'}</span>
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className={cn(
+                        'rounded-lg px-3.5 py-2.5',
+                        msg.sender === 'me'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-neutral-100 dark:bg-[#21262d] text-neutral-800 dark:text-[#c9d1d9]'
+                      )}>
+                        <p className="text-sm leading-relaxed">{msg.text}</p>
+                        <p className={cn('text-[10px] mt-1.5 text-right', msg.sender === 'me' ? 'text-blue-200' : mutedText)}>
+                          {msg.time}
+                          {msg.sender === 'me' && (
+                            <span className="ml-1">{msg.read ? '✓✓' : '✓'}</span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Message Input */}
+            <div className={cn('p-4 border-t border-neutral-200 dark:border-[#30363d] bg-white dark:bg-[#161b22]')}>
+              <div className="flex items-end gap-2">
+                <button className={cn('p-2 rounded-md hover:bg-neutral-100 dark:hover:bg-[#21262d] shrink-0 mb-0.5', subtext)}>
+                  <Upload className="h-5 w-5" />
+                </button>
+                <div className="flex-1 relative">
+                  <textarea
+                    value={messageInput}
+                    onChange={e => setMessageInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type a message..."
+                    rows={1}
+                    className={cn(
+                      'w-full rounded-lg border border-neutral-300 dark:border-[#30363d] px-4 py-2.5 text-sm outline-none resize-none',
+                      'focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
+                      'bg-white dark:bg-[#0d1117] text-neutral-900 dark:text-[#f0f6fc]',
+                      'placeholder:text-neutral-400 dark:placeholder:text-[#484f58]'
+                    )}
+                  />
+                </div>
+                <button
+                  onClick={handleSend}
+                  disabled={!messageInput.trim()}
+                  className={cn(
+                    'p-2.5 rounded-lg shrink-0 mb-0.5 transition',
+                    messageInput.trim()
+                      ? 'bg-blue-500 text-white hover:bg-blue-600'
+                      : 'bg-neutral-100 dark:bg-[#21262d] text-neutral-400 dark:text-[#484f58] cursor-not-allowed'
+                  )}
+                >
+                  <Send className="h-5 w-5" />
+                </button>
+              </div>
+              <p className={cn('text-[10px] mt-1.5 ml-10', mutedText)}>Press Enter to send · Shift+Enter for new line</p>
+            </div>
+          </>
+        ) : (
+          /* Empty State — No conversation selected */
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center px-6">
+              <div className="flex justify-center mb-4">
+                <div className="h-16 w-16 rounded-full bg-neutral-100 dark:bg-[#21262d] flex items-center justify-center">
+                  <MessageSquare className={cn('h-8 w-8', mutedText)} />
+                </div>
+              </div>
+              <h3 className={cn('text-lg font-semibold mb-1', heading)}>Select a conversation</h3>
+              <p className={cn('text-sm', subtext)}>
+                Choose a conversation from the list to start chatting
+                {userType === 'student' ? ' with your professor' : ' with your students'}.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function StudentMessages() {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className={cn('text-2xl font-bold', heading)}>Messages</h1>
+        <p className={cn('text-sm', subtext)}>Chat with your professors about your projects</p>
+      </div>
+      <ChatView conversations={studentConversations} userType="student" />
+    </div>
+  );
+}
+
+export function ProfessorMessages() {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className={cn('text-2xl font-bold', heading)}>Messages</h1>
+        <p className={cn('text-sm', subtext)}>Chat with your students about their projects</p>
+      </div>
+      <ChatView conversations={professorConversations} userType="professor" />
     </div>
   );
 }

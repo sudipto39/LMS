@@ -58,12 +58,23 @@ export function Login({ onLogin, onNavigate, goBack, darkMode, setDarkMode }: {
     setIsSubmitting(true);
     setLoginAttemptError('');
 
-    // Simulate API call — in production, this calls authAPI.login()
-    setTimeout(() => {
-      setIsSubmitting(false);
-      // Demo: always succeed for demo buttons; real app would validate with backend
-      onLogin('student');
-    }, 800);
+    // Try real API first, fall back to demo mode
+    import('@/services/dataService').then(async ({ default: ds }) => {
+      try {
+        const result = await ds.login(email, password);
+        setIsSubmitting(false);
+        const role = result.user?.role || 'student';
+        // Store tokens for authenticated API calls
+        if (result.token && result.token !== 'demo-token') {
+          localStorage.setItem('giteaforge_token', result.token);
+          localStorage.setItem('giteaforge_refresh_token', result.refreshToken);
+        }
+        onLogin(role as 'student' | 'professor' | 'admin');
+      } catch {
+        setIsSubmitting(false);
+        setLoginAttemptError('Invalid email or password. Please try again.');
+      }
+    });
   }, [email, password, onLogin]);
 
   const handleForgotPassword = useCallback(() => {

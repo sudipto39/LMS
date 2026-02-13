@@ -99,11 +99,25 @@ export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
     setIsSubmitting(true);
     setSubmitError('');
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setShowSuccess(true);
-    }, 1200);
+    // Call real API (falls back to demo if backend unavailable)
+    import('@/services/dataService').then(async ({ default: ds }) => {
+      try {
+        await ds.register({
+          name: formData.fullName,
+          email: formData.email,
+          password: formData.password,
+          role: 'student',
+          enrollmentId: formData.rollNo,
+          department: formData.department,
+          batch: formData.session,
+        });
+        setIsSubmitting(false);
+        setShowSuccess(true);
+      } catch {
+        setIsSubmitting(false);
+        setSubmitError('Registration failed. Please try again or contact admin.');
+      }
+    });
   }, [formData]);
 
   // Handle Enter key

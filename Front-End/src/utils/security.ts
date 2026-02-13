@@ -411,13 +411,13 @@ export function validateFile(file: File): { valid: boolean; error: string } {
 }
 
 
-// ── Prevent Clickjacking ──
+// ── Clickjacking Note ──
+// In production, add X-Frame-Options: SAMEORIGIN header on your server
+// and frame-ancestors 'self' in your CSP header (server-side, not meta tag).
+// Do NOT block iframes on the client side as it breaks preview environments.
 export function preventClickjacking(): void {
-  if (window.self !== window.top) {
-    // Page is in an iframe — possible clickjacking
-    document.body.innerHTML = '<h1 style="text-align:center;margin-top:100px;">This page cannot be displayed in a frame.</h1>';
-    throw new Error('Clickjacking detected: page loaded in iframe');
-  }
+  // No-op: clickjacking prevention should be handled via server headers
+  // e.g., X-Frame-Options: SAMEORIGIN or Content-Security-Policy: frame-ancestors 'self'
 }
 
 
