@@ -11,7 +11,7 @@ export interface User extends Document {
   password: string;
   phoneNumber: number;
   department: string;
-  session: number;
+  session: string;
   role: string;
   isVerified: boolean;
   verifyCode?: string;
@@ -57,8 +57,9 @@ const userSchema = new Schema<User>(
       required: [true, "Department is required"],
     },
     session: {
-      type: Number,
+      type: String,
       required: true,
+      match: [/^\d{4}-\d{4}$/, "Session must be in format YYYY-YYYY"],
     },
     role: {
       type: String,
