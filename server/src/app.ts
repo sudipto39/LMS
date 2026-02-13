@@ -49,8 +49,8 @@ if (config.NODE_ENV === 'development') {
 }
 
 // 6. API Routes
-app.use('/api/auth', authLimiter, authRouter);
-app.use('/api', apiLimiter);
+app.use('/api/v1/auth', authLimiter, authRouter);
+app.use('/api/v1', apiLimiter);
 
 // 404 handler (NO route matched)
 app.use(notFound);

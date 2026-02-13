@@ -4,9 +4,6 @@ import { config } from "../config/env.js";
 
 const SALT_ROUNDS = 12;
 
-/**
- * USER INTERFACE
- */
 export interface User extends Document {
   name: string;
   universityId: string;
@@ -16,20 +13,17 @@ export interface User extends Document {
   department: string;
   session: number;
   role: string;
-
-  // Email verification
   isVerified: boolean;
   verifyCode?: string;
   verifyCodeExpiry?: Date;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
 
   passwordChangedAt?: Date;
 
   isCorrectPassword(candidatePassword: string): Promise<boolean>;
 }
 
-/**
- * USER SCHEMA
- */
 const userSchema = new Schema<User>(
   {
     name: {
@@ -52,7 +46,7 @@ const userSchema = new Schema<User>(
     password: {
       type: String,
       required: [true, "Password is required"],
-      select: false, // 🔐 important
+      select: false,
     },
     phoneNumber: {
       type: Number,
@@ -70,29 +64,20 @@ const userSchema = new Schema<User>(
       type: String,
       default: "student",
     },
-
-    // Email verification fields
     isVerified: {
       type: Boolean,
       default: false,
     },
-    verifyCode: {
-      type: String,
-    },
-    verifyCodeExpiry: {
-      type: Date,
-    },
-
-    passwordChangedAt: {
-      type: Date,
-    },
+    verifyCode: String,
+    verifyCodeExpiry: Date,
+    passwordResetToken: String,
+    passwordResetExpires: Date,
+    passwordChangedAt: Date,
   },
   { timestamps: true }
 );
 
-/**
- * PASSWORD HASHING
- */
+// Password hashing
 userSchema.pre<User>("save", async function () {
   if (!this.isModified("password")) return;
 
@@ -103,9 +88,7 @@ userSchema.pre<User>("save", async function () {
   }
 });
 
-/**
- * PASSWORD COMPARISON
- */
+// Password comparison
 userSchema.methods.isCorrectPassword = async function (
   this: User,
   candidatePassword: string
@@ -113,18 +96,12 @@ userSchema.methods.isCorrectPassword = async function (
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-/**
- * POST-SAVE EMAIL HOOK (optional)
- */
+// Optional post-save hook
 userSchema.post<User>("save", async function (doc) {
   if (config.EMAIL_VERIFICATION && doc.isNew && doc.verifyCode) {
     console.log("📧 Email verification code:", doc.verifyCode);
-    // await emailService.sendVerificationEmail(...)
   }
 });
 
-/**
- * MODEL
- */
 const UserModel = mongoose.model<User>("User", userSchema);
 export default UserModel;
