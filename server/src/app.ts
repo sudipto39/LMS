@@ -9,6 +9,7 @@ import connectDB from './config/db.js';
 import { config } from './config/env.js';
 import { globalErrorHandler } from './middlewares/globalErrorHandler.js';
 import { notFound } from './middlewares/notFound.js';
+import projectRouter from './routes/projectRoutes.js';
 
 export const app = express();
 
@@ -50,6 +51,7 @@ if (config.NODE_ENV === 'development') {
 
 // 6. API Routes
 app.use('/api/v1/auth', authLimiter, authRouter);
+app.use('/api/v1/projects', apiLimiter, projectRouter);
 app.use('/api/v1', apiLimiter);
 
 // 404 handler (NO route matched)
