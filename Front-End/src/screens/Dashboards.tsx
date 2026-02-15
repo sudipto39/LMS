@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Page } from '@/types';
 import dataService from '@/services/dataService';
+import { getGiteaURL } from '@/api/client';
 import { mockProjects, mockActivities, mockMilestones, mockUsers, mockComments } from '@/data';
+
+// Get Gitea URL from environment variable (never hardcode!)
+const GITEA_URL = getGiteaURL() || 'https://gitea.example.com';
 import {
   KPICard, StatusPill, ProgressBar, ActivityTimeline, TechTag, InactivityBadge,
   Button, MilestoneStatusPill, Modal, Toast
@@ -273,7 +277,7 @@ export function CreateProject({ onNavigate }: { onNavigate: (page: Page) => void
                 </div>
                 <div className={cn('flex items-center gap-2 text-xs', subtext)}>
                   <Server className="h-3.5 w-3.5" />
-                  <span>Will be created at: gitea.ignou.local/rahul/ecommerce-platform</span>
+                  <span>Will be created at: {GITEA_URL.replace(/^https?:\/\//, '')}/rahul/ecommerce-platform</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" defaultChecked className="rounded border-neutral-300 dark:border-[#30363d] text-blue-600" />
@@ -328,7 +332,7 @@ export function CreateProject({ onNavigate }: { onNavigate: (page: Page) => void
         <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-5">
           <h4 className="font-semibold text-blue-900 dark:text-blue-300 mb-2 flex items-center gap-2"><Terminal className="h-4 w-4" /> After creation — Push your code</h4>
           <div className="bg-neutral-900 rounded-md p-4 text-sm font-mono text-neutral-300 space-y-1 overflow-x-auto">
-            <p><span className="text-green-400">$</span> git clone https://gitea.ignou.local/rahul/ecommerce-platform.git</p>
+            <p><span className="text-green-400">$</span> git clone {GITEA_URL}/rahul/ecommerce-platform.git</p>
             <p><span className="text-green-400">$</span> cd ecommerce-platform</p>
             <p><span className="text-green-400">$</span> git add . && git commit -m &quot;initial commit&quot;</p>
             <p><span className="text-green-400">$</span> git push origin main</p>
@@ -1176,7 +1180,7 @@ export function AdminGiteaSettings() {
 
         <div>
           <label className={cn('block text-sm font-medium mb-1.5', heading)}>Gitea Base URL</label>
-          <input type="url" defaultValue="https://gitea.ignou.local" className={inputClass} />
+          <input type="url" defaultValue={GITEA_URL} className={inputClass} />
         </div>
         <div>
           <label className={cn('block text-sm font-medium mb-1.5', heading)}>API Token</label>
