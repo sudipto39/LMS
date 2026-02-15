@@ -9,6 +9,7 @@ import {
 } from '../controllers/milestoneController.js';
 
 import { protect, restrictTo } from '../middlewares/authMiddleware.js';
+import { upload } from '../middlewares/fileUploadMiddleware.js';
 
 const router = express.Router();
 
@@ -50,6 +51,13 @@ router.get(
   protect,
   restrictTo('student'),
   getMySubmissions
+);
+router.patch(
+  '/milestones/:id/submit',
+  protect,
+  restrictTo('student'),
+  upload.array('files', 5),
+  submitMilestone
 );
 
 export default router;
