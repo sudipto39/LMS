@@ -18,6 +18,11 @@ import { cn } from '@/utils/cn';
 // Shared dark-mode class shortcuts
 const card = 'rounded-lg border border-neutral-200 dark:border-[#30363d] bg-white dark:bg-[#161b22]';
 const cardHover = card + ' hover:border-neutral-300 dark:hover:border-[#484f58] transition';
+// Grid classes for better big-screen usage
+const kpiGrid = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-5';
+const mainGrid = 'grid lg:grid-cols-3 gap-6 xl:gap-8';
+const twoColGrid = 'grid lg:grid-cols-2 gap-6 xl:gap-8';
+const threeColGrid = 'grid sm:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-6';
 const heading = 'text-neutral-900 dark:text-[#f0f6fc]';
 const subtext = 'text-neutral-500 dark:text-[#8b949e]';
 const mutedText = 'text-neutral-400 dark:text-[#484f58]';
@@ -45,14 +50,14 @@ export function StudentDashboard({ onNavigate }: { onNavigate: (page: Page) => v
         <Button onClick={() => onNavigate('student-create-project')}><Plus className="h-4 w-4" /> New Project</Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={kpiGrid}>
         <KPICard title="Active Projects" value={1} subtitle="1 in progress" icon={<FolderGit2 className="h-5 w-5" />} color="blue" />
         <KPICard title="Upcoming Deadline" value="Mar 15" subtitle="E-Commerce Platform" icon={<Calendar className="h-5 w-5" />} color="yellow" />
         <KPICard title="Last Push" value="2h ago" subtitle="main branch" icon={<Clock className="h-5 w-5" />} color="green" />
         <KPICard title="Pending Review" value={1} subtitle="Milestone 3" icon={<Eye className="h-5 w-5" />} color="purple" />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className={mainGrid}>
         <div className={cn('lg:col-span-2', card)}>
           <div className={cn('flex items-center justify-between p-5', sectionBorder)}>
             <h2 className={cn('text-sm font-semibold', heading)}>My Projects</h2>
@@ -150,6 +155,7 @@ export function StudentProjects({ onNavigate }: { onNavigate: (page: Page) => vo
    CREATE PROJECT
    ═══════════════════════════════════════════════════ */
 export function CreateProject({ onNavigate }: { onNavigate: (page: Page) => void }) {
+  // Note: max-w-3xl removed - now uses full width with max-w-4xl for better big screen usage
   const [step, setStep] = useState(1);
   const [repoOption, setRepoOption] = useState<'create' | 'link'>('create');
   const [showSuccess, setShowSuccess] = useState(false);
@@ -175,7 +181,7 @@ export function CreateProject({ onNavigate }: { onNavigate: (page: Page) => void
   }, [formData, repoOption, onNavigate]);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       {showSuccess && <Toast message="Project created successfully! Repository initialized." onClose={() => setShowSuccess(false)} />}
       <div>
         <h1 className={cn('text-2xl font-bold', heading)}>Create New Project</h1>
@@ -378,7 +384,7 @@ export function StudentProjectDetail({ onNavigate: _onNavigate }: { onNavigate: 
       </div>
 
       {tab === 'overview' && (
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className={cn(mainGrid)}>
           <div className="lg:col-span-2 space-y-6">
             <div className={cn(card, 'p-5')}>
               <h3 className={cn('font-semibold mb-4', heading)}>Project Information</h3>
@@ -478,7 +484,7 @@ export function StudentProjectDetail({ onNavigate: _onNavigate }: { onNavigate: 
       )}
 
       {tab === 'progress' && (
-        <div className="grid lg:grid-cols-2 gap-6">
+        <div className={cn(twoColGrid)}>
           <div className={cn(card, 'p-5')}>
             <h3 className={cn('font-semibold mb-4', heading)}>Weekly Commit Activity</h3>
             <div className="flex items-end gap-2 h-40">
@@ -593,14 +599,14 @@ export function ProfessorDashboard({ onNavigate }: { onNavigate: (page: Page) =>
         <p className={cn('text-sm', subtext)}>Welcome, Dr. Anita Desai. Here&apos;s your supervision overview.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={kpiGrid}>
         <KPICard title="Projects Supervised" value={3} subtitle="3 active students" icon={<FolderGit2 className="h-5 w-5" />} color="blue" />
         <KPICard title="Needs Review" value={1} subtitle="Priya's submission" icon={<Eye className="h-5 w-5" />} color="yellow" />
         <KPICard title="Inactive > 7 days" value={1} subtitle="Karan Mehta" icon={<AlertTriangle className="h-5 w-5" />} color="red" />
         <KPICard title="Upcoming Deadlines" value={2} subtitle="Feb 28, Mar 15" icon={<Calendar className="h-5 w-5" />} color="purple" />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className={mainGrid}>
         <div className="lg:col-span-2">
           <div className={card}>
             <div className={cn('flex items-center justify-between p-5', sectionBorder)}>
@@ -699,7 +705,7 @@ export function ProfessorProjectDetail({ onNavigate: _onNavigate }: { onNavigate
       </div>
 
       {tab === 'summary' && (
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className={cn(mainGrid)}>
           <div className="lg:col-span-2 space-y-4">
             <div className={cn(card, 'p-5')}>
               <h3 className={cn('font-semibold mb-3', heading)}>Project Details</h3>
@@ -804,7 +810,7 @@ export function ProfessorProjectDetail({ onNavigate: _onNavigate }: { onNavigate
       )}
 
       {tab === 'grade' && (
-        <div className="grid lg:grid-cols-2 gap-6">
+        <div className={cn(twoColGrid)}>
           <div className={cn(card, 'p-5')}>
             <h3 className={cn('font-semibold mb-4', heading)}>Rubric Scoring</h3>
             <div className="space-y-4">
@@ -943,14 +949,14 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (page: Page) => voi
         <p className={cn('text-sm', subtext)}>System overview and management</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={kpiGrid}>
         <KPICard title="Total Users" value={8} subtitle="6 students, 2 professors" icon={<Users className="h-5 w-5" />} color="blue" />
         <KPICard title="Active Projects" value={5} subtitle="3 in progress" icon={<FolderGit2 className="h-5 w-5" />} color="purple" />
         <KPICard title="Gitea Status" value="Online" subtitle="gitea.ignou.local" icon={<Server className="h-5 w-5" />} color="green" />
         <KPICard title="Pending Reviews" value={2} subtitle="Needs attention" icon={<Eye className="h-5 w-5" />} color="yellow" />
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className={twoColGrid}>
         <div className={card}>
           <div className={cn('p-5 flex items-center justify-between', sectionBorder)}>
             <h2 className={cn('text-sm font-semibold', heading)}>Recent Activity</h2>
@@ -1114,7 +1120,7 @@ export function AdminBatches() {
         <Button><Plus className="h-4 w-4" /> Create Batch</Button>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className={threeColGrid}>
         {[
           { name: 'BCA-2024', students: 4, professor: 'Dr. Anita Desai', projects: 3, active: true },
           { name: 'MCA-2024', students: 2, professor: 'Dr. Vikram Singh', projects: 2, active: true },
@@ -1150,7 +1156,7 @@ export function AdminBatches() {
    ═══════════════════════════════════════════════════ */
 export function AdminGiteaSettings() {
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-5xl space-y-6">
       <div>
         <h1 className={cn('text-2xl font-bold', heading)}>Gitea Server Configuration</h1>
         <p className={cn('text-sm', subtext)}>Configure connection to your self-hosted Gitea instance</p>
@@ -1279,7 +1285,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
       <h1 className={cn('text-2xl font-bold', heading)}>Settings</h1>
 
@@ -1355,7 +1361,7 @@ export function SettingsPage() {
    ═══════════════════════════════════════════════════ */
 export function ProfilePage() {
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <h1 className={cn('text-2xl font-bold', heading)}>Profile</h1>
       <div className={cn(card, 'p-6')}>
         <div className="flex items-center gap-5 mb-6">

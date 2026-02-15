@@ -289,6 +289,13 @@ export function App() {
           userName={roleNames[role]}
           userRole={role}
           onLogout={handleLogout}
+          onProfileClick={() => {
+            // Navigate to role-specific profile page
+            const profilePage: Page = role === 'student' ? 'student-profile' 
+              : role === 'professor' ? 'professor-profile' 
+              : 'admin-profile';
+            navigateTo(profilePage);
+          }}
         />
         {/* Breadcrumb + Back Button Bar */}
         {(canGoBack || breadcrumbs.length > 1) && (
@@ -324,8 +331,10 @@ export function App() {
             </nav>
           </div>
         )}
-        <main className="flex-1 overflow-auto p-4 lg:p-6">
-          {renderContent()}
+        <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 xl:p-10">
+          <div className="w-full max-w-[1800px] mx-auto">
+            {renderContent()}
+          </div>
         </main>
       </div>
 
