@@ -1276,7 +1276,7 @@ export function SettingsPage() {
 
   const handleSaveProfile = async () => {
     setSaving(true);
-    try { await dataService.updateProfile({ name: 'Rahul Sharma' }); setToast('Profile saved!'); } catch { setToast('Failed to save'); }
+    try { await dataService.updateProfile({ fullName: 'Rahul Sharma' }); setToast('Profile saved!'); } catch { setToast('Failed to save'); }
     setSaving(false);
     setTimeout(() => setToast(''), 3000);
   };

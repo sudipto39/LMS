@@ -103,13 +103,16 @@ export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
     import('@/services/dataService').then(async ({ default: ds }) => {
       try {
         await ds.register({
-          name: formData.fullName,
+          fullName: formData.fullName,
           email: formData.email,
           password: formData.password,
-          role: 'student',
-          enrollmentId: formData.rollNo,
+          passwordConfirm: formData.confirmPassword,
+          phone: formData.phoneNumber,
+          university: formData.university,
           department: formData.department,
-          batch: formData.session,
+          session: formData.session,
+          rollNumber: formData.rollNo,
+          role: 'student',
         });
         setIsSubmitting(false);
         setShowSuccess(true);

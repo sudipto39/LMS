@@ -49,10 +49,32 @@ export const dataService = {
     );
   },
 
-  register: async (data: { name: string; email: string; password: string; role: string; enrollmentId?: string; department?: string; batch?: string }) => {
+  register: async (data: { 
+    fullName: string; 
+    email: string; 
+    password: string; 
+    passwordConfirm: string;
+    phone: string;
+    university: string;
+    department: string;
+    session: string;
+    rollNumber: string;
+    role?: string; 
+  }) => {
     return tryAPI(
-      () => authAPI.register({ name: data.name, email: data.email, password: data.password, role: data.role as 'student' | 'professor', enrollmentId: data.enrollmentId, department: data.department, batch: data.batch }),
-      { message: 'Registration submitted (demo mode)', user: { _id: 'new', name: data.name } }
+      () => authAPI.register({ 
+        fullName: data.fullName, 
+        email: data.email, 
+        password: data.password, 
+        passwordConfirm: data.passwordConfirm,
+        phone: data.phone,
+        university: data.university,
+        department: data.department,
+        session: data.session,
+        rollNumber: data.rollNumber,
+        role: (data.role || 'student') as 'student' | 'professor',
+      }),
+      { message: 'Registration submitted (demo mode)', user: { _id: 'new', fullName: data.fullName } }
     );
   },
 
@@ -70,7 +92,9 @@ export const dataService = {
   },
 
   createProject: async (data: { title: string; description: string; batch: string; course: string; professorId: string; techStack: string[]; repoOption: 'create_new' | 'link_existing'; existingRepoUrl?: string }) => {
-    return tryAPI(() => projectsAPI.create(data), adaptProject({ ...mockProjects[0], id: 'new-' + Date.now(), title: data.title, description: data.description, status: 'draft' as const, progress: 0 }));
+    // Map professorId to supervisorId for API compatibility
+    const payload = { ...data, supervisorId: data.professorId };
+    return tryAPI(() => projectsAPI.create(payload), adaptProject({ ...mockProjects[0], id: 'new-' + Date.now(), title: data.title, description: data.description, status: 'draft' as const, progress: 0 }));
   },
 
   submitProject: async (id: string) => {
@@ -97,16 +121,16 @@ export const dataService = {
     );
   },
 
-  completeMilestone: async (projectId: string, milestoneId: string) => {
-    return tryAPI(() => projectsAPI.completeMilestone(projectId, milestoneId), { success: true });
+  completeMilestone: async (_projectId: string, milestoneId: string) => {
+    return tryAPI(() => projectsAPI.submitMilestone(milestoneId), { success: true });
   },
 
-  approveMilestone: async (projectId: string, milestoneId: string, comment?: string) => {
-    return tryAPI(() => projectsAPI.approveMilestone(projectId, milestoneId, comment), { success: true });
+  approveMilestone: async (_projectId: string, milestoneId: string, comment?: string) => {
+    return tryAPI(() => projectsAPI.approveMilestone(milestoneId, comment), { success: true });
   },
 
-  rejectMilestone: async (projectId: string, milestoneId: string, comment: string) => {
-    return tryAPI(() => projectsAPI.rejectMilestone(projectId, milestoneId, comment), { success: true });
+  rejectMilestone: async (_projectId: string, milestoneId: string, comment: string) => {
+    return tryAPI(() => projectsAPI.rejectMilestone(milestoneId, comment), { success: true });
   },
 
   // ─── Feedback ───
@@ -150,29 +174,29 @@ export const dataService = {
   // ─── Users ───
   getUsers: async (filters?: { role?: string }) => {
     return tryAPI(
-      () => usersAPI.getAll(filters),
-      { data: mockUsers.filter(u => { if (filters?.role && u.role !== filters.role) return false; return true; }).map(u => ({ ...u, _id: u.id, giteaLinked: false, isActive: true, createdAt: '2024-01-01' })), total: mockUsers.length, page: 1, limit: 20, totalPages: 1 }
+      () => usersAPI.getAllUsers(filters),
+      { data: mockUsers.filter(u => { if (filters?.role && u.role !== filters.role) return false; return true; }).map(u => ({ ...u, _id: u.id, fullName: u.name, giteaLinked: false, isActive: true, createdAt: '2024-01-01' })), total: mockUsers.length, page: 1, limit: 20, totalPages: 1 }
     );
   },
 
-  createUser: async (data: { name: string; email: string; password: string; role: string; department?: string }) => {
-    return tryAPI(() => usersAPI.create({ name: data.name, email: data.email, password: data.password, role: data.role as 'student' | 'professor' | 'admin', department: data.department }), { _id: 'new', ...data, giteaLinked: false, isActive: true, createdAt: new Date().toISOString() });
+  createUser: async (data: { fullName: string; email: string; password: string; role: string; department?: string }) => {
+    return tryAPI(() => usersAPI.create({ fullName: data.fullName, email: data.email, password: data.password, role: data.role as 'student' | 'professor' | 'admin', department: data.department }), { _id: 'new', ...data, giteaLinked: false, isActive: true, createdAt: new Date().toISOString() });
   },
 
   deleteUser: async (id: string) => {
     return tryAPI(() => usersAPI.delete(id), { success: true });
   },
 
-  updateProfile: async (data: { name?: string; email?: string }) => {
-    return tryAPI(() => usersAPI.updateProfile(data), { success: true });
+  updateProfile: async (data: { fullName?: string; email?: string }) => {
+    return tryAPI(() => usersAPI.updateMe(data), { success: true });
   },
 
   changePassword: async (currentPassword: string, newPassword: string) => {
-    return tryAPI(() => usersAPI.changePassword(currentPassword, newPassword), { success: true });
+    return tryAPI(() => usersAPI.changePassword(currentPassword, newPassword, newPassword), { success: true });
   },
 
   getProfessors: async () => {
-    return tryAPI(() => usersAPI.getProfessors(), mockUsers.filter(u => u.role === 'professor').map(u => ({ ...u, _id: u.id, giteaLinked: false, isActive: true, createdAt: '2024-01-01' })));
+    return tryAPI(() => usersAPI.getProfessors(), { status: 'success', data: mockUsers.filter(u => u.role === 'professor').map(u => ({ ...u, _id: u.id, fullName: u.name, giteaLinked: false, isActive: true, createdAt: '2024-01-01' })) });
   },
 
   // ─── Admin ───
