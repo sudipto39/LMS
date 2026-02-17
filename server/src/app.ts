@@ -12,6 +12,7 @@ import { notFound } from './middlewares/notFound.js';
 import projectRouter from './routes/projectRoutes.js';
 import milestoneRouter from './routes/milestoneRoutes.js';
 import userRouter from './routes/userRoutes.js';
+import activityRouter from './routes/activityRoutes.js';
 
 export const app = express();
 
@@ -56,6 +57,7 @@ app.use('/api/v1/auth', authLimiter, authRouter);
 app.use('/api/v1/projects', apiLimiter, projectRouter);
 app.use('/api/v1/milestones', apiLimiter, milestoneRouter);
 app.use('/api/v1/users', apiLimiter, userRouter);
+app.use('/api/v1/activities', apiLimiter, activityRouter);
 app.use('/api/v1', apiLimiter);
 
 // 404 handler (NO route matched)
