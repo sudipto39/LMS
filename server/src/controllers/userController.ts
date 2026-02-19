@@ -4,10 +4,6 @@ import catchAsync from '../utils/catchAsync.js';
 import { AppError } from '../utils/appError.js';
 import { authenticatedRequest } from '../middlewares/authMiddleware.js';
 
-/**
- * GET /api/v1/users/me
- * Get logged-in user's profile
- */
 export const getMe: RequestHandler = catchAsync(
   async (req, res) => {
     const authReq = req as authenticatedRequest;
@@ -25,10 +21,6 @@ export const getMe: RequestHandler = catchAsync(
   }
 );
 
-/**
- * PATCH /api/v1/users/me
- * Update own profile (non-sensitive fields only)
- */
 export const updateMe: RequestHandler = catchAsync(
   async (req, res) => {
     const authReq = req as authenticatedRequest;
@@ -68,10 +60,6 @@ export const updateMe: RequestHandler = catchAsync(
   }
 );
 
-/**
- * GET /api/v1/users
- * Admin only – list all users
- */
 export const getAllUsers: RequestHandler = catchAsync(
   async (_req: Request, res: Response) => {
     const users = await User.find().select('-password');
@@ -84,10 +72,6 @@ export const getAllUsers: RequestHandler = catchAsync(
   }
 );
 
-/**
- * GET /api/v1/users/:id
- * Admin only – get specific user
- */
 export const getUserById: RequestHandler = catchAsync(
   async (req: Request, res: Response) => {
     const user = await User.findById(req.params.id).select('-password');

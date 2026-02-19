@@ -16,7 +16,6 @@ const connectDB = async (): Promise<void> => {
   throw new Error("❌ MONGODB_URI is missing in .env");
 }
 
-
     await mongoose.connect(config.MONGODB_URI, connOptions);
     
     console.log("✅ MongoDB connected successfully");

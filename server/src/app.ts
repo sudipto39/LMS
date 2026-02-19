@@ -16,7 +16,6 @@ import activityRouter from './routes/activityRoutes.js';
 
 export const app = express();
 
-// 1. Database Connection
 connectDB();
 
 // 2. Security Middleware

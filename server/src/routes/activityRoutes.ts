@@ -10,13 +10,8 @@ import { protect, restrictTo } from '../middlewares/authMiddleware.js';
 
 const router = Router();
 
-// Student
 router.get('/me', protect, getMyActivity);
-
-// Project timeline
 router.get('/project/:projectId', protect, getProjectActivity);
-
-// Supervisor
 router.get(
   '/supervisor',
   protect,
@@ -24,7 +19,6 @@ router.get(
   getSupervisorActivity
 );
 
-// Admin
 router.get(
   '/admin',
   protect,

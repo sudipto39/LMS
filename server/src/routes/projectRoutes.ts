@@ -9,12 +9,10 @@ import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-//STUDENT ROUTES
 router.post("/", protect, restrictTo("student"), createProject);
 router.get("/me", protect, restrictTo("student"), getMyProjects);
 router.patch("/:id", protect, restrictTo("student"), updateProject);
 
-// SUPERVISOR ROUTES
 router.get(
   "/supervised",
   protect,
