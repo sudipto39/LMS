@@ -5,8 +5,6 @@ import { AppError } from '../utils/appError.js';
 import { Types } from 'mongoose';
 import { RequestHandler } from 'express';
 
-
-// CREATE PROJECT (Student)
 export const createProject: RequestHandler = catchAsync(
   async (req, res) => {
     const authReq = req as authenticatedRequest;
@@ -24,7 +22,6 @@ export const createProject: RequestHandler = catchAsync(
   }
 );
 
-// GET MY PROJECTS (Student)
 export const getMyProjects: RequestHandler = catchAsync(
   async (req, res) => {
     const authReq = req as authenticatedRequest;
@@ -41,7 +38,6 @@ export const getMyProjects: RequestHandler = catchAsync(
   }
 );
 
-// GET SUPERVISED PROJECTS (Supervisor)
 export const getSupervisedProjects: RequestHandler = catchAsync(
   async (req, res) => {
     const authReq = req as authenticatedRequest;
@@ -62,7 +58,6 @@ export const getSupervisedProjects: RequestHandler = catchAsync(
   }
 );
 
-// UPDATE PROJECT (Owner only)
 export const updateProject: RequestHandler = catchAsync(
   async (req, res, next) => {
     const authReq = req as authenticatedRequest;

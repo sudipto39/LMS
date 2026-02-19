@@ -6,10 +6,6 @@ import catchAsync from '../utils/catchAsync.js';
 import { AppError } from '../utils/appError.js';
 import { authenticatedRequest } from '../middlewares/authMiddleware.js';
 
-/* ======================================================
-   CREATE MILESTONE (Student / Admin)
-   Used in: Project setup
-====================================================== */
 export const createMilestone: RequestHandler = catchAsync(
   async (req, res, next) => {
     const authReq = req as authenticatedRequest;
@@ -42,10 +38,6 @@ export const createMilestone: RequestHandler = catchAsync(
   }
 );
 
-/* ======================================================
-   GET PROJECT MILESTONES
-   Used in: Milestones tab
-====================================================== */
 export const getProjectMilestones: RequestHandler = catchAsync(
   async (req, res, next) => {
     const { projectId } = req.params;
@@ -67,10 +59,6 @@ export const getProjectMilestones: RequestHandler = catchAsync(
   }
 );
 
-/* ======================================================
-   SUBMIT MILESTONE (Student)
-   Used in: Submissions page
-====================================================== */
 export const submitMilestone: RequestHandler = catchAsync(
   async (req, res, next) => {
     const authReq = req as authenticatedRequest;
@@ -110,9 +98,6 @@ export const submitMilestone: RequestHandler = catchAsync(
   }
 );
 
-/* ======================================================
-   APPROVE MILESTONE (Supervisor)
-====================================================== */
 export const approveMilestone: RequestHandler = catchAsync(
   async (req, res, next) => {
     const authReq = req as authenticatedRequest;
@@ -143,9 +128,6 @@ export const approveMilestone: RequestHandler = catchAsync(
   }
 );
 
-/* ======================================================
-   REJECT MILESTONE (Supervisor)
-====================================================== */
 export const rejectMilestone: RequestHandler = catchAsync(
   async (req, res, next) => {
     const authReq = req as authenticatedRequest;
@@ -176,10 +158,6 @@ export const rejectMilestone: RequestHandler = catchAsync(
   }
 );
 
-/* ======================================================
-   GET SUBMISSIONS (Student)
-   Used in: Submissions page
-====================================================== */
 export const getMySubmissions: RequestHandler = catchAsync(
   async (req, res) => {
     const authReq = req as authenticatedRequest;

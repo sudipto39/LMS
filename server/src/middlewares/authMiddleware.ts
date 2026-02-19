@@ -4,17 +4,12 @@ import User from "../models/userModel.js";
 import catchAsync from "../utils/catchAsync.js";
 import { AppError } from "../utils/appError.js";
 
-// Typed Auth Request
-
 export interface authenticatedRequest extends Request {
   user: {
     id: string;
     role: string;
   };
 }
-
-// PROTECT ROUTES (JWT auth)
-
 export const protect: RequestHandler = catchAsync(
   async (req, _res, next) => {
     // cast ONCE internally
@@ -55,18 +50,6 @@ export const protect: RequestHandler = catchAsync(
   }
 );
 
-// RESTRICT TO ROLES
-
-// export const restrictTo = (...roles: string[]) => {
-//   return (req: authenticatedRequest, _res: Response, next: NextFunction) => {
-//     if (!req.user || !roles.includes(req.user.role)) {
-//       return next(
-//         new AppError("You do not have permission to perform this action", 403),
-//       );
-//     }
-//     next();
-//   };
-// };
 export const restrictTo = (...roles: string[]): RequestHandler => {
   return (req, _res, next) => {
     const authReq = req as authenticatedRequest;
