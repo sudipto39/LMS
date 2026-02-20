@@ -1,3 +1,4 @@
+
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import type { User } from './userModel.js';
 
@@ -34,6 +35,7 @@ const projectSchema = new Schema<Project>(
   {
     title: {
       type: String,
+      required: true,
       trim: true,
     },
     description: {
@@ -64,6 +66,7 @@ const projectSchema = new Schema<Project>(
     repoUrl: {
       type: String,
       trim: true,
+      unique: true,
       sparse: true, // allow multiple nulls
     },
     status: {

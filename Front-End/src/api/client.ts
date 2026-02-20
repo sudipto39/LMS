@@ -15,10 +15,30 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { getCSRFToken, sanitizeForDB } from '@/utils/security';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+// ❌ NEVER hardcode URLs like this:
+// axios.get("http://localhost:5000/api");
+
+// ✅ ALWAYS use environment variables:
+// Note: API_BASE should NOT include /v1 - we add it in each service for clarity
+const API_BASE = import.meta.env.VITE_API_BASE_URL; // e.g., http://localhost:5000/api
+const WS_BASE = import.meta.env.VITE_WS_URL;
+const GITEA_URL = import.meta.env.VITE_GITEA_URL;
+
+// API version prefix - all routes use /v1
+export const API_VERSION = '/v1';
+
+// Validate required environment variables
+if (!API_BASE) {
+  console.warn('⚠️ VITE_API_BASE_URL is not set. API calls will fail. Check your .env file.');
+}
+
+// Export URLs for use in other modules
+export const getAPIBaseURL = () => API_BASE || '';
+export const getWebSocketURL = () => WS_BASE || '';
+export const getGiteaURL = () => GITEA_URL || '';
 
 const client = axios.create({
-  baseURL: API_BASE,
+  baseURL: getAPIBaseURL(),
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -95,7 +115,7 @@ client.interceptors.response.use(
       if (refreshToken && error.config && !(error.config as { _retry?: boolean })._retry) {
         (error.config as { _retry?: boolean })._retry = true;
         try {
-          const res = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
+          const res = await axios.post(`${getAPIBaseURL()}/v1/auth/refresh`, { refreshToken });
           const newToken = res.data.token;
           localStorage.setItem('giteaforge_token', newToken);
           if (error.config.headers) {

@@ -1,4 +1,4 @@
-import User from '../models/userModel.js';  // Your User model
+import User from '../models/userModel.js'; 
 import { emailService } from './sendVerificationEmail.js';
 
 export const authService = {
@@ -14,7 +14,6 @@ export const authService = {
     
     await user.save();
 
-    // Send verification email
     await emailService.sendVerificationEmail({
       to: user.email,
       code: verifyCode,

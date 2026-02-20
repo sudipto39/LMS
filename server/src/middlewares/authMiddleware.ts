@@ -1,69 +1,65 @@
-import jwt from 'jsonwebtoken';
-import { Request, Response, NextFunction } from 'express';
-import User from '../models/userModel.js';
-import catchAsync from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import jwt, { JwtPayload } from "jsonwebtoken";
+import { Request, Response, NextFunction, RequestHandler } from "express";
+import User from "../models/userModel.js";
+import catchAsync from "../utils/catchAsync.js";
+import { AppError } from "../utils/appError.js";
 
-interface AuthenticatedRequest extends Request {
-  user?: any; // Replace 'any' with your User type when available
+export interface authenticatedRequest extends Request {
+  user: {
+    id: string;
+    role: string;
+  };
 }
+export const protect: RequestHandler = catchAsync(
+  async (req, _res, next) => {
+    // cast ONCE internally
+    const authReq = req as authenticatedRequest;
 
-export const protect = catchAsync(
-  async (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
     let token: string | undefined;
 
     if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith('Bearer')
+      authReq.headers.authorization &&
+      authReq.headers.authorization.startsWith('Bearer')
     ) {
-      token = req.headers.authorization.split(' ')[1];
+      token = authReq.headers.authorization.split(' ')[1];
+    } else if (authReq.cookies?.jwt) {
+      token = authReq.cookies.jwt;
     }
 
     if (!token) {
       return next(new AppError('You are not logged in', 401));
     }
 
-    const decoded: any = await new Promise((resolve, reject) => {
-      jwt.verify(token, process.env.JWT_SECRET as string, (err, decoded) => {
-        if (err) reject(err);
-        else resolve(decoded);
-      });
-    });
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET as string
+    ) as jwt.JwtPayload;
 
-    const currentUser = await User.findById(decoded.id).select('-password');
-    
+    const currentUser = await User.findById(decoded.id).select('role');
+
     if (!currentUser) {
       return next(new AppError('The user no longer exists', 401));
     }
 
-    req.user = currentUser;
+    authReq.user = {
+      id: currentUser._id.toString(),
+      role: currentUser.role,
+    };
+
     next();
   }
 );
 
-export const admin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      message: 'Please login to access this resource'
-    });
-  }
+export const restrictTo = (...roles: string[]): RequestHandler => {
+  return (req, _res, next) => {
+    const authReq = req as authenticatedRequest;
 
-  if (req.user.role !== 'admin') { // Assuming your User has 'role' field
-    return res.status(403).json({
-      success: false,
-      message: 'Admin access required'
-    });
-  }
-
-  next();
-};
-
-export const restrictTo = (...roles: string[]) => {
-  return (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return next(new AppError('You do not have permission to perform this action', 403));
+    if (!authReq.user || !roles.includes(authReq.user.role)) {
+      return next(
+        new AppError('You do not have permission to perform this action', 403)
+      );
     }
+
     next();
   };
 };

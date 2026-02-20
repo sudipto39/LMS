@@ -67,7 +67,9 @@ export function Login({ onLogin, onNavigate, goBack, darkMode, setDarkMode }: {
         // Store tokens for authenticated API calls
         if (result.token && result.token !== 'demo-token') {
           localStorage.setItem('giteaforge_token', result.token);
-          localStorage.setItem('giteaforge_refresh_token', result.refreshToken);
+          if (result.refreshToken) {
+            localStorage.setItem('giteaforge_refresh_token', result.refreshToken);
+          }
         }
         onLogin(role as 'student' | 'professor' | 'admin');
       } catch {
