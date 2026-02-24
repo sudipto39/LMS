@@ -24,36 +24,75 @@ const signToken = (id: string): string => {
 
 
 // Send token in both JWT response AND httpOnly cookie
-const createSendToken = (user: User, statusCode: number, res: Response): void => {
-  const token = signToken(user._id.toString());
+// const createSendToken = (user: User, statusCode: number, res: Response): void => {
+//   const token = signToken(user._id.toString());
   
+//   const cookieOptions: any = {
+//     expires: new Date(
+//       Date.now() + (parseInt(process.env.JWT_COOKIE_EXPIRES_IN || '90') * 24 * 60 * 60 * 1000)
+//     ),
+//     httpOnly: true,  // Prevents XSS (document.cookie access)
+//     sameSite: 'strict'  // CSRF protection
+//   };
+  
+//   if (process.env.NODE_ENV === 'production') {
+//     cookieOptions.secure = true;  // HTTPS only
+//   }
+
+//   // Set httpOnly cookie
+//   res.cookie('jwt', token, cookieOptions);
+
+//   // Remove password from response
+//   const userObj = {
+//     ...user.toObject(),
+//     password: undefined
+//   };
+
+//   // Send JSON response with token
+//   res.status(statusCode).json({
+//     status: 'success',
+//     token,
+//     data: { user: userObj }
+//   });
+// };
+
+const createSendToken = (
+  user: User,
+  statusCode: number,
+  res: Response
+): Response => {
+  const token = signToken(user._id.toString());
+
   const cookieOptions: any = {
     expires: new Date(
-      Date.now() + (parseInt(process.env.JWT_COOKIE_EXPIRES_IN || '90') * 24 * 60 * 60 * 1000)
+      Date.now() +
+        parseInt(process.env.JWT_COOKIE_EXPIRES_IN || '90') *
+          24 *
+          60 *
+          60 *
+          1000
     ),
-    httpOnly: true,  // Prevents XSS (document.cookie access)
-    sameSite: 'strict'  // CSRF protection
+    httpOnly: true,
+    sameSite: 'strict',
   };
-  
+
   if (process.env.NODE_ENV === 'production') {
-    cookieOptions.secure = true;  // HTTPS only
+    cookieOptions.secure = true;
   }
 
-  // Set httpOnly cookie
   res.cookie('jwt', token, cookieOptions);
 
-  // Remove password from response
   const userObj = {
     ...user.toObject(),
-    password: undefined
+    password: undefined,
   };
 
-  // Send JSON response with token
-  res.status(statusCode).json({
+  return res.status(statusCode).json({
     status: 'success',
     token,
-    data: { user: userObj }
+    data: { user: userObj },
   });
 };
+
 
 export { signToken, createSendToken };

@@ -1398,13 +1398,16 @@ function FeedbackThread({ projectId }: { projectId: string }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    dataService.getFeedback(projectId).then((data: unknown[]) => {
+    dataService.getFeedback(projectId).then((result: unknown) => {
+      // Handle both array and { status, data: [...] } response formats
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = Array.isArray(result) ? result : ((result as any)?.data || []);
       if (data && Array.isArray(data) && data.length > 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setComments(data.map((d: any) => ({ id: d._id, user: d.author?.name || 'Unknown', userRole: d.author?.role || 'student', message: d.content, timestamp: d.createdAt })));
+        setComments(data.map((d: any) => ({ id: d._id, user: d.author?.fullName || d.author?.name || 'Unknown', userRole: d.author?.role || 'student', message: d.content, timestamp: d.createdAt })));
       }
       setLoaded(true);
-    });
+    }).catch(() => setLoaded(true));
   }, [projectId]);
 
   const handleSend = async () => {

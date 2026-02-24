@@ -173,6 +173,13 @@ const projectsAPI = {
   getSupervised: (filters?: ProjectFilters) =>
     client.get<PaginatedResponse<Project>>(`${BASE}/supervised`, { params: filters }),
 
+  /**
+   * GET /api/v1/projects/supervised (alias)
+   * Same as getSupervised - for clearer naming
+   */
+  getSupervisedProjects: (filters?: ProjectFilters) =>
+    client.get<PaginatedResponse<Project>>(`${BASE}/supervised`, { params: filters }),
+
   // ── Legacy/Extended endpoints (may need to be added to backend) ──
 
   /**
