@@ -32,38 +32,44 @@ export interface ChatMessage {
 }
 
 const chatAPI = {
-  /** GET /api/chat/conversations */
+  /** GET /api/v1/chat/conversations */
   getConversations: () =>
-    client.get<ChatConversation[]>('/chat/conversations'),
+    client.get<ChatConversation[]>('/v1/chat/conversations'),
 
-  /** GET /api/chat/conversations/:id/messages?page=1&limit=50 */
+  /** GET /api/v1/chat/conversations/:id/messages?page=1&limit=50 */
   getMessages: (conversationId: string, page = 1, limit = 50) =>
     client.get<{ data: ChatMessage[]; total: number }>(
-      `/chat/conversations/${conversationId}/messages`,
+      `/v1/chat/conversations/${conversationId}/messages`,
       { params: { page, limit } }
     ),
 
-  /** POST /api/chat/conversations/:id/messages */
+  /** POST /api/v1/chat/conversations/:id/messages */
   sendMessage: (conversationId: string, data: { text: string; type?: string }) =>
-    client.post<ChatMessage>(`/chat/conversations/${conversationId}/messages`, data),
+    client.post<ChatMessage>(`/v1/chat/conversations/${conversationId}/messages`, data),
 
-  /** POST /api/chat/conversations/:id/attachments (FormData) */
+  /** POST /api/v1/chat/conversations/:id/attachments (FormData) */
   sendAttachment: (conversationId: string, formData: FormData) =>
-    client.post<ChatMessage>(`/chat/conversations/${conversationId}/attachments`, formData, {
+    client.post<ChatMessage>(`/v1/chat/conversations/${conversationId}/attachments`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
-  /** PUT /api/chat/conversations/:id/read */
+  /** Alias for sendAttachment */
+  uploadAttachment: (conversationId: string, formData: FormData) =>
+    client.post<ChatMessage>(`/v1/chat/conversations/${conversationId}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+
+  /** PUT /api/v1/chat/conversations/:id/read */
   markRead: (conversationId: string) =>
-    client.put(`/chat/conversations/${conversationId}/read`),
+    client.put(`/v1/chat/conversations/${conversationId}/read`),
 
-  /** GET /api/chat/unread-count */
+  /** GET /api/v1/chat/unread-count */
   getUnreadCount: () =>
-    client.get<{ count: number }>('/chat/unread-count'),
+    client.get<{ count: number }>('/v1/chat/unread-count'),
 
-  /** POST /api/chat/conversations — create or get existing conversation */
+  /** POST /api/v1/chat/conversations — create or get existing conversation */
   createConversation: (data: { participantId: string; projectId: string }) =>
-    client.post<ChatConversation>('/chat/conversations', data),
+    client.post<ChatConversation>('/v1/chat/conversations', data),
 };
 
 export default chatAPI;
