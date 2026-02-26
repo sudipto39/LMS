@@ -8,15 +8,15 @@ declare module 'jsonwebtoken' {
 }
 
 const JWT_SECRET: string = process.env.JWT_SECRET!;
-const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN!;  // ← FIXED
+const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN!;  
 
-const signToken = (id: string): string => {
+const signToken = (id: string, role: User["role"]): string => {
   if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not defined');
   }
 
   return jwt.sign(
-    { id },
+    { id, role },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }  // Now TypeScript happy!
   );
@@ -61,7 +61,7 @@ const createSendToken = (
   statusCode: number,
   res: Response
 ): Response => {
-  const token = signToken(user._id.toString());
+  const token = signToken(user._id.toString(), user.role);
 
   const cookieOptions: any = {
     expires: new Date(
