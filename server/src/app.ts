@@ -17,9 +17,25 @@ export const app = express();
 
 // 2. Security Middleware
 app.use(helmet());
+app.set('trust proxy', 1);
+
+const allowedOrigins = config.CLIENT_URL
+  .split(',')
+  .map(o => o.trim().replace(/\/$/, ''));
+
 app.use(cors({
-  origin: config.CLIENT_URL,
-  credentials: true
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // Postman / server calls
+
+    const cleanOrigin = origin.replace(/\/$/, '');
+
+    if (allowedOrigins.includes(cleanOrigin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
 }));
 
 // 3. Rate Limiting (protect auth endpoints)
