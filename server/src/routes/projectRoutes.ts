@@ -9,7 +9,7 @@ import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/", protect, restrictTo("student"), createProject);
+router.post("/create", protect, restrictTo("student"), createProject);
 router.get("/me", protect, restrictTo("student"), getMyProjects);
 router.patch("/:id", protect, restrictTo("student"), updateProject);
 
