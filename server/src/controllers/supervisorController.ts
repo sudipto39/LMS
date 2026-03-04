@@ -1,0 +1,159 @@
+import { Request, Response } from "express";
+import Project from "../models/projectModel.js";
+import Milestone from "../models/milestoneModel.js";
+import Activity from "../models/activityModel.js";
+
+import catchAsync from "../utils/catchAsync.js";
+import { AppError } from "../utils/appError.js";
+import { logActivity } from "../services/activityService.js";
+
+/**
+ * GET /api/supervisor/dashboard
+ * Supervisor dashboard stats
+ */
+export const getSupervisorDashboard = catchAsync(
+  async (req: Request, res: Response) => {
+    const supervisorId = req.user?.id;
+
+    const [projectsCount, pendingMilestones, recentActivity] =
+      await Promise.all([
+        Project.countDocuments({ supervisor: supervisorId }),
+
+        Milestone.aggregate([
+          {
+            $lookup: {
+              from: "projects",
+              localField: "project",
+              foreignField: "_id",
+              as: "project",
+            },
+          },
+          { $unwind: "$project" },
+          { $match: { "project.supervisor": supervisorId, status: "submitted" } },
+          { $count: "pendingReviews" },
+        ]),
+
+        Activity.find()
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .populate("project milestone"),
+      ]);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        totalProjects: projectsCount,
+        pendingReviews: pendingMilestones[0]?.pendingReviews || 0,
+        recentActivity,
+      },
+    });
+  }
+);
+
+/**
+ * GET /api/supervisor/projects
+ * Get projects assigned to supervisor
+ */
+export const getAssignedProjects = catchAsync(
+  async (req: Request, res: Response) => {
+    const supervisorId = req.user?.id;
+
+    const projects = await Project.find({ supervisor: supervisorId })
+      .populate("owner", "name email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      status: "success",
+      results: projects.length,
+      data: projects,
+    });
+  }
+);
+
+/**
+ * GET /api/supervisor/milestones/pending
+ */
+export const getPendingMilestones = catchAsync(
+  async (req: Request, res: Response, next) => {
+    const supervisorId = req.user?.id;
+
+    const milestones = await Milestone.find({ status: "submitted" })
+      .populate({
+        path: "project",
+        match: { supervisor: supervisorId },
+        select: "title owner",
+        populate: {
+          path: "owner",
+          select: "name email",
+        },
+      })
+      .populate("submittedBy", "name email");
+
+    const filteredMilestones = milestones.filter((m) => m.project !== null);
+
+    res.status(200).json({
+      status: "success",
+      results: filteredMilestones.length,
+      data: filteredMilestones,
+    });
+  }
+);
+
+/**
+ * PATCH /api/supervisor/milestones/:id/review
+ */
+export const reviewMilestone = catchAsync(
+  async (req: Request, res: Response, next) => {
+    const { status, feedback } = req.body;
+
+    if (!["approved", "rejected"].includes(status)) {
+      return next(new AppError("Status must be approved or rejected", 400));
+    }
+
+    const milestone = await Milestone.findById(req.params.id).populate(
+      "project"
+    );
+
+    if (!milestone) {
+      return next(new AppError("Milestone not found", 404));
+    }
+
+    milestone.status = status;
+    milestone.supervisorFeedback = feedback;
+    milestone.reviewedBy = req.user?.id;
+
+    await milestone.save();
+
+    await logActivity({
+      actor: req.user?.id,
+      project: milestone.project,
+      milestone: milestone._id,
+      type: "milestone_reviewed",
+      message: `Milestone ${status} by supervisor`,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: `Milestone ${status} successfully`,
+      data: milestone,
+    });
+  }
+);
+
+/**
+ * GET /api/supervisor/activity
+ */
+export const getSupervisorActivity = catchAsync(
+  async (req: Request, res: Response) => {
+    const activities = await Activity.find({ actor: req.user?.id })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .populate("project milestone");
+
+    res.status(200).json({
+      status: "success",
+      results: activities.length,
+      data: activities,
+    });
+  }
+);
