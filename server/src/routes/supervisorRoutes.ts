@@ -9,7 +9,7 @@ import {
 } from "../controllers/supervisorController.js";
 
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
-import { requireObjectId } from "../utils/requireObjectId.js";
+import requireObjectId from "../utils/requireObjectId.js";
 
 const router = express.Router();
 
