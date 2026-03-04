@@ -66,6 +66,7 @@ const projectSchema = new Schema<Project>(
       type: String,
       trim: true,
       unique: true,
+      required: true,
       sparse: true, // allow multiple nulls
     },
     status: {

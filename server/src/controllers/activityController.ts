@@ -2,7 +2,7 @@ import { Request, Response, RequestHandler, NextFunction } from 'express';
 import Activity from '../models/activityModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import { AppError } from '../utils/appError.js';
-import { requireObjectId } from '../utils/requireObjectId.js';
+import requireObjectId from '../utils/requireObjectId.js';
 import { authenticatedRequest } from '../middlewares/authMiddleware.js';
 
 export const getMyActivity = catchAsync(
