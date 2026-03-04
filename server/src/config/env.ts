@@ -10,4 +10,8 @@ export const config = {
   PORT: Number.isInteger(parsedPort) ? parsedPort : 5000,
   CLIENT_URL: process.env.CLIENT_URL!,
   RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+  GITEA_BASE_URL: process.env.GITEA_BASE_URL,
+  GITEA_WEBHOOK_SECRET: process.env.GITEA_WEBHOOK_SECRET,
+  GITEA_ADMIN_TOKEN: process.env.GITEA_ADMIN_TOKEN,
+
 } as const;
