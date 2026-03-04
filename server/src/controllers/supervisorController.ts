@@ -1,19 +1,28 @@
-import { Request, Response } from "express";
+import { Request, Response, NextFunction } from "express";
+import { Types } from "mongoose";
+
 import Project from "../models/projectModel.js";
 import Milestone from "../models/milestoneModel.js";
-import Activity from "../models/activityModel.js";
+import ActivityModel from "../models/activityModel.js";
 
 import catchAsync from "../utils/catchAsync.js";
 import { AppError } from "../utils/appError.js";
+
 import { logActivity } from "../services/activityService.js";
+
+
 
 /**
  * GET /api/supervisor/dashboard
- * Supervisor dashboard stats
+ * Supervisor dashboard overview
  */
 export const getSupervisorDashboard = catchAsync(
-  async (req: Request, res: Response) => {
-    const supervisorId = req.user?.id;
+  async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new AppError("Unauthorized", 401));
+    }
+
+    const supervisorId = new Types.ObjectId(req.user.id);
 
     const [projectsCount, pendingMilestones, recentActivity] =
       await Promise.all([
@@ -29,14 +38,20 @@ export const getSupervisorDashboard = catchAsync(
             },
           },
           { $unwind: "$project" },
-          { $match: { "project.supervisor": supervisorId, status: "submitted" } },
+          {
+            $match: {
+              "project.supervisor": supervisorId,
+              status: "submitted",
+            },
+          },
           { $count: "pendingReviews" },
         ]),
 
-        Activity.find()
+        ActivityModel.find({ actor: supervisorId })
           .sort({ createdAt: -1 })
           .limit(10)
-          .populate("project milestone"),
+          .populate("project", "title")
+          .populate("milestone", "title order"),
       ]);
 
     res.status(200).json({
@@ -50,15 +65,23 @@ export const getSupervisorDashboard = catchAsync(
   }
 );
 
+
+
 /**
  * GET /api/supervisor/projects
- * Get projects assigned to supervisor
+ * Projects assigned to supervisor
  */
 export const getAssignedProjects = catchAsync(
-  async (req: Request, res: Response) => {
-    const supervisorId = req.user?.id;
+  async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new AppError("Unauthorized", 401));
+    }
 
-    const projects = await Project.find({ supervisor: supervisorId })
+    const supervisorId = new Types.ObjectId(req.user.id);
+
+    const projects = await Project.find({
+      supervisor: supervisorId,
+    })
       .populate("owner", "name email")
       .sort({ createdAt: -1 });
 
@@ -70,14 +93,23 @@ export const getAssignedProjects = catchAsync(
   }
 );
 
+
+
 /**
  * GET /api/supervisor/milestones/pending
+ * Milestones awaiting supervisor review
  */
 export const getPendingMilestones = catchAsync(
-  async (req: Request, res: Response, next) => {
-    const supervisorId = req.user?.id;
+  async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new AppError("Unauthorized", 401));
+    }
 
-    const milestones = await Milestone.find({ status: "submitted" })
+    const supervisorId = new Types.ObjectId(req.user.id);
+
+    const milestones = await Milestone.find({
+      status: "submitted",
+    })
       .populate({
         path: "project",
         match: { supervisor: supervisorId },
@@ -99,12 +131,19 @@ export const getPendingMilestones = catchAsync(
   }
 );
 
+
+
 /**
  * PATCH /api/supervisor/milestones/:id/review
+ * Supervisor approves or rejects milestone
  */
 export const reviewMilestone = catchAsync(
-  async (req: Request, res: Response, next) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     const { status, feedback } = req.body;
+
+    if (!req.user) {
+      return next(new AppError("Unauthorized", 401));
+    }
 
     if (!["approved", "rejected"].includes(status)) {
       return next(new AppError("Status must be approved or rejected", 400));
@@ -120,15 +159,20 @@ export const reviewMilestone = catchAsync(
 
     milestone.status = status;
     milestone.supervisorFeedback = feedback;
-    milestone.reviewedBy = req.user?.id;
+    milestone.reviewedBy = new Types.ObjectId(req.user.id);
 
     await milestone.save();
 
+    const projectId =
+      typeof milestone.project === "object"
+        ? milestone.project._id
+        : milestone.project;
+
     await logActivity({
-      actor: req.user?.id,
-      project: milestone.project,
+      actor: req.user.id,
+      project: projectId,
       milestone: milestone._id,
-      type: "milestone_reviewed",
+      type: "review",
       message: `Milestone ${status} by supervisor`,
     });
 
@@ -140,15 +184,27 @@ export const reviewMilestone = catchAsync(
   }
 );
 
+
+
 /**
  * GET /api/supervisor/activity
+ * Activity done by supervisor
  */
 export const getSupervisorActivity = catchAsync(
-  async (req: Request, res: Response) => {
-    const activities = await Activity.find({ actor: req.user?.id })
+  async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new AppError("Unauthorized", 401));
+    }
+
+    const supervisorId = new Types.ObjectId(req.user.id);
+
+    const activities = await ActivityModel.find({
+      actor: supervisorId,
+    })
       .sort({ createdAt: -1 })
       .limit(20)
-      .populate("project milestone");
+      .populate("project", "title")
+      .populate("milestone", "title order");
 
     res.status(200).json({
       status: "success",
