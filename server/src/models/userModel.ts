@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose, { Schema, Document, Types } from "mongoose";
 import bcrypt from "bcrypt";
 import { config } from "../config/env.js";
 
@@ -9,10 +9,11 @@ export interface User extends Document {
   universityId: string;
   email: string;
   password: string;
-  phoneNumber: number;
+  phoneNumber: string;
   department: string;
-  session: string;
-  role: string;
+  role: "student" | "supervisor" | "admin";
+  course?: Types.ObjectId;
+  batch?: Types.ObjectId;
   isVerified: boolean;
   verifyCode?: string;
   verifyCodeExpiry?: Date;
@@ -49,21 +50,27 @@ const userSchema = new Schema<User>(
       select: false,
     },
     phoneNumber: {
-      type: Number,
+      type: String,
       required: [true, "Phone number is required"],
     },
     department: {
       type: String,
       required: [true, "Department is required"],
     },
-    session: {
-      type: String,
+    batch: {
+      type: Schema.Types.ObjectId,
+      ref: "Batch",
       required: true,
-      match: [/^\d{4}-\d{4}$/, "Session must be in format YYYY-YYYY"],
     },
     role: {
       type: String,
+      enum: ["student", "supervisor", "admin"],
       default: "student",
+    },
+    course: {
+      type: Schema.Types.ObjectId,
+      ref: "Course",
+      required: true,
     },
     isVerified: {
       type: Boolean,
@@ -75,7 +82,7 @@ const userSchema = new Schema<User>(
     passwordResetExpires: Date,
     passwordChangedAt: Date,
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Password hashing
@@ -92,7 +99,7 @@ userSchema.pre<User>("save", async function () {
 // Password comparison
 userSchema.methods.isCorrectPassword = async function (
   this: User,
-  candidatePassword: string
+  candidatePassword: string,
 ): Promise<boolean> {
   return bcrypt.compare(candidatePassword, this.password);
 };

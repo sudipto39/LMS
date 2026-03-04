@@ -1,12 +1,12 @@
-import mongoose, { Schema, Document, Types } from 'mongoose';
-import type { User } from './userModel.js';
+import mongoose, { Schema, Document, Types } from "mongoose";
+import type { User } from "./userModel.js";
 
 export type ProjectStatus =
-  | 'draft'
-  | 'submitted'
-  | 'approved'
-  | 'rejected'
-  | 'archived';
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "rejected"
+  | "archived";
 
 export interface Project extends Document {
   title: string;
@@ -14,6 +14,7 @@ export interface Project extends Document {
 
   owner: Types.ObjectId | User;
   supervisor?: Types.ObjectId | User;
+  milestones?: Types.ObjectId[];
 
   course?: Types.ObjectId;
   batch?: Types.ObjectId;
@@ -44,24 +45,30 @@ const projectSchema = new Schema<Project>(
     },
     owner: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
     },
     supervisor: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       default: null,
     },
     course: {
       type: Schema.Types.ObjectId,
-      ref: 'Course',
+      ref: "Course",
       default: null,
     },
     batch: {
       type: Schema.Types.ObjectId,
-      ref: 'Batch',
+      ref: "Batch",
       default: null,
     },
+    milestones: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Milestone",
+      },
+    ],
     repoUrl: {
       type: String,
       trim: true,
@@ -71,8 +78,8 @@ const projectSchema = new Schema<Project>(
     },
     status: {
       type: String,
-      enum: ['draft', 'submitted', 'approved', 'rejected', 'archived'],
-      default: 'draft',
+      enum: ["draft", "submitted", "approved", "rejected", "archived"],
+      default: "draft",
     },
     technologies: [{ type: String, trim: true }],
     startDate: Date,
@@ -82,12 +89,12 @@ const projectSchema = new Schema<Project>(
       default: true, // soft delete / visibility
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Indexes for dashboards
 projectSchema.index({ supervisor: 1, status: 1 });
 projectSchema.index({ owner: 1 });
 
-const ProjectModel = mongoose.model<Project>('Project', projectSchema);
+const ProjectModel = mongoose.model<Project>("Project", projectSchema);
 export default ProjectModel;
