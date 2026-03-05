@@ -86,3 +86,19 @@ export const getUserById: RequestHandler = catchAsync(
     });
   }
 );
+
+export const getAllSupervisors: RequestHandler = catchAsync(
+  async (req, res) => {
+    const supervisors = await User.find({
+      role: "supervisor",
+    })
+      .select("_id name email")
+      .sort({ name: 1 });
+
+    res.status(200).json({
+      success: true,
+      count: supervisors.length,
+      data: supervisors,
+    });
+  }
+);
