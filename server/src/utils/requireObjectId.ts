@@ -7,23 +7,24 @@
 //   }
 //   return new mongoose.Types.ObjectId(id);
 // };
-
 import { Request, Response, NextFunction, RequestHandler } from "express";
-import { Types } from "mongoose";
+import mongoose from "mongoose";
 import { AppError } from "./appError.js";
 
-const requireObjectId = (paramName: string): RequestHandler => {
-  return (req: Request, res: Response, next: NextFunction) => {
+export const requireObjectId = (paramName: string): RequestHandler => {
+  return (req: Request, _res: Response, next: NextFunction) => {
     const value = req.params[paramName];
 
-    // ensure it's a string
     if (!value || typeof value !== "string") {
       return next(new AppError(`Invalid ${paramName}`, 400));
     }
 
-    if (!Types.ObjectId.isValid(value)) {
+    if (!mongoose.Types.ObjectId.isValid(value)) {
       return next(new AppError(`Invalid ${paramName}`, 400));
     }
+
+    // convert to ObjectId and attach to request
+    (req as any)[paramName] = new mongoose.Types.ObjectId(value);
 
     next();
   };

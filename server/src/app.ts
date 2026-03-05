@@ -12,6 +12,10 @@ import projectRouter from './routes/projectRoutes.js';
 import milestoneRouter from './routes/milestoneRoutes.js';
 import userRouter from './routes/userRoutes.js';
 import activityRouter from './routes/activityRoutes.js';
+import giteaRouter from './routes/giteaRoutes.js';
+import adminRouter from './routes/adminRoutes.js';
+import supervisorRouter from './routes/supervisorRoutes.js'
+
 
 export const app = express();
 
@@ -73,6 +77,9 @@ app.use('/api/v1/projects', projectRouter);
 app.use('/api/v1/milestones', milestoneRouter);
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/activities', activityRouter);
+app.use('/api/v1/admin', adminRouter);
+app.use('/api/v1/supervisor', supervisorRouter);
+app.use('/api/v1/gitea', giteaRouter);
 
 // 7. Base Route
 app.get("/", (_req, res) => {

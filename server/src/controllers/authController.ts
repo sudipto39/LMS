@@ -15,34 +15,46 @@ export const register = catchAsync(
       password,
       phoneNumber,
       department,
-      session,
+      course,
+      batch,
     } = req.body;
 
     const existingUser = await User.findOne({
       $or: [{ email }, { universityId }],
     });
+
     if (existingUser) {
       return next(new AppError("User already exists", 400));
     }
 
-    const userData: any = {
+    if (!course || !batch) {
+      return next(
+        new AppError("Course and batch are required", 400)
+      );
+    }
+
+    const userData = {
       name,
       universityId,
       email,
       password,
       phoneNumber,
       department,
-      session,
+      course,
+      batch,
+      role: "student",
     };
 
     if (config.EMAIL_VERIFICATION) {
-      userData.verifyCode = Math.floor(
-        100000 + Math.random() * 900000,
-      ).toString();
-      userData.verifyCodeExpiry = new Date(Date.now() + 10 * 60 * 1000);
-      userData.isVerified = false;
+      Object.assign(userData, {
+        verifyCode: Math.floor(100000 + Math.random() * 900000).toString(),
+        verifyCodeExpiry: new Date(Date.now() + 10 * 60 * 1000),
+        isVerified: false,
+      });
     } else {
-      userData.isVerified = true;
+      Object.assign(userData, {
+        isVerified: true,
+      });
     }
 
     const newUser = await User.create(userData);
@@ -54,9 +66,11 @@ export const register = catchAsync(
     res.status(201).json({
       success: true,
       message: "User registered. Check your email for verification code.",
-      data: { userId: newUser._id },
+      data: {
+        userId: newUser._id,
+      },
     });
-  },
+  }
 );
 
 export const login = catchAsync(

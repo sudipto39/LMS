@@ -5,13 +5,16 @@ import {
   updateMe,
   getAllUsers,
   getUserById,
+  getAllSupervisors,
 } from '../controllers/userController.js';
 
 const router = Router();
 
 router.get('/me', protect, getMe);
 router.patch('/updateMe', protect, updateMe);
+router.get('/supervisors', protect, getAllSupervisors);
 router.get('/getAllUsers', protect, restrictTo('admin'), getAllUsers);
 router.get('/:id', protect, restrictTo('admin'), getUserById);
+
 
 export default router;

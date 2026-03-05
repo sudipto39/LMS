@@ -1,23 +1,29 @@
-import { Request, Response, RequestHandler, NextFunction } from 'express';
-import Activity from '../models/activityModel.js';
-import catchAsync from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
-import requireObjectId from '../utils/requireObjectId.js';
-import { authenticatedRequest } from '../middlewares/authMiddleware.js';
+import { Request, Response, RequestHandler, NextFunction } from "express";
+import mongoose from "mongoose";
+import Activity from "../models/activityModel.js";
+import catchAsync from "../utils/catchAsync.js";
+import { AppError } from "../utils/appError.js";
+import { authenticatedRequest } from "../middlewares/authMiddleware.js";
 
+/*
+--------------------------------------------------
+Get Logged-in User Activity
+--------------------------------------------------
+*/
 export const getMyActivity = catchAsync(
-  async (req, res, next) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as authenticatedRequest;
 
     if (!authReq.user) {
-      return next(new AppError('Not authenticated', 401));
+      return next(new AppError("Not authenticated", 401));
     }
 
     const activities = await Activity.find({
-      actor: requireObjectId(authReq.user.id),
+      actor: authReq.user.id,
     })
-      .sort('-createdAt')
-      .limit(20);
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -26,20 +32,30 @@ export const getMyActivity = catchAsync(
   }
 );
 
+/*
+--------------------------------------------------
+Get Activity for a Specific Project
+--------------------------------------------------
+*/
 export const getProjectActivity: RequestHandler = catchAsync(
-  async (req: Request, res: Response) => {
-    const { projectId } = req.params;
+  async (req: Request, res: Response, next: NextFunction) => {
+    const projectId = req.params.projectId;
 
-    if (typeof projectId !== 'string') {
-      throw new AppError('Invalid project id', 400);
+    if (!projectId || typeof projectId !== "string") {
+      return next(new AppError("Invalid project id", 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(projectId)) {
+      return next(new AppError("Invalid project id", 400));
     }
 
     const activities = await Activity.find({
-      project: requireObjectId(projectId),
+      project: projectId,
     })
-      .sort('-createdAt')
-      .populate('actor', 'name role')
-      .populate('milestone', 'title');
+      .sort({ createdAt: -1 })
+      .populate("actor", "name role")
+      .populate("milestone", "title")
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -49,27 +65,32 @@ export const getProjectActivity: RequestHandler = catchAsync(
   }
 );
 
+/*
+--------------------------------------------------
+Get Activity for Supervisor Projects
+--------------------------------------------------
+*/
 export const getSupervisorActivity = catchAsync(
-  async (req, res, next) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as authenticatedRequest;
 
     if (!authReq.user) {
-      return next(new AppError('Not authenticated', 401));
+      return next(new AppError("Not authenticated", 401));
     }
 
     const activities = await Activity.find()
       .populate({
-        path: 'project',
-        match: { supervisor: requireObjectId(authReq.user.id) },
-        select: 'title',
+        path: "project",
+        match: { supervisor: authReq.user.id },
+        select: "title",
       })
-      .populate('actor', 'name')
-      .sort('-createdAt')
-      .limit(30);
+      .populate("actor", "name")
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .lean();
 
-    // remove activities where project didn’t match supervisor
     const filteredActivities = activities.filter(
-      (activity) => activity.project
+      (activity: any) => activity.project !== null
     );
 
     res.status(200).json({
@@ -79,13 +100,19 @@ export const getSupervisorActivity = catchAsync(
   }
 );
 
+/*
+--------------------------------------------------
+Get All Activity (Admin)
+--------------------------------------------------
+*/
 export const getAdminActivity: RequestHandler = catchAsync(
   async (_req: Request, res: Response) => {
     const activities = await Activity.find()
-      .sort('-createdAt')
+      .sort({ createdAt: -1 })
       .limit(50)
-      .populate('actor', 'name role')
-      .populate('project', 'title');
+      .populate("actor", "name role")
+      .populate("project", "title")
+      .lean();
 
     res.status(200).json({
       success: true,
