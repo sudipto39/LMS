@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FolderGit2, Activity, Settings, User,
   Users, BookOpen, Server, FileText, Award,
   ListChecks, Eye, ChevronLeft, FolderOpen, Globe,
-  Layers, Send
+  Layers, Send, MessageSquare
 } from './Icons';
 import { type ReactNode } from 'react';
 
@@ -22,6 +22,7 @@ function getNavItems(role: Role): NavItem[] {
       { label: 'Create Project', icon: <FolderOpen className="h-5 w-5" />, page: 'student-create-project' },
       { label: 'Milestones', icon: <ListChecks className="h-5 w-5" />, page: 'student-project-detail' },
       { label: 'Submissions', icon: <Send className="h-5 w-5" />, page: 'student-submissions' },
+      { label: 'Messages', icon: <MessageSquare className="h-5 w-5" />, page: 'student-messages' },
       { label: 'Activity', icon: <Activity className="h-5 w-5" />, page: 'activity' },
       { label: 'Settings', icon: <Settings className="h-5 w-5" />, page: 'settings' },
       { label: 'Profile', icon: <User className="h-5 w-5" />, page: 'student-profile' },
@@ -33,6 +34,7 @@ function getNavItems(role: Role): NavItem[] {
       { label: 'Supervised Projects', icon: <FolderGit2 className="h-5 w-5" />, page: 'professor-projects' },
       { label: 'Reviews', icon: <Eye className="h-5 w-5" />, page: 'professor-reviews' },
       { label: 'Grades', icon: <Award className="h-5 w-5" />, page: 'professor-grades' },
+      { label: 'Messages', icon: <MessageSquare className="h-5 w-5" />, page: 'professor-messages' },
       { label: 'Activity Feed', icon: <Activity className="h-5 w-5" />, page: 'activity' },
       { label: 'Settings', icon: <Settings className="h-5 w-5" />, page: 'settings' },
       { label: 'Profile', icon: <User className="h-5 w-5" />, page: 'professor-profile' },

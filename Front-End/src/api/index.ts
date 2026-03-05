@@ -11,6 +11,7 @@ export { default as projectsAPI } from './projects';
 export { default as usersAPI } from './users';
 export { default as giteaAPI } from './gitea';
 export { default as adminAPI } from './admin';
+export { default as chatAPI } from './chat';
 export { default as apiClient } from './client';
 export { getErrorMessage } from './client';
 

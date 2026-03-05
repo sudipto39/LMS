@@ -11,11 +11,11 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import authAPI, { LoginResponse } from '../api/auth';
+import authAPI, { User } from '../api/auth';
 import { getErrorMessage } from '../api/client';
 
 interface AuthState {
-  user: LoginResponse['user'] | null;
+  user: User | null;
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -37,8 +37,10 @@ export function useAuth() {
     if (token) {
       authAPI.getMe()
         .then((res) => {
+          // Handle response: { status, data: { user } }
+          const user = res.data.data?.user || res.data;
           setState({
-            user: res.data,
+            user: user as User,
             token,
             isAuthenticated: true,
             isLoading: false,
@@ -65,9 +67,21 @@ export function useAuth() {
     setState((s) => ({ ...s, isLoading: true, error: null }));
     try {
       const res = await authAPI.login({ email, password });
-      const { token, refreshToken, user } = res.data;
+      // Handle response: { status, token, user } or { status, token, data: { user } }
+      const responseData = res.data;
+      const token = responseData.token;
+      const refreshToken = responseData.refreshToken || '';
+      const user = responseData.user || responseData.data?.user;
+      
+      if (!token || !user) {
+        throw new Error('Invalid response from server');
+      }
+      
       localStorage.setItem('giteaforge_token', token);
-      localStorage.setItem('giteaforge_refresh_token', refreshToken);
+      if (refreshToken) {
+        localStorage.setItem('giteaforge_refresh_token', refreshToken);
+      }
+      
       setState({
         user,
         token,
@@ -85,8 +99,10 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     const refreshToken = localStorage.getItem('giteaforge_refresh_token');
-    if (refreshToken) {
-      try { await authAPI.logout(refreshToken); } catch { /* ignore */ }
+    try { 
+      await authAPI.logout(refreshToken || undefined); 
+    } catch { 
+      /* ignore logout errors */ 
     }
     localStorage.removeItem('giteaforge_token');
     localStorage.removeItem('giteaforge_refresh_token');

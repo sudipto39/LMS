@@ -57,92 +57,92 @@ const giteaAPI = {
   // ─── Repo operations (proxied via backend) ───
 
   /**
-   * POST /api/gitea/repos
+   * POST /api/v1/gitea/repos
    * Body: { name, description, private: true, projectId }
    * Creates a new repo under the org in Gitea
    * Returns: GiteaRepo
    */
   createRepo: (data: { name: string; description: string; projectId: string }) =>
-    client.post<GiteaRepo>('/gitea/repos', { ...data, private: true }),
+    client.post<GiteaRepo>('/v1/gitea/repos', { ...data, private: true }),
 
   /**
-   * GET /api/gitea/repos/:owner/:repo
+   * GET /api/v1/gitea/repos/:owner/:repo
    * Get repo info from Gitea
    */
   getRepo: (owner: string, repo: string) =>
-    client.get<GiteaRepo>(`/gitea/repos/${owner}/${repo}`),
+    client.get<GiteaRepo>(`/v1/gitea/repos/${owner}/${repo}`),
 
   /**
-   * GET /api/gitea/repos/:owner/:repo/commits
+   * GET /api/v1/gitea/repos/:owner/:repo/commits
    * Query: { page, limit, branch }
    */
   getCommits: (owner: string, repo: string, params?: { page?: number; limit?: number; branch?: string }) =>
-    client.get<GiteaCommit[]>(`/gitea/repos/${owner}/${repo}/commits`, { params }),
+    client.get<GiteaCommit[]>(`/v1/gitea/repos/${owner}/${repo}/commits`, { params }),
 
   /**
-   * GET /api/gitea/repos/:owner/:repo/branches
+   * GET /api/v1/gitea/repos/:owner/:repo/branches
    */
   getBranches: (owner: string, repo: string) =>
-    client.get<{ name: string }[]>(`/gitea/repos/${owner}/${repo}/branches`),
+    client.get<{ name: string }[]>(`/v1/gitea/repos/${owner}/${repo}/branches`),
 
   /**
-   * GET /api/gitea/repos/:owner/:repo/archive/main.zip
+   * GET /api/v1/gitea/repos/:owner/:repo/archive/main.zip
    * Download repo as ZIP
    */
   downloadRepoZip: (owner: string, repo: string, branch = 'main') =>
-    client.get(`/gitea/repos/${owner}/${repo}/archive/${branch}.zip`, {
+    client.get(`/v1/gitea/repos/${owner}/${repo}/archive/${branch}.zip`, {
       responseType: 'blob',
     }),
 
   /**
-   * GET /api/gitea/user/repos
+   * GET /api/v1/gitea/user/repos
    * List repos the authenticated user has access to (for "link existing" flow)
    */
   listUserRepos: () =>
-    client.get<GiteaRepo[]>('/gitea/user/repos'),
+    client.get<GiteaRepo[]>('/v1/gitea/user/repos'),
 
   // ─── Activity / Webhooks ───
 
   /**
-   * GET /api/gitea/activity
+   * GET /api/v1/gitea/activity
    * Query: { projectId?, userId?, page, limit }
    * Returns push events stored from webhook payloads
    */
   getActivity: (params?: { projectId?: string; userId?: string; page?: number; limit?: number }) =>
-    client.get<GiteaPushEvent[]>('/gitea/activity', { params }),
+    client.get<GiteaPushEvent[]>('/v1/gitea/activity', { params }),
 
   // ─── Admin: Gitea Settings ───
 
   /**
-   * GET /api/gitea/settings
+   * GET /api/v1/gitea/settings
    * Admin only
    */
   getSettings: () =>
-    client.get<GiteaSettings>('/gitea/settings'),
+    client.get<GiteaSettings>('/v1/gitea/settings'),
 
   /**
-   * PATCH /api/gitea/settings
+   * PATCH /api/v1/gitea/settings
    * Admin only
    * Body: Partial<GiteaSettings>
    */
   updateSettings: (data: Partial<GiteaSettings>) =>
-    client.patch<GiteaSettings>('/gitea/settings', data),
+    client.patch<GiteaSettings>('/v1/gitea/settings', data),
 
   /**
-   * POST /api/gitea/test-connection
+   * POST /api/v1/gitea/test-connection
    * Admin only. Tests connection to Gitea server.
    * Returns: { success: boolean, version: string, message: string }
    */
   testConnection: () =>
-    client.post<{ success: boolean; version: string; message: string }>('/gitea/test-connection'),
+    client.post<{ success: boolean; version: string; message: string }>('/v1/gitea/test-connection'),
 
   /**
-   * POST /api/gitea/setup-webhook
+   * POST /api/v1/gitea/setup-webhook
    * Admin only. Registers webhook on the Gitea org.
    * Returns: { success: boolean, webhookId: number }
    */
   setupWebhook: () =>
-    client.post<{ success: boolean; webhookId: number }>('/gitea/setup-webhook'),
+    client.post<{ success: boolean; webhookId: number }>('/v1/gitea/setup-webhook'),
 };
 
 export default giteaAPI;

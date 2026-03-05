@@ -61,76 +61,91 @@ const adminAPI = {
   // ─── Dashboard ───
 
   /**
-   * GET /api/admin/dashboard
+   * GET /api/v1/admin/stats
    * Returns: DashboardStats
    */
   getDashboardStats: () =>
-    client.get<DashboardStats>('/admin/dashboard'),
+    client.get<DashboardStats>('/v1/admin/stats'),
+
+  /**
+   * GET /api/v1/admin/projects
+   * Get all projects (admin only)
+   */
+  getAllProjects: () =>
+    client.get('/v1/admin/projects'),
+
+  /**
+   * PATCH /api/v1/admin/projects/:id/assign-supervisor
+   * Assign supervisor to a project
+   * Body: { supervisorId }
+   */
+  assignSupervisor: (projectId: string, supervisorId: string) =>
+    client.patch(`/v1/admin/projects/${projectId}/assign-supervisor`, { supervisorId }),
 
   // ─── Batches ───
 
   /**
-   * GET /api/admin/batches
+   * GET /api/v1/admin/batches
    */
   getBatches: () =>
-    client.get<Batch[]>('/admin/batches'),
+    client.get<Batch[]>('/v1/admin/batches'),
 
   /**
-   * POST /api/admin/batches
+   * POST /api/v1/admin/batches
    */
   createBatch: (data: Partial<Batch>) =>
-    client.post<Batch>('/admin/batches', data),
+    client.post<Batch>('/v1/admin/batches', data),
 
   /**
-   * PATCH /api/admin/batches/:id
+   * PATCH /api/v1/admin/batches/:id
    */
   updateBatch: (id: string, data: Partial<Batch>) =>
-    client.patch<Batch>(`/admin/batches/${id}`, data),
+    client.patch<Batch>(`/v1/admin/batches/${id}`, data),
 
   /**
-   * DELETE /api/admin/batches/:id
+   * DELETE /api/v1/admin/batches/:id
    */
   deleteBatch: (id: string) =>
-    client.delete(`/admin/batches/${id}`),
+    client.delete(`/v1/admin/batches/${id}`),
 
   /**
-   * POST /api/admin/batches/:id/assign-professor
+   * POST /api/v1/admin/batches/:id/assign-professor
    * Body: { professorId }
    */
   assignProfessor: (batchId: string, professorId: string) =>
-    client.post(`/admin/batches/${batchId}/assign-professor`, { professorId }),
+    client.post(`/v1/admin/batches/${batchId}/assign-professor`, { professorId }),
 
   /**
-   * POST /api/admin/batches/:id/assign-students
+   * POST /api/v1/admin/batches/:id/assign-students
    * Body: { studentIds: string[] }
    */
   assignStudents: (batchId: string, studentIds: string[]) =>
-    client.post(`/admin/batches/${batchId}/assign-students`, { studentIds }),
+    client.post(`/v1/admin/batches/${batchId}/assign-students`, { studentIds }),
 
   // ─── Courses ───
 
   /**
-   * GET /api/admin/courses
+   * GET /api/v1/admin/courses
    */
   getCourses: () =>
-    client.get<Course[]>('/admin/courses'),
+    client.get<Course[]>('/v1/admin/courses'),
 
   /**
-   * POST /api/admin/courses
+   * POST /api/v1/admin/courses
    */
   createCourse: (data: Partial<Course>) =>
-    client.post<Course>('/admin/courses', data),
+    client.post<Course>('/v1/admin/courses', data),
 
   /**
-   * PATCH /api/admin/courses/:id
+   * PATCH /api/v1/admin/courses/:id
    */
   updateCourse: (id: string, data: Partial<Course>) =>
-    client.patch<Course>(`/admin/courses/${id}`, data),
+    client.patch<Course>(`/v1/admin/courses/${id}`, data),
 
   // ─── Audit Logs ───
 
   /**
-   * GET /api/admin/audit-logs
+   * GET /api/v1/admin/audit-logs
    * Query: { action?, userId?, targetType?, startDate?, endDate?, page, limit }
    */
   getAuditLogs: (params?: {
@@ -142,7 +157,7 @@ const adminAPI = {
     page?: number;
     limit?: number;
   }) =>
-    client.get<{ data: AuditLog[]; total: number }>('/admin/audit-logs', { params }),
+    client.get<{ data: AuditLog[]; total: number }>('/v1/admin/audit-logs', { params }),
 };
 
 export default adminAPI;
