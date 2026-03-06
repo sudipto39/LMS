@@ -2,7 +2,21 @@
  * ============================================
  * Projects API Service
  * ============================================
- * CRUD for projects, milestones, progress, submissions
+ * Base Path: /api/v1/projects
+ * 
+ * Endpoints:
+ * - POST / — Create a new project (student only)
+ * - GET /me — Get projects of current student (student only)
+ * - PATCH /:id — Update a project (student only)
+ * - GET /supervised — Get projects supervised by current user (supervisor/admin only)
+ *
+ * Milestone Routes (nested under /api/v1):
+ * - POST /projects/:projectId/milestones — Create milestone
+ * - GET /projects/:projectId/milestones — Get milestones for a project
+ * - PATCH /milestones/:id/submit — Submit milestone (student only)
+ * - PATCH /milestones/:id/approve — Approve milestone (supervisor/admin only)
+ * - PATCH /milestones/:id/reject — Reject milestone (supervisor/admin only)
+ * - GET /me/submissions — Get current user's milestone submissions
  *
  * BACKEND ROUTE FILE: routes/projects.js
  * BACKEND CONTROLLER: controllers/projectController.js
@@ -11,6 +25,10 @@
 
 import client from './client';
 
+// ── API Version Prefix ──
+const BASE = '/v1/projects';
+const MILESTONES_BASE = '/v1/milestones';
+
 // ── Types ──
 
 export interface Project {
@@ -18,9 +36,9 @@ export interface Project {
   title: string;
   description: string;
   status: 'draft' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
-  student: { _id: string; name: string; email: string };
-  professor: { _id: string; name: string; email: string };
-  teamMembers?: { _id: string; name: string; email: string }[];
+  student: { _id: string; fullName: string; email: string };
+  supervisor: { _id: string; fullName: string; email: string };
+  teamMembers?: { _id: string; fullName: string; email: string }[];
   batch: string;
   course: string;
   techStack: string[];
@@ -40,7 +58,7 @@ export interface CreateProjectPayload {
   description: string;
   batch: string;
   course: string;
-  professorId: string;
+  supervisorId: string;
   techStack: string[];
   teamMemberIds?: string[];
   repoOption: 'create_new' | 'link_existing';
@@ -55,7 +73,7 @@ export interface Milestone {
   dueDate: string;
   status: 'pending' | 'in_progress' | 'completed' | 'approved' | 'rejected';
   completedAt?: string;
-  professorComment?: string;
+  supervisorComment?: string;
   order: number;
 }
 
@@ -72,7 +90,7 @@ export interface ProgressUpdate {
 export interface FeedbackComment {
   _id: string;
   projectId: string;
-  author: { _id: string; name: string; role: string };
+  author: { _id: string; fullName: string; role: string };
   content: string;
   createdAt: string;
 }
@@ -84,7 +102,7 @@ export interface ProjectFile {
   originalName: string;
   mimeType: string;
   size: number;
-  uploadedBy: { _id: string; name: string };
+  uploadedBy: { _id: string; fullName: string };
   uploadedAt: string;
   url: string;
 }
@@ -95,7 +113,7 @@ export interface ProjectFilters {
   status?: string;
   batch?: string;
   course?: string;
-  professorId?: string;
+  supervisorId?: string;
   studentId?: string;
   search?: string;
   page?: number;
@@ -105,11 +123,13 @@ export interface ProjectFilters {
 }
 
 export interface PaginatedResponse<T> {
+  status: string;
+  results: number;
   data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+  total?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
 }
 
 // ── API Methods ──
@@ -118,173 +138,220 @@ const projectsAPI = {
   // ─── Projects CRUD ───
 
   /**
-   * GET /api/projects
-   * Query: ProjectFilters
-   * Returns: PaginatedResponse<Project>
-   * Access: Student sees own, Professor sees assigned, Admin sees all
-   */
-  getAll: (filters?: ProjectFilters) =>
-    client.get<PaginatedResponse<Project>>('/projects', { params: filters }),
-
-  /**
-   * GET /api/projects/:id
-   * Returns: Project (populated with student, professor, milestones)
-   */
-  getById: (id: string) =>
-    client.get<Project>(`/projects/${id}`),
-
-  /**
-   * POST /api/projects
+   * POST /api/v1/projects
+   * Create a new project (student only)
    * Body: CreateProjectPayload
-   * Returns: Project
+   * Returns: { status, data: { project } }
    * Side effect: If repoOption='create_new', creates Gitea repo via Gitea API
    */
   create: (payload: CreateProjectPayload) =>
-    client.post<Project>('/projects', payload),
+    client.post<{ status: string; data: { project: Project } }>(`${BASE}`, payload),
 
   /**
-   * PATCH /api/projects/:id
+   * GET /api/v1/projects/me
+   * Get projects of current student
+   * Returns: PaginatedResponse<Project>
+   */
+  getMyProjects: (filters?: ProjectFilters) =>
+    client.get<PaginatedResponse<Project>>(`${BASE}/me`, { params: filters }),
+
+  /**
+   * PATCH /api/v1/projects/:id
+   * Update a project (student only)
+   * URL Param: id
    * Body: Partial<Project>
-   * Returns: Project
+   * Returns: { status, data: { project } }
    */
   update: (id: string, payload: Partial<Project>) =>
-    client.patch<Project>(`/projects/${id}`, payload),
+    client.patch<{ status: string; data: { project: Project } }>(`${BASE}/${id}`, payload),
 
   /**
-   * DELETE /api/projects/:id
-   * Admin only. Also optionally deletes Gitea repo.
+   * GET /api/v1/projects/supervised
+   * Get projects supervised by current user (supervisor/admin only)
+   * Returns: PaginatedResponse<Project>
+   */
+  getSupervised: (filters?: ProjectFilters) =>
+    client.get<PaginatedResponse<Project>>(`${BASE}/supervised`, { params: filters }),
+
+  /**
+   * GET /api/v1/projects/supervised (alias)
+   * Same as getSupervised - for clearer naming
+   */
+  getSupervisedProjects: (filters?: ProjectFilters) =>
+    client.get<PaginatedResponse<Project>>(`${BASE}/supervised`, { params: filters }),
+
+  // ── Legacy/Extended endpoints (may need to be added to backend) ──
+
+  /**
+   * GET /api/v1/projects
+   * Get all projects (with role-based filtering)
+   * Query: ProjectFilters
+   */
+  getAll: (filters?: ProjectFilters) =>
+    client.get<PaginatedResponse<Project>>(`${BASE}`, { params: filters }),
+
+  /**
+   * GET /api/v1/projects/:id
+   * Get single project by ID
+   * URL Param: id
+   */
+  getById: (id: string) =>
+    client.get<{ status: string; data: { project: Project } }>(`${BASE}/${id}`),
+
+  /**
+   * DELETE /api/v1/projects/:id
+   * Delete project (admin only)
+   * Also optionally deletes Gitea repo.
    */
   delete: (id: string) =>
-    client.delete(`/projects/${id}`),
+    client.delete(`${BASE}/${id}`),
 
   /**
-   * POST /api/projects/:id/submit
+   * POST /api/v1/projects/:id/submit
    * Student submits project for final review
-   * Returns: Project with status='submitted'
    */
   submitFinal: (id: string) =>
-    client.post<Project>(`/projects/${id}/submit`),
+    client.post<{ status: string; data: { project: Project } }>(`${BASE}/${id}/submit`),
 
   /**
-   * POST /api/projects/:id/approve
-   * Professor approves the project
+   * POST /api/v1/projects/:id/approve
+   * Supervisor approves the project
    * Body: { grade?, comment? }
    */
   approve: (id: string, data?: { grade?: string; comment?: string }) =>
-    client.post<Project>(`/projects/${id}/approve`, data),
+    client.post<{ status: string; data: { project: Project } }>(`${BASE}/${id}/approve`, data),
 
   /**
-   * POST /api/projects/:id/reject
-   * Professor rejects / requests changes
+   * POST /api/v1/projects/:id/reject
+   * Supervisor rejects / requests changes
    * Body: { comment }
    */
   reject: (id: string, comment: string) =>
-    client.post<Project>(`/projects/${id}/reject`, { comment }),
+    client.post<{ status: string; data: { project: Project } }>(`${BASE}/${id}/reject`, { comment }),
 
   // ─── Milestones ───
 
   /**
-   * GET /api/projects/:id/milestones
+   * GET /api/v1/projects/:projectId/milestones
+   * Get milestones for a project
+   * URL Param: projectId
    */
   getMilestones: (projectId: string) =>
-    client.get<Milestone[]>(`/projects/${projectId}/milestones`),
+    client.get<{ status: string; data: Milestone[] }>(`${BASE}/${projectId}/milestones`),
 
   /**
-   * POST /api/projects/:id/milestones
+   * POST /api/v1/projects/:projectId/milestones
+   * Create a milestone for a project
    * Body: { title, description?, dueDate, order }
    */
   createMilestone: (projectId: string, data: Partial<Milestone>) =>
-    client.post<Milestone>(`/projects/${projectId}/milestones`, data),
+    client.post<{ status: string; data: { milestone: Milestone } }>(`${BASE}/${projectId}/milestones`, data),
 
   /**
-   * PATCH /api/projects/:id/milestones/:milestoneId
+   * PATCH /api/v1/milestones/:id/submit
+   * Student submits milestone (marks as completed, awaiting approval)
+   * URL Param: id (milestone ID)
+   * Body: { submissionData? }
    */
-  updateMilestone: (projectId: string, milestoneId: string, data: Partial<Milestone>) =>
-    client.patch<Milestone>(`/projects/${projectId}/milestones/${milestoneId}`, data),
+  submitMilestone: (milestoneId: string, data?: object) =>
+    client.patch<{ status: string; data: { milestone: Milestone } }>(`${MILESTONES_BASE}/${milestoneId}/submit`, data),
 
   /**
-   * POST /api/projects/:id/milestones/:milestoneId/complete
-   * Student marks milestone as completed (pending professor approval)
+   * PATCH /api/v1/milestones/:id/approve
+   * Supervisor approves milestone
+   * URL Param: id (milestone ID)
    */
+  approveMilestone: (milestoneId: string, comment?: string) =>
+    client.patch<{ status: string; data: { milestone: Milestone } }>(`${MILESTONES_BASE}/${milestoneId}/approve`, { comment }),
+
+  /**
+   * PATCH /api/v1/milestones/:id/reject
+   * Supervisor rejects milestone
+   * URL Param: id (milestone ID)
+   * Body: { comment }
+   */
+  rejectMilestone: (milestoneId: string, comment: string) =>
+    client.patch<{ status: string; data: { milestone: Milestone } }>(`${MILESTONES_BASE}/${milestoneId}/reject`, { comment }),
+
+  /**
+   * GET /api/v1/me/submissions
+   * Get current user's milestone submissions
+   */
+  getMySubmissions: () =>
+    client.get<{ status: string; data: Milestone[] }>('/v1/me/submissions'),
+
+  // Legacy compatibility method (maps to submitMilestone)
   completeMilestone: (projectId: string, milestoneId: string) =>
-    client.post(`/projects/${projectId}/milestones/${milestoneId}/complete`),
-
-  /**
-   * POST /api/projects/:id/milestones/:milestoneId/approve
-   * Professor approves milestone
-   */
-  approveMilestone: (projectId: string, milestoneId: string, comment?: string) =>
-    client.post(`/projects/${projectId}/milestones/${milestoneId}/approve`, { comment }),
-
-  /**
-   * POST /api/projects/:id/milestones/:milestoneId/reject
-   * Professor rejects milestone
-   */
-  rejectMilestone: (projectId: string, milestoneId: string, comment: string) =>
-    client.post(`/projects/${projectId}/milestones/${milestoneId}/reject`, { comment }),
+    client.patch(`${MILESTONES_BASE}/${milestoneId}/submit`, { projectId }),
 
   // ─── Progress ───
 
   /**
-   * GET /api/projects/:id/progress
-   * Returns weekly progress data + commit counts
+   * GET /api/v1/projects/:id/progress
+   * Get weekly progress data + commit counts
    */
   getProgress: (projectId: string) =>
-    client.get<ProgressUpdate[]>(`/projects/${projectId}/progress`),
+    client.get<{ status: string; data: ProgressUpdate[] }>(`${BASE}/${projectId}/progress`),
 
   /**
-   * POST /api/projects/:id/progress
+   * POST /api/v1/projects/:id/progress
+   * Update progress percentage
    * Body: { percentage, note? }
    */
   updateProgress: (projectId: string, data: { percentage: number; note?: string }) =>
-    client.post<ProgressUpdate>(`/projects/${projectId}/progress`, data),
+    client.post<{ status: string; data: { progress: ProgressUpdate } }>(`${BASE}/${projectId}/progress`, data),
 
   // ─── Feedback / Comments ───
 
   /**
-   * GET /api/projects/:id/feedback
+   * GET /api/v1/projects/:id/feedback
+   * Get feedback comments for a project
    */
   getFeedback: (projectId: string) =>
-    client.get<FeedbackComment[]>(`/projects/${projectId}/feedback`),
+    client.get<{ status: string; data: FeedbackComment[] }>(`${BASE}/${projectId}/feedback`),
 
   /**
-   * POST /api/projects/:id/feedback
+   * POST /api/v1/projects/:id/feedback
+   * Add feedback comment
    * Body: { content }
    */
   addFeedback: (projectId: string, content: string) =>
-    client.post<FeedbackComment>(`/projects/${projectId}/feedback`, { content }),
+    client.post<{ status: string; data: { feedback: FeedbackComment } }>(`${BASE}/${projectId}/feedback`, { content }),
 
   // ─── Files ───
 
   /**
-   * GET /api/projects/:id/files
+   * GET /api/v1/projects/:id/files
+   * Get uploaded files for a project
    */
   getFiles: (projectId: string) =>
-    client.get<ProjectFile[]>(`/projects/${projectId}/files`),
+    client.get<{ status: string; data: ProjectFile[] }>(`${BASE}/${projectId}/files`),
 
   /**
-   * POST /api/projects/:id/files
+   * POST /api/v1/projects/:id/files
+   * Upload file to project
    * Body: FormData (multipart/form-data)
-   * Field: "file" — the uploaded file (PDF, PPT, ZIP, etc.)
+   * Field: "file"
    */
   uploadFile: (projectId: string, formData: FormData) =>
-    client.post<ProjectFile>(`/projects/${projectId}/files`, formData, {
+    client.post<{ status: string; data: { file: ProjectFile } }>(`${BASE}/${projectId}/files`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /**
-   * DELETE /api/projects/:id/files/:fileId
+   * DELETE /api/v1/projects/:id/files/:fileId
+   * Delete an uploaded file
    */
   deleteFile: (projectId: string, fileId: string) =>
-    client.delete(`/projects/${projectId}/files/${fileId}`),
+    client.delete(`${BASE}/${projectId}/files/${fileId}`),
 
   /**
-   * GET /api/projects/:id/download-zip
-   * Downloads the entire repo as ZIP from Gitea
+   * GET /api/v1/projects/:id/download-zip
+   * Download entire repo as ZIP from Gitea
    * Returns: Blob
    */
   downloadZip: (projectId: string) =>
-    client.get(`/projects/${projectId}/download-zip`, { responseType: 'blob' }),
+    client.get(`${BASE}/${projectId}/download-zip`, { responseType: 'blob' }),
 };
 
 export default projectsAPI;

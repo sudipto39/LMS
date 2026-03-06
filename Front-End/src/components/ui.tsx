@@ -190,10 +190,10 @@ export function Toast({ message, type = 'success', onClose }: {
 }
 
 /* ── Topbar (GitHub-style with dark mode toggle) ── */
-export function Topbar({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode, userName, userRole, onLogout }: {
+export function Topbar({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode, userName, userRole, onLogout, onProfileClick }: {
   sidebarOpen: boolean; setSidebarOpen: (v: boolean) => void;
   darkMode: boolean; setDarkMode: (v: boolean) => void;
-  userName: string; userRole: string; onLogout: () => void;
+  userName: string; userRole: string; onLogout: () => void; onProfileClick?: () => void;
 }) {
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
@@ -265,7 +265,7 @@ export function Topbar({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode, use
                 <p className="text-xs text-neutral-400 dark:text-[#484f58] capitalize">{userRole}</p>
               </div>
               <div className="p-1">
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-600 dark:text-[#8b949e] hover:bg-neutral-50 dark:hover:bg-[#21262d] rounded-md"><User className="h-4 w-4" /> Profile</button>
+                <button onClick={() => { onProfileClick?.(); setShowProfile(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-600 dark:text-[#8b949e] hover:bg-neutral-50 dark:hover:bg-[#21262d] rounded-md"><User className="h-4 w-4" /> Profile</button>
                 <button onClick={onLogout} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md"><LogOut className="h-4 w-4" /> Log out</button>
               </div>
             </div>

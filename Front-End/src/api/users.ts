@@ -2,6 +2,14 @@
  * ============================================
  * Users API Service
  * ============================================
+ * Base Path: /api/v1/users
+ * 
+ * Endpoints:
+ * - GET /me — Get current user profile (requires auth)
+ * - PATCH /updateMe — Update current user profile (requires auth)
+ * - GET /getAllUsers — Get all users (admin only)
+ * - GET /:id — Get user by ID (admin only)
+ *
  * BACKEND ROUTE FILE: routes/users.js
  * BACKEND CONTROLLER: controllers/userController.js
  * BACKEND MODEL: models/User.js
@@ -9,34 +17,51 @@
 
 import client from './client';
 
+// ── API Version Prefix ──
+const BASE = '/v1/users';
+
+// ── Types ──
+
 export interface User {
   _id: string;
-  name: string;
+  fullName: string;
   email: string;
   role: 'student' | 'professor' | 'admin';
-  enrollmentId?: string;
+  phone?: string;
+  university?: string;
   department?: string;
-  batch?: string;
+  session?: string;
+  rollNumber?: string;
   giteaUsername?: string;
   giteaLinked: boolean;
   isActive: boolean;
+  isEmailVerified?: boolean;
   lastLogin?: string;
   createdAt: string;
 }
 
 export interface CreateUserPayload {
-  name: string;
+  fullName: string;
   email: string;
   password: string;
   role: 'student' | 'professor' | 'admin';
-  enrollmentId?: string;
+  phone?: string;
+  university?: string;
   department?: string;
-  batch?: string;
+  session?: string;
+  rollNumber?: string;
+}
+
+export interface UpdateUserPayload {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  department?: string;
 }
 
 export interface UserFilters {
   role?: string;
-  batch?: string;
+  session?: string;
   department?: string;
   search?: string;
   isActive?: boolean;
@@ -45,93 +70,130 @@ export interface UserFilters {
 }
 
 export interface PaginatedResponse<T> {
+  status: string;
+  results: number;
   data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+  total?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
 }
+
+// ── API Methods ──
 
 const usersAPI = {
   /**
-   * GET /api/users
-   * Query: UserFilters
-   * Admin only
+   * GET /api/v1/users/me
+   * Get current user profile
+   * Requires: Authentication
+   * Returns: { status, data: { user } }
    */
-  getAll: (filters?: UserFilters) =>
-    client.get<PaginatedResponse<User>>('/users', { params: filters }),
+  getMe: () =>
+    client.get<{ status: string; data: { user: User } }>(`${BASE}/me`),
 
   /**
-   * GET /api/users/:id
+   * PATCH /api/v1/users/updateMe
+   * Update current user profile (name, email, phone, etc.)
+   * Requires: Authentication
+   * Body: UpdateUserPayload
+   * Returns: { status, data: { user } }
+   */
+  updateMe: (payload: UpdateUserPayload) =>
+    client.patch<{ status: string; data: { user: User } }>(`${BASE}/updateMe`, payload),
+
+  /**
+   * GET /api/v1/users/getAllUsers
+   * Get all users (admin only)
+   * Query: UserFilters
+   * Returns: PaginatedResponse<User>
+   */
+  getAllUsers: (filters?: UserFilters) =>
+    client.get<PaginatedResponse<User>>(`${BASE}/getAllUsers`, { params: filters }),
+
+  /**
+   * GET /api/v1/users/:id
+   * Get user by ID (admin only)
+   * URL Param: id
+   * Returns: { status, data: { user } }
    */
   getById: (id: string) =>
-    client.get<User>(`/users/${id}`),
+    client.get<{ status: string; data: { user: User } }>(`${BASE}/${id}`),
+
+  // ── Legacy/Extended endpoints (may need to be added to backend) ──
 
   /**
-   * POST /api/users
-   * Admin only. Also creates Gitea user if configured.
+   * POST /api/v1/users
+   * Create a new user (admin only)
+   * Body: CreateUserPayload
+   * Returns: { status, data: { user } }
    */
   create: (payload: CreateUserPayload) =>
-    client.post<User>('/users', payload),
+    client.post<{ status: string; data: { user: User } }>(`${BASE}`, payload),
 
   /**
-   * PATCH /api/users/:id
+   * PATCH /api/v1/users/:id
+   * Update user by ID (admin only)
+   * URL Param: id
+   * Body: Partial<User>
+   * Returns: { status, data: { user } }
    */
   update: (id: string, payload: Partial<User>) =>
-    client.patch<User>(`/users/${id}`, payload),
+    client.patch<{ status: string; data: { user: User } }>(`${BASE}/${id}`, payload),
 
   /**
-   * DELETE /api/users/:id
-   * Admin only
+   * DELETE /api/v1/users/:id
+   * Delete user (admin only)
+   * URL Param: id
+   * Returns: { status, message }
    */
   delete: (id: string) =>
-    client.delete(`/users/${id}`),
+    client.delete(`${BASE}/${id}`),
 
   /**
-   * POST /api/users/bulk-import
+   * POST /api/v1/users/bulk-import
+   * Bulk import users via CSV (admin only)
    * Body: FormData with CSV file
-   * CSV columns: name, email, role, enrollmentId, department, batch
+   * CSV columns: fullName, email, role, phone, university, department, session, rollNumber
    */
   bulkImport: (formData: FormData) =>
-    client.post('/users/bulk-import', formData, {
+    client.post(`${BASE}/bulk-import`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /**
-   * GET /api/users/professors
-   * Returns list of professors (for student project creation dropdown)
+   * GET /api/v1/users/professors
+   * Get list of professors (for student project creation dropdown)
+   * Returns: { status, data: User[] }
    */
   getProfessors: () =>
-    client.get<User[]>('/users/professors'),
+    client.get<{ status: string; data: User[] }>(`${BASE}/professors`),
 
   /**
-   * GET /api/users/students
-   * Returns list of students (for admin assignment)
+   * GET /api/v1/users/students
+   * Get list of students (for admin assignment)
+   * Query: { session?, department? }
+   * Returns: { status, data: User[] }
    */
-  getStudents: (filters?: { batch?: string; department?: string }) =>
-    client.get<User[]>('/users/students', { params: filters }),
+  getStudents: (filters?: { session?: string; department?: string }) =>
+    client.get<{ status: string; data: User[] }>(`${BASE}/students`, { params: filters }),
 
   /**
-   * POST /api/users/:id/link-gitea
+   * POST /api/v1/users/:id/link-gitea
+   * Link user to Gitea account
    * Body: { giteaUsername, giteaToken }
-   * Links user to their Gitea account
+   * Returns: { status, data: { user } }
    */
   linkGitea: (id: string, giteaUsername: string, giteaToken: string) =>
-    client.post(`/users/${id}/link-gitea`, { giteaUsername, giteaToken }),
+    client.post(`${BASE}/${id}/link-gitea`, { giteaUsername, giteaToken }),
 
   /**
-   * PATCH /api/users/profile
-   * Update own profile (any role)
+   * PATCH /api/v1/users/change-password
+   * Change own password
+   * Body: { currentPassword, newPassword, passwordConfirm }
+   * Returns: { status, token }
    */
-  updateProfile: (data: { name?: string; email?: string; department?: string }) =>
-    client.patch('/users/profile', data),
-
-  /**
-   * PATCH /api/users/change-password
-   * Body: { currentPassword, newPassword }
-   */
-  changePassword: (currentPassword: string, newPassword: string) =>
-    client.patch('/users/change-password', { currentPassword, newPassword }),
+  changePassword: (currentPassword: string, newPassword: string, passwordConfirm: string) =>
+    client.patch(`${BASE}/change-password`, { currentPassword, newPassword, passwordConfirm }),
 };
 
 export default usersAPI;
