@@ -10,8 +10,11 @@ import {
 
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 import requireObjectId from "../utils/requireObjectId.js";
+import { getAllSupervisors } from "../controllers/userController.js";
 
 const router = express.Router();
+
+router.use("/allsupervisors", protect, getAllSupervisors);
 
 router.use(protect, restrictTo("projectSupervisor"));
 

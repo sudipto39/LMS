@@ -78,6 +78,8 @@ export const getSupervisorActivity = catchAsync(
       return next(new AppError("Not authenticated", 401));
     }
 
+    res.set("Cache-Control", "no-store");
+    
     const activities = await Activity.find()
       .populate({
         path: "project",

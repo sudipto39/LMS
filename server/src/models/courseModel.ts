@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 export interface Course extends Document {
   name: string;
   code: string;
-  department: string;
+  school: string;
 
   durationYears: number;
 
@@ -28,7 +28,7 @@ const courseSchema = new Schema<Course>(
       uppercase: true,
       trim: true,
     },
-    department: {
+    school: {
       type: String,
       required: true,
       trim: true,
