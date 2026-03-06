@@ -1,21 +1,41 @@
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
-
+import User from "../models/userModel.js"
 import Project from "../models/projectModel.js";
 import Milestone from "../models/milestoneModel.js";
 import ActivityModel from "../models/activityModel.js";
-
+import { RequestHandler } from "express";
 import catchAsync from "../utils/catchAsync.js";
 import { AppError } from "../utils/appError.js";
-
 import { logActivity } from "../services/activityService.js";
 
+export const getAllSupervisors: RequestHandler = catchAsync(
+  async (req: Request, res: Response) => {
+    const { courseId } = req.query;
 
+    const filter: any = {
+      role: "supervisor",
+      isActive: true,
+    };
 
-/**
- * GET /api/supervisor/dashboard
- * Supervisor dashboard overview
- */
+    // optional course filter
+    if (courseId && typeof courseId === "string") {
+      filter.course = courseId;
+    }
+
+    const supervisors = await User.find(filter)
+      .select("_id name email")
+      .sort({ name: 1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: supervisors.length,
+      data: supervisors,
+    });
+  }
+);
+
 export const getSupervisorDashboard = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -65,12 +85,6 @@ export const getSupervisorDashboard = catchAsync(
   }
 );
 
-
-
-/**
- * GET /api/supervisor/projects
- * Projects assigned to supervisor
- */
 export const getAssignedProjects = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -93,12 +107,6 @@ export const getAssignedProjects = catchAsync(
   }
 );
 
-
-
-/**
- * GET /api/supervisor/milestones/pending
- * Milestones awaiting supervisor review
- */
 export const getPendingMilestones = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -131,12 +139,6 @@ export const getPendingMilestones = catchAsync(
   }
 );
 
-
-
-/**
- * PATCH /api/supervisor/milestones/:id/review
- * Supervisor approves or rejects milestone
- */
 export const reviewMilestone = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const { status, feedback } = req.body;
@@ -184,12 +186,6 @@ export const reviewMilestone = catchAsync(
   }
 );
 
-
-
-/**
- * GET /api/supervisor/activity
- * Activity done by supervisor
- */
 export const getSupervisorActivity = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {

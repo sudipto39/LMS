@@ -15,6 +15,7 @@ import activityRouter from './routes/activityRoutes.js';
 import giteaRouter from './routes/giteaRoutes.js';
 import adminRouter from './routes/adminRoutes.js';
 import supervisorRouter from './routes/supervisorRoutes.js'
+import courseRouter from './routes/courseRoutes.js'
 
 
 export const app = express();
@@ -62,6 +63,10 @@ const apiLimiter = rateLimit({
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(compression());
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 
 // 5. Logging
 if (config.NODE_ENV === 'development') {
@@ -78,8 +83,9 @@ app.use('/api/v1/milestones', milestoneRouter);
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/activities', activityRouter);
 app.use('/api/v1/admin', adminRouter);
-app.use('/api/v1/supervisor', supervisorRouter);
+app.use('/api/v1/supervisors', supervisorRouter);
 app.use('/api/v1/gitea', giteaRouter);
+app.use('/api/v1/courses', courseRouter);
 
 // 7. Base Route
 app.get("/", (_req, res) => {
