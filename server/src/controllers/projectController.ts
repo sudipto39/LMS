@@ -1,6 +1,8 @@
 import catchAsync from "../utils/catchAsync.js";
 import Project from "../models/projectModel.js";
 import User from "../models/userModel.js";
+import Batch from "../models/batchModel.js";
+import Course from "../models/courseModel.js";
 import { authenticatedRequest } from "../middlewares/authMiddleware.js";
 import { AppError } from "../utils/appError.js";
 import { Types } from "mongoose";
