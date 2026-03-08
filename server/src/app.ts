@@ -92,7 +92,7 @@ app.get("/", (_req, res) => {
   res.status(200).json({
     success: true,
     message: "API is running 🚀",
-    env: process.env.NODE_ENV || "development"
+    env: config.NODE_ENV 
   });
 });
 
