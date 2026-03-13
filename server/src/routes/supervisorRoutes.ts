@@ -16,7 +16,7 @@ const router = express.Router();
 
 router.use("/allsupervisors", protect, getAllSupervisors);
 
-router.use(protect, restrictTo("projectSupervisor"));
+router.use(protect, restrictTo("supervisor"));
 
 router.get("/dashboard", getSupervisorDashboard);
 

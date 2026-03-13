@@ -1,12 +1,13 @@
 import catchAsync from "../utils/catchAsync.js";
 import Project from "../models/projectModel.js";
 import User from "../models/userModel.js";
-import Batch from "../models/batchModel.js";
-import Course from "../models/courseModel.js";
+import "../models/batchModel.js";
+import "../models/courseModel.js";
 import { authenticatedRequest } from "../middlewares/authMiddleware.js";
 import { AppError } from "../utils/appError.js";
 import { Types } from "mongoose";
 import { RequestHandler } from "express";
+import { createRepo } from "../services/giteaService.js";
 
 /**
  * STEP 1 — Create Project Draft
@@ -30,21 +31,49 @@ export const createProject: RequestHandler = catchAsync(
       );
     }
 
-    const project = await Project.create({
+    // Accept both frontend field names and backend field names
+    const technologies =
+      authReq.body.techStack || authReq.body.technologies || [];
+    const supervisor =
+      authReq.body.supervisorId || authReq.body.supervisor || null;
+
+    // Handle repo creation if requested
+    let repoUrl: string | undefined;
+    const { repoOption, repoName, existingRepoUrl } = authReq.body;
+
+    if (repoOption === "create_new" && repoName) {
+      try {
+        const repo = await createRepo(repoName);
+        repoUrl = repo.html_url || repo.clone_url;
+      } catch (err: any) {
+        return next(
+          new AppError(
+            `Failed to create Gitea repository: ${err.message}`,
+            502,
+          ),
+        );
+      }
+    } else if (repoOption === "link_existing" && existingRepoUrl) {
+      repoUrl = existingRepoUrl;
+    }
+
+    const projectData: Record<string, unknown> = {
       title: authReq.body.title,
       description: authReq.body.description,
-      technologies: authReq.body.technologies || [],
-
+      technologies,
       owner: new Types.ObjectId(authReq.user.id),
-
       course: user.course,
       batch: user.batch,
-
-      supervisor: authReq.body.supervisor,
-
+      supervisor,
       status: "draft",
       isActive: true,
-    });
+    };
+
+    if (repoUrl) {
+      projectData.repoUrl = repoUrl;
+    }
+
+    const project = await Project.create(projectData);
 
     res.status(201).json({
       success: true,
@@ -180,6 +209,34 @@ export const getSupervisedProjects: RequestHandler = catchAsync(
       success: true,
       count: projects.length,
       data: projects,
+    });
+  },
+);
+
+/**
+ * Get Single Project by ID
+ */
+export const getProjectById: RequestHandler = catchAsync(
+  async (req, res, next) => {
+    const { id } = req.params;
+
+    if (!id || Array.isArray(id) || !Types.ObjectId.isValid(id)) {
+      return next(new AppError("Invalid project ID", 400));
+    }
+
+    const project = await Project.findOne({ _id: id, isActive: true })
+      .populate("supervisor", "name email")
+      .populate("owner", "name email universityId")
+      .populate("course", "name code")
+      .populate("batch", "name startYear endYear");
+
+    if (!project) {
+      return next(new AppError("Project not found", 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      data: project,
     });
   },
 );

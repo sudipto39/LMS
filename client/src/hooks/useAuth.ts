@@ -25,7 +25,7 @@ interface AuthState {
 export function useAuth() {
   const [state, setState] = useState<AuthState>({
     user: null,
-    token: localStorage.getItem('giteaforge_token'),
+    token: localStorage.getItem('token'),
     isAuthenticated: false,
     isLoading: true,
     error: null,
@@ -33,7 +33,7 @@ export function useAuth() {
 
   // On mount, validate the stored token
   useEffect(() => {
-    const token = localStorage.getItem('giteaforge_token');
+    const token = localStorage.getItem('token');
     if (token) {
       authAPI.getMe()
         .then((res) => {
@@ -48,8 +48,8 @@ export function useAuth() {
           });
         })
         .catch(() => {
-          localStorage.removeItem('giteaforge_token');
-          localStorage.removeItem('giteaforge_refresh_token');
+          localStorage.removeItem('token');
+          localStorage.removeItem('refresh_token');
           setState({
             user: null,
             token: null,
@@ -77,9 +77,9 @@ export function useAuth() {
         throw new Error('Invalid response from server');
       }
       
-      localStorage.setItem('giteaforge_token', token);
+      localStorage.setItem('token', token);
       if (refreshToken) {
-        localStorage.setItem('giteaforge_refresh_token', refreshToken);
+        localStorage.setItem('refresh_token', refreshToken);
       }
       
       setState({
@@ -104,8 +104,8 @@ export function useAuth() {
     } catch { 
       /* ignore logout errors */ 
     }
-    localStorage.removeItem('giteaforge_token');
-    localStorage.removeItem('giteaforge_refresh_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     setState({
       user: null,
       token: null,

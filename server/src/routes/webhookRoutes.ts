@@ -1,7 +1,9 @@
-import { Request, Response } from "express";
+import { Router, Request, Response } from "express";
 import crypto from "crypto";
 import { giteaConfig } from "../config/gitea.js";
 import { logActivity } from "../services/activityService.js";
+
+const router = Router();
 
 export const handleGiteaWebhook = async (req: Request, res: Response) => {
   const signature = req.headers["x-gitea-signature"] as string;
@@ -31,3 +33,7 @@ export const handleGiteaWebhook = async (req: Request, res: Response) => {
 
   res.status(200).send("Webhook processed");
 };
+
+router.post("/gitea", handleGiteaWebhook);
+
+export default router;

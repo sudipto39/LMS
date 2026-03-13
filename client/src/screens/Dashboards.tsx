@@ -3,15 +3,9 @@ import type {
   Page,
   Project,
   ActivityItem,
-  Milestone,
-  User,
-  ProjectStatus,
 } from "@/types";
-import apiService from "@/services/apiService";
 import dataService from "@/services/dataService";
 import { getGiteaURL } from "@/api/client";
-import API_BASE from "../api/client";
-// console.log(API_URL)
 const API_URL = import.meta.env.VITE_API_BASE_URL;
 
 import {
@@ -52,7 +46,6 @@ import {
   Search,
   Upload,
   RefreshCw,
-  Hash,
   ListChecks,
   MessageSquare,
 } from "@/components/Icons";
@@ -199,19 +192,13 @@ export function StudentDashboard({
           headers: getAuthHeaders(),
           cache: "no-store",
         });
+        const projectsData = await projectsRes.json();
+        setStudentProjects(projectsData.data || []);
+
         if (activitiesRes.status !== 304) {
           const activitiesData = await activitiesRes.json();
-          setActivities(activitiesData.data);
+          setActivities(activitiesData.data || []);
         }
-
-        const projectsData = await projectsRes.json();
-        const activitiesData = await activitiesRes.json();
-
-        setStudentProjects(projectsData.data || []);
-        setActivities(activitiesData.data || []);
-
-        setStudentProjects(projectsData.data || []);
-        setActivities(activitiesData.data || []);
       } catch (err) {
         console.error("Dashboard load failed", err);
       } finally {
@@ -323,7 +310,7 @@ export function StudentDashboard({
                     <td className="py-3 px-5">
                       <p className={cn("font-medium", heading)}>{p.title}</p>
                       <p className={cn("text-xs", mutedText)}>
-                        Prof. {p.supervisor}
+                        Prof. {typeof p.supervisor === "object" && p.supervisor !== null ? (p.supervisor as any).name : p.supervisor}
                       </p>
                     </td>
                     <td className="py-3 px-3">
@@ -339,7 +326,10 @@ export function StudentDashboard({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => onNavigate("student-project-detail")}
+                        onClick={() => {
+                          localStorage.setItem("activeProjectId", p._id);
+                          onNavigate("student-project-detail");
+                        }}
                       >
                         <Eye className="h-4 w-4" /> View
                       </Button>
@@ -442,7 +432,10 @@ export function StudentProjects({
           <div
             key={p._id}
             className={cn(cardHover, "p-5 cursor-pointer")}
-            onClick={() => onNavigate("student-project-detail")}
+            onClick={() => {
+              localStorage.setItem("activeProjectId", p._id);
+              onNavigate("student-project-detail");
+            }}
           >
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
               <div className="flex-1">
@@ -454,7 +447,7 @@ export function StudentProjects({
                 </div>
                 <p className={cn("text-sm mb-3", subtext)}>{p.description}</p>
                 <div className="flex flex-wrap gap-1.5 mb-3">
-                  {p.techStack?.map((t) => (
+                  {((p as any).technologies || p.techStack || []).map((t: string) => (
                     <TechTag key={t} label={t} />
                   ))}
                 </div>
@@ -465,13 +458,15 @@ export function StudentProjects({
                   )}
                 >
                   <span className="flex items-center gap-1">
-                    <UserIcon className="h-3.5 w-3.5" /> {p.supervisor}
+                    <UserIcon className="h-3.5 w-3.5" /> {typeof p.supervisor === "object" && p.supervisor !== null ? (p.supervisor as any).name : p.supervisor}
                   </span>
                   <span className="flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" /> Due: {p.deadline}
+                    <Calendar className="h-3.5 w-3.5" /> Due: {(p as any).endDate
+                      ? new Date((p as any).endDate).toLocaleDateString()
+                      : p.deadline || "—"}
                   </span>
                   <InactivityBadge lastPush={p.lastPush} />
-                  {p.repoLinked && (
+                  {(p as any).repoUrl && (
                     <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
                       <GitBranch className="h-3.5 w-3.5" /> Repo linked
                     </span>
@@ -987,7 +982,7 @@ export function StudentProjectDetail({
       try {
         const token = localStorage.getItem("token");
         const [projectRes, milestoneRes, filesRes] = await Promise.all([
-          fetch(`${API_URL}/projects/${projectId}`, {
+          fetch(`${API_URL}/v1/projects/${projectId}`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
           fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
@@ -997,9 +992,14 @@ export function StudentProjectDetail({
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
-        setProject(await projectRes.json());
-        setMilestones(await milestoneRes.json());
-        setFiles(await filesRes.json());
+        const projectData = await projectRes.json();
+        setProject(projectData.data || projectData);
+
+        const milestoneData = await milestoneRes.json();
+        setMilestones(Array.isArray(milestoneData.data) ? milestoneData.data : Array.isArray(milestoneData) ? milestoneData : []);
+
+        const filesData = await filesRes.json();
+        setFiles(Array.isArray(filesData.data) ? filesData.data : Array.isArray(filesData) ? filesData : []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -1077,26 +1077,30 @@ export function StudentProjectDetail({
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Batch</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {project.batch}
+                    {typeof project.batch === "object" && project.batch !== null ? (project.batch as any).name : project.batch || "—"}
                   </dd>
                 </div>
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Deadline</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {project.deadline}
+                    {project.endDate
+                      ? new Date(project.endDate).toLocaleDateString()
+                      : project.deadline || "—"}
                   </dd>
                 </div>
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Created</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {new Date(project.createdAt).toLocaleDateString()}
+                    {project.createdAt
+                      ? new Date(project.createdAt).toLocaleDateString()
+                      : "—"}
                   </dd>
                 </div>
               </dl>
               <div className="mt-4">
                 <dt className={cn("text-sm mb-1", mutedText)}>Tech Stack</dt>
                 <div className="flex flex-wrap gap-1.5">
-                  {project.techStack?.map((t: string) => (
+                  {(project.technologies || project.techStack || []).map((t: string) => (
                     <TechTag key={t} label={t} />
                   ))}
                 </div>
@@ -1364,12 +1368,20 @@ export function StudentSubmissions({
 
   useEffect(() => {
     const fetchSubmissions = async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/v1/submissions/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSubmissions(await res.json());
-      setLoading(false);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/v1/me/submissions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch submissions");
+        const json = await res.json();
+        setSubmissions(Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : []);
+      } catch (err) {
+        console.error("Submissions load failed", err);
+        setSubmissions([]);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchSubmissions();
   }, []);
@@ -1442,7 +1454,7 @@ export function SupervisorDashboard({
         fetch(`${API_URL}/v1/projects/supervised`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch(`${API_URL}/v1/activities/getSupervisorActivity`, {
+        fetch(`${API_URL}/v1/activities/supervisor`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -2028,7 +2040,7 @@ export function SupervisorReviews({
   useEffect(() => {
     const fetchReviews = async () => {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/v1/supervisor/reviews`, {
+      const res = await fetch(`${API_URL}/v1/supervisors/milestones/pending`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setReviews(await res.json());
@@ -2111,7 +2123,7 @@ export function SupervisorGrades({
   useEffect(() => {
     const fetchGrades = async () => {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/v1/supervisor/grades`, {
+      const res = await fetch(`${API_URL}/v1/supervisors/grades`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setGrades(await res.json());
@@ -2194,10 +2206,10 @@ export function AdminDashboard({
     const fetchDashboard = async () => {
       const token = localStorage.getItem("token");
       const [statsRes, activityRes, statusRes] = await Promise.all([
-        fetch(`${API_URL}/v1/admin/getAdminStats`, {
+        fetch(`${API_URL}/v1/admin/stats`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch(`${API_URL}/v1/activities/getAdminActivity`, {
+        fetch(`${API_URL}/v1/activities/admin`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(`${API_URL}/v1/admin/milestones/getProjectMilestones`, {
@@ -2576,7 +2588,7 @@ export function AdminUsers() {
                       "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
                       u.role === "admin"
                         ? "bg-neutral-200 dark:bg-[#30363d] text-neutral-700 dark:text-[#c9d1d9]"
-                        : u.role === "supervisor" || u.role === "professor"
+                        : u.role === "supervisor"
                           ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
                           : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
                     )}
@@ -3014,12 +3026,20 @@ export function ActivityPage() {
 
   useEffect(() => {
     const fetchActivities = async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/v1/activities/getProjectActivity`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setActivities(await res.json());
-      setLoading(false);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/v1/activities/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch activities");
+        const json = await res.json();
+        setActivities(Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : []);
+      } catch (err) {
+        console.error("Activity load failed", err);
+        setActivities([]);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchActivities();
   }, []);
@@ -3078,11 +3098,20 @@ export function SettingsPage() {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/v1/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setProfile(await res.json());
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/v1/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch profile");
+        const json = await res.json();
+        const user = json.data || json;
+        // Normalize: backend uses 'name', frontend expects 'fullName'
+        if (user.name && !user.fullName) user.fullName = user.name;
+        setProfile(user);
+      } catch (err) {
+        console.error("Profile load failed", err);
+      }
     };
     fetchProfile();
   }, []);
@@ -3092,14 +3121,15 @@ export function SettingsPage() {
     setSaving(true);
     try {
       const token = localStorage.getItem("token");
-      await fetch(`${API_URL}/v1/users/me`, {
-        method: "PUT",
+      const res = await fetch(`${API_URL}/v1/users/updateMe`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ fullName: profile.fullName }),
+        body: JSON.stringify({ name: profile.fullName || profile.name }),
       });
+      if (!res.ok) throw new Error("Save failed");
       setToast("Profile saved!");
     } catch {
       setToast("Failed to save profile");
@@ -3112,14 +3142,15 @@ export function SettingsPage() {
     setSaving(true);
     try {
       const token = localStorage.getItem("token");
-      await fetch(`${API_URL}/v1/users/change-password`, {
-        method: "POST",
+      const res = await fetch(`${API_URL}/v1/auth/reset-password/${token}`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ currentPassword, newPassword }),
+        body: JSON.stringify({ password: newPassword, passwordConfirm: newPassword }),
       });
+      if (!res.ok) throw new Error("Password update failed");
       setToast("Password updated!");
       setCurrentPassword("");
       setNewPassword("");
@@ -3278,12 +3309,22 @@ export function ProfilePage() {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/v1/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setProfile(await res.json());
-      setLoading(false);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/v1/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch profile");
+        const json = await res.json();
+        const user = json.data || json;
+        // Normalize: backend uses 'name', frontend expects 'fullName'
+        if (user.name && !user.fullName) user.fullName = user.name;
+        setProfile(user);
+      } catch (err) {
+        console.error("Profile load failed", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchProfile();
   }, []);
@@ -3296,15 +3337,15 @@ export function ProfilePage() {
       <div className={cn(card, "p-6")}>
         <div className="flex items-center gap-5 mb-6">
           <div className="h-20 w-20 rounded-full bg-neutral-200 dark:bg-[#30363d] flex items-center justify-center text-neutral-600 dark:text-[#c9d1d9] text-2xl font-semibold">
-            {profile.fullName
-              ?.split(" ")
+            {(profile.fullName || profile.name || "")
+              .split(" ")
               .map((n: string) => n[0])
               .join("")
               .slice(0, 2)}
           </div>
           <div>
             <h2 className={cn("text-xl font-bold", heading)}>
-              {profile.fullName}
+              {profile.fullName || profile.name}
             </h2>
             <p className={cn("text-sm", subtext)}>{profile.email}</p>
             <span
@@ -3971,12 +4012,18 @@ export function StudentMessages() {
 
   useEffect(() => {
     const load = async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/v1/chat/student-conversations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      setConversations(json.data || []);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/v1/chat/student-conversations`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch conversations");
+        const json = await res.json();
+        setConversations(json.data || []);
+      } catch (err) {
+        console.error("Messages load failed", err);
+        setConversations([]);
+      }
     };
     load();
   }, []);
@@ -3999,12 +4046,18 @@ export function SupervisorMessages() {
 
   useEffect(() => {
     const load = async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/v1/chat/supervisor-conversations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      setConversations(json.data || []);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/v1/chat/supervisor-conversations`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch conversations");
+        const json = await res.json();
+        setConversations(json.data || []);
+      } catch (err) {
+        console.error("Messages load failed", err);
+        setConversations([]);
+      }
     };
     load();
   }, []);
