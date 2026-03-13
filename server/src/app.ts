@@ -16,6 +16,7 @@ import giteaRouter from './routes/giteaRoutes.js';
 import adminRouter from './routes/adminRoutes.js';
 import supervisorRouter from './routes/supervisorRoutes.js'
 import courseRouter from './routes/courseRoutes.js'
+import webhookRouter from './routes/webhookRoutes.js'
 
 
 export const app = express();
@@ -44,9 +45,11 @@ app.use(cors({
 }));
 
 // 3. Rate Limiting (protect auth endpoints)
+const isDev = config.NODE_ENV === 'development';
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per IP (register/login)
+  max: isDev ? 100 : 5, // relaxed in development
   message: 'Too many login attempts, try again later',
   standardHeaders: true,
   legacyHeaders: false,
@@ -54,7 +57,7 @@ const authLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: isDev ? 1000 : 100,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -79,13 +82,14 @@ app.use('/api/v1', apiLimiter);
 // stricter limiter for auth
 app.use('/api/v1/auth', authLimiter, authRouter);
 app.use('/api/v1/projects', projectRouter);
-app.use('/api/v1/milestones', milestoneRouter);
+app.use('/api/v1', milestoneRouter);
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/activities', activityRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/supervisors', supervisorRouter);
 app.use('/api/v1/gitea', giteaRouter);
 app.use('/api/v1/courses', courseRouter);
+app.use('/api/v1/webhooks', webhookRouter);
 
 // 7. Base Route
 app.get("/", (_req, res) => {

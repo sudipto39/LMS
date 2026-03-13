@@ -20,12 +20,6 @@ import { projectsAPI, usersAPI, adminAPI, giteaAPI, authAPI } from '@/api';
 import chatAPI from '@/api/chat';
 
 // ─────────────────────────────────────────────────────────────
-// ❌ MOCK DATA IMPORTS REMOVED - Using real API only
-// ─────────────────────────────────────────────────────────────
-// import { mockProjects, mockActivities, mockMilestones, mockUsers, mockComments } from '@/data';
-
-
-// ─────────────────────────────────────────────────────────────
 // Helper: Extract error message from API responses
 // ─────────────────────────────────────────────────────────────
 function getErrorMessage(error: unknown): string {

@@ -25,8 +25,9 @@ const milestoneColors: Record<MilestoneStatus, string> = {
 };
 
 export function StatusPill({ status }: { status: ProjectStatus }) {
+  if (!status) return null;
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', statusColors[status])}>
+    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', statusColors[status] || statusColors['draft'])}>
       <CircleDot className="h-3 w-3" />
       {status.replace('-', ' ')}
     </span>
@@ -34,8 +35,9 @@ export function StatusPill({ status }: { status: ProjectStatus }) {
 }
 
 export function MilestoneStatusPill({ status }: { status: MilestoneStatus }) {
+  if (!status) return null;
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', milestoneColors[status])}>
+    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', milestoneColors[status] || milestoneColors['pending'])}>
       {status.replace('-', ' ')}
     </span>
   );
@@ -68,14 +70,15 @@ export function KPICard({ title, value, subtitle, icon, color = 'blue' }: {
 }
 
 /* ── Progress Bar ── */
-export function ProgressBar({ value, size = 'md' }: { value: number; size?: 'sm' | 'md' }) {
-  const color = value >= 80 ? 'bg-green-500' : value >= 50 ? 'bg-blue-500' : value >= 25 ? 'bg-yellow-500' : 'bg-neutral-400';
+export function ProgressBar({ value = 0, size = 'md' }: { value: number; size?: 'sm' | 'md' }) {
+  const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0;
+  const color = safeValue >= 80 ? 'bg-green-500' : safeValue >= 50 ? 'bg-blue-500' : safeValue >= 25 ? 'bg-yellow-500' : 'bg-neutral-400';
   return (
     <div className="flex items-center gap-2">
       <div className={cn('w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-[#21262d]', size === 'sm' ? 'h-1.5' : 'h-2')}>
-        <div className={cn('h-full rounded-full transition-all duration-500', color)} style={{ width: `${value}%` }} />
+        <div className={cn('h-full rounded-full transition-all duration-500', color)} style={{ width: `${safeValue}%` }} />
       </div>
-      <span className="text-xs font-medium text-neutral-500 dark:text-[#8b949e] min-w-[2rem] text-right">{value}%</span>
+      <span className="text-xs font-medium text-neutral-500 dark:text-[#8b949e] min-w-[2rem] text-right">{safeValue}%</span>
     </div>
   );
 }
@@ -132,6 +135,7 @@ export function TechTag({ label }: { label: string }) {
 
 /* ── Inactivity Badge ── */
 export function InactivityBadge({ lastPush }: { lastPush: string }) {
+  if (!lastPush) return <span className="flex items-center gap-1 text-xs text-neutral-400 dark:text-[#484f58]"><Clock className="h-3 w-3" />—</span>;
   const daysMatch = lastPush.match(/(\d+)\s*day/);
   const days = daysMatch ? parseInt(daysMatch[1]) : 0;
   if (lastPush === 'Never') return <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400 font-medium"><AlertTriangle className="h-3 w-3" />No push</span>;

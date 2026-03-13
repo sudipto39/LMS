@@ -15,7 +15,7 @@ router.get('/project/:projectId', protect, getProjectActivity);
 router.get(
   '/supervisor',
   protect,
-  restrictTo('projectSupervisor'),
+  restrictTo('supervisor'),
   getSupervisorActivity
 );
 
