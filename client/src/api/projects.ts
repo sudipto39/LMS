@@ -62,6 +62,7 @@ export interface CreateProjectPayload {
   techStack: string[];
   teamMemberIds?: string[];
   repoOption: 'create_new' | 'link_existing';
+  repoName?: string; // Repository name when creating new repo
   existingRepoUrl?: string;
 }
 
