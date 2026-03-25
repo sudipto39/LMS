@@ -10,10 +10,12 @@ const gitea = axios.create({
 
 export default gitea;
 
-export const createRepo = async (name: string) => {
+export const createRepo = async (name: string, description?: string) => {
   const res = await gitea.post("/user/repos", {
     name,
+    description: description || "",
     private: true,
+    auto_init: true, // Initialize with README
   });
 
   return res.data;

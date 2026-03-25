@@ -41,11 +41,27 @@ export const createProject: RequestHandler = catchAsync(
     let repoUrl: string | undefined;
     const { repoOption, repoName, existingRepoUrl } = authReq.body;
 
-    if (repoOption === "create_new" && repoName) {
+    if (repoOption === "create_new") {
       try {
-        const repo = await createRepo(repoName);
+        // Use provided repoName or fallback to sanitized title
+        const sanitizedTitle = authReq.body.title
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        
+        const finalRepoName = repoName || sanitizedTitle;
+        
+        if (!finalRepoName) {
+          return next(new AppError("Repository name is required", 400));
+        }
+
+        const repo = await createRepo(finalRepoName, authReq.body.description);
         repoUrl = repo.html_url || repo.clone_url;
+        
+        console.log(`✅ Created Gitea repo: ${finalRepoName} at ${repoUrl}`);
       } catch (err: any) {
+        console.error(`❌ Failed to create Gitea repo:`, err.message);
         return next(
           new AppError(
             `Failed to create Gitea repository: ${err.message}`,
