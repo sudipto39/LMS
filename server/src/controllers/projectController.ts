@@ -41,6 +41,8 @@ export const createProject: RequestHandler = catchAsync(
     let repoUrl: string | undefined;
     const { repoOption, repoName, existingRepoUrl } = authReq.body;
 
+    console.log(`📋 Project creation request - repoOption: ${repoOption}, repoName: ${repoName}`);
+
     if (repoOption === "create_new") {
       try {
         // Use provided repoName or fallback to sanitized title
@@ -56,21 +58,24 @@ export const createProject: RequestHandler = catchAsync(
           return next(new AppError("Repository name is required", 400));
         }
 
+        console.log(`🔨 Creating Gitea repo with name: ${finalRepoName}`);
         const repo = await createRepo(finalRepoName, authReq.body.description);
         repoUrl = repo.html_url || repo.clone_url;
         
         console.log(`✅ Created Gitea repo: ${finalRepoName} at ${repoUrl}`);
       } catch (err: any) {
-        console.error(`❌ Failed to create Gitea repo:`, err.message);
+        console.error(`❌ Failed to create Gitea repo:`, err);
+        console.error(`Error details:`, err.response?.data || err.message);
         return next(
           new AppError(
-            `Failed to create Gitea repository: ${err.message}`,
+            `Failed to create Gitea repository: ${err.response?.data?.message || err.message}`,
             502,
           ),
         );
       }
     } else if (repoOption === "link_existing" && existingRepoUrl) {
       repoUrl = existingRepoUrl;
+      console.log(`🔗 Linking existing repo: ${repoUrl}`);
     }
 
     const projectData: Record<string, unknown> = {
@@ -90,6 +95,8 @@ export const createProject: RequestHandler = catchAsync(
     }
 
     const project = await Project.create(projectData);
+
+    console.log(`✅ Project created successfully: ${project._id}, repoUrl: ${project.repoUrl || 'none'}`);
 
     res.status(201).json({
       success: true,

@@ -139,13 +139,12 @@ const projectsAPI = {
   // ─── Projects CRUD ───
 
   /**
-   * POST /api/v1/projects
+   * POST /api/v1/projects/create
    * Create a new project (student only)
    * Body: CreateProjectPayload
    * Returns: { status, data: { project } }
    * Side effect: If repoOption='create_new', creates Gitea repo via Gitea API
    * Note: For linking existing repo, backend will validate access to the repo and extract necessary info (repo name, etc.)
-   * Soham Datta made a change set path /create to / to avoid confusion with the frontend route /create-project. This is just an internal API endpoint and doesn't affect frontend routing. The endpoint is still POST /api/v1/projects/ which is standard REST convention for creating a new resource.
    */
   create: (payload: CreateProjectPayload) =>
     client.post<{ status: string; data: { project: Project } }>(`${BASE}/create`, payload),
