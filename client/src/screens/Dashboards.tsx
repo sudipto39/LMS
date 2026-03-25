@@ -1350,7 +1350,11 @@ export function StudentProjectDetail({
         </div>
       )}
 
-      {tab === "feedback" && <FeedbackThread projectId={project._id} />}
+      {tab === "feedback" && (
+        <div className={card}>
+          <FeedbackThread projectId={project._id} />
+        </div>
+      )}
     </div>
   );
 }
@@ -3400,6 +3404,7 @@ function FeedbackThread({ projectId }: { projectId: string }) {
   const [newComment, setNewComment] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchFeedback = async () => {
@@ -3409,11 +3414,22 @@ function FeedbackThread({ projectId }: { projectId: string }) {
           `${API_URL}/v1/projects/${projectId}/feedback`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
-        setComments(await res.json());
-      } catch {
+        
+        if (!res.ok) {
+          throw new Error(`Failed to fetch feedback: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        const feedbackList = data.data || data || [];
+        setComments(Array.isArray(feedbackList) ? feedbackList : []);
+        setError(null);
+      } catch (err: any) {
+        console.error("Failed to load feedback:", err);
+        setError(err.message || "Failed to load feedback");
         setComments([]);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     fetchFeedback();
   }, [projectId]);
@@ -3441,15 +3457,36 @@ function FeedbackThread({ projectId }: { projectId: string }) {
   };
 
   return (
-    <div className={card}>
+    <>
       <div className={cn("p-5", sectionBorder)}>
         <h3 className={cn("font-semibold", heading)}>Feedback Thread</h3>
-        {loading && (
-          <span className={cn("text-xs ml-2", mutedText)}>Loading...</span>
-        )}
       </div>
-      <div className="p-5 space-y-4">
-        {comments.map((c) => (
+      
+      {loading && (
+        <div className="p-5">
+          <LoadingSpinner text="Loading feedback..." />
+        </div>
+      )}
+      
+      {error && !loading && (
+        <div className="p-5">
+          <ErrorDisplay message={error} onRetry={() => window.location.reload()} />
+        </div>
+      )}
+      
+      {!loading && !error && comments.length === 0 && (
+        <div className="p-5">
+          <EmptyState
+            title="No feedback yet"
+            description="Start the conversation by adding your first comment below."
+            action={null}
+          />
+        </div>
+      )}
+      
+      {!loading && !error && comments.length > 0 && (
+        <div className="p-5 space-y-4">
+          {comments.map((c) => (
           <div
             key={c._id}
             className={cn(
@@ -3489,9 +3526,11 @@ function FeedbackThread({ projectId }: { projectId: string }) {
               </div>
               <p>{c.content}</p>
             </div>
-          </div>
-        ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
+      
       <div
         className={cn(
           "p-5 flex gap-2",
@@ -3508,7 +3547,7 @@ function FeedbackThread({ projectId }: { projectId: string }) {
           placeholder="Type your reply..."
           className={inputClass}
         />
-        <Button onClick={handleSend} disabled={sending || !newComment.trim()}>
+        <Button onClick={handleSend} disabled={sending || !newComment.trim() || loading}>
           {sending ? (
             <RefreshCw className="h-4 w-4 animate-spin" />
           ) : (
@@ -3516,7 +3555,7 @@ function FeedbackThread({ projectId }: { projectId: string }) {
           )}
         </Button>
       </div>
-    </div>
+    </>
   );
 }
 
