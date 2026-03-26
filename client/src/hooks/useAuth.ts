@@ -47,16 +47,32 @@ export function useAuth() {
             error: null,
           });
         })
-        .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('refresh_token');
-          setState({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: null,
-          });
+        .catch((err) => {
+          // Only remove token if it's actually invalid (401/403)
+          // For other errors (network, server down, etc.), keep the token
+          const isAuthError = err?.response?.status === 401 || err?.response?.status === 403;
+          
+          if (isAuthError) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh_token');
+            setState({
+              user: null,
+              token: null,
+              isAuthenticated: false,
+              isLoading: false,
+              error: null,
+            });
+          } else {
+            // Network error or server issue - keep token and set authenticated state
+            // User can still use the app, token is likely still valid
+            setState({
+              user: null, // We don't have user data yet, but keep token
+              token,
+              isAuthenticated: true, // Trust the token until proven invalid
+              isLoading: false,
+              error: 'Unable to verify session. You may need to refresh.',
+            });
+          }
         });
     } else {
       setState((s) => ({ ...s, isLoading: false }));
@@ -98,7 +114,7 @@ export function useAuth() {
   }, []);
 
   const logout = useCallback(async () => {
-    const refreshToken = localStorage.getItem('giteaforge_refresh_token');
+    const refreshToken = localStorage.getItem('refresh_token');
     try { 
       await authAPI.logout(refreshToken || undefined); 
     } catch { 
