@@ -35,23 +35,28 @@ export function useAuth() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
+      // Don't validate on every page load - trust the token until it expires
+      // The server will return 401 if token is invalid, which will trigger logout
+      setState({
+        user: null, // Will be fetched lazily when needed
+        token,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      });
+      
+      // Optionally fetch user data in background (non-blocking)
       authAPI.getMe()
         .then((res) => {
-          // Handle response: { status, data: { user } }
           const user = res.data.data?.user || res.data;
-          setState({
+          setState((prev) => ({
+            ...prev,
             user: user as User,
-            token,
-            isAuthenticated: true,
-            isLoading: false,
-            error: null,
-          });
+          }));
         })
         .catch((err) => {
-          // Only remove token if it's actually invalid (401/403)
-          // For other errors (network, server down, etc.), keep the token
+          // Only logout if token is actually invalid
           const isAuthError = err?.response?.status === 401 || err?.response?.status === 403;
-          
           if (isAuthError) {
             localStorage.removeItem('token');
             localStorage.removeItem('refresh_token');
@@ -62,17 +67,8 @@ export function useAuth() {
               isLoading: false,
               error: null,
             });
-          } else {
-            // Network error or server issue - keep token and set authenticated state
-            // User can still use the app, token is likely still valid
-            setState({
-              user: null, // We don't have user data yet, but keep token
-              token,
-              isAuthenticated: true, // Trust the token until proven invalid
-              isLoading: false,
-              error: 'Unable to verify session. You may need to refresh.',
-            });
           }
+          // For other errors, keep user logged in
         });
     } else {
       setState((s) => ({ ...s, isLoading: false }));
