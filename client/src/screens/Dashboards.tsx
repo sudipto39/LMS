@@ -1350,7 +1350,7 @@ export function StudentProjectDetail({
         </div>
       )}
 
-      {tab === "feedback" && (
+       {tab === "feedback" && (
         <div className={card}>
           <FeedbackThread projectId={project._id} />
         </div>
@@ -3398,7 +3398,41 @@ export function ProfilePage() {
 /* ═══════════════════════════════════════════════════
    REUSABLE: FEEDBACK THREAD (Real API)
    ═══════════════════════════════════════════════════ */
+//changed on 25/03/26 as feedback was not loading 
+// function FeedbackThread({ projectId }: { projectId: string }) {
+//   const [comments, setComments] = useState<any[]>([]);
+//   const [newComment, setNewComment] = useState("");
+//   const [sending, setSending] = useState(false);
+//   const [loading, setLoading] = useState(true);
+//   const [error, setError] = useState<string | null>(null);
 
+//   useEffect(() => {
+//     const fetchFeedback = async () => {
+//       try {
+//         const token = localStorage.getItem("token");
+//         const res = await fetch(
+//           `${API_URL}/v1/projects/${projectId}/feedback`,
+//           { headers: { Authorization: `Bearer ${token}` } },
+//         );
+        
+//         if (!res.ok) {
+//           throw new Error(`Failed to fetch feedback: ${res.status}`);
+//         }
+        
+//         const data = await res.json();
+//         const feedbackList = data.data || data || [];
+//         setComments(Array.isArray(feedbackList) ? feedbackList : []);
+//         setError(null);
+//       } catch (err: any) {
+//         console.error("Failed to load feedback:", err);
+//         setError(err.message || "Failed to load feedback");
+//         setComments([]);
+//       } finally {
+//         setLoading(false);
+//       }
+//     };
+//     fetchFeedback();
+//   }, [projectId]);
 function FeedbackThread({ projectId }: { projectId: string }) {
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState("");
@@ -3414,11 +3448,11 @@ function FeedbackThread({ projectId }: { projectId: string }) {
           `${API_URL}/v1/projects/${projectId}/feedback`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
-        
+
         if (!res.ok) {
           throw new Error(`Failed to fetch feedback: ${res.status}`);
         }
-        
+
         const data = await res.json();
         const feedbackList = data.data || data || [];
         setComments(Array.isArray(feedbackList) ? feedbackList : []);
@@ -3455,25 +3489,57 @@ function FeedbackThread({ projectId }: { projectId: string }) {
     }
     setSending(false);
   };
+//changed on 25/03/26 for feedback not loading
+  // return (
+  //   <>
+  //     <div className={cn("p-5", sectionBorder)}>
+  //       <h3 className={cn("font-semibold", heading)}>Feedback Thread</h3>
+  //     </div>
+      
+  //     {loading && (
+  //       <div className="p-5">
+  //         <LoadingSpinner text="Loading feedback..." />
+  //       </div>
+  //     )}
+      
+  //     {error && !loading && (
+  //       <div className="p-5">
+  //         <ErrorDisplay message={error} onRetry={() => window.location.reload()} />
+  //       </div>
+  //     )}
+      
+  //     {!loading && !error && comments.length === 0 && (
+  //       <div className="p-5">
+  //         <EmptyState
+  //           title="No feedback yet"
+  //           description="Start the conversation by adding your first comment below."
+  //           action={null}
+  //         />
+  //       </div>
+  //     )}
+      
+  //     {!loading && !error && comments.length > 0 && (
+  //       <div className="p-5 space-y-4">
+  //         {comments.map((c) => (
 
-  return (
+   return (
     <>
       <div className={cn("p-5", sectionBorder)}>
         <h3 className={cn("font-semibold", heading)}>Feedback Thread</h3>
       </div>
-      
+
       {loading && (
         <div className="p-5">
           <LoadingSpinner text="Loading feedback..." />
         </div>
       )}
-      
+
       {error && !loading && (
         <div className="p-5">
           <ErrorDisplay message={error} onRetry={() => window.location.reload()} />
         </div>
       )}
-      
+
       {!loading && !error && comments.length === 0 && (
         <div className="p-5">
           <EmptyState
@@ -3483,7 +3549,7 @@ function FeedbackThread({ projectId }: { projectId: string }) {
           />
         </div>
       )}
-      
+
       {!loading && !error && comments.length > 0 && (
         <div className="p-5 space-y-4">
           {comments.map((c) => (
@@ -3558,6 +3624,7 @@ function FeedbackThread({ projectId }: { projectId: string }) {
     </>
   );
 }
+
 
 /* ═══════════════════════════════════════════════════
    STUDENT / SUPERVISOR MESSAGES — Chat Component
