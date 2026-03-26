@@ -102,7 +102,7 @@ export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
     // Call real API (falls back to demo if backend unavailable)
     import('@/services/dataService').then(async ({ default: ds }) => {
       try {
-        await ds.register({
+        const response = await ds.register({
           fullName: formData.fullName,
           email: formData.email,
           password: formData.password,
@@ -114,13 +114,34 @@ export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
           rollNumber: formData.rollNo,
           role: 'student',
         });
+        
+        // Clear any existing auth data first
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
+        // Store authentication token and user data from the response
+        // Backend returns: { status, token, data: { user } }
+        if (response.token) {
+          localStorage.setItem('token', response.token);
+          console.log('Token stored after registration');
+        }
+        
+        // Extract user from nested data structure
+        const user = response.data?.user || response.user;
+        if (user) {
+          localStorage.setItem('user', JSON.stringify(user));
+          console.log('User stored after registration:', user.name || user.fullName);
+        } else {
+          console.warn('No user data in registration response');
+        }
+        
         setIsSubmitting(false);
-        // setShowSuccess(true);
         // Redirect to student dashboard after successful registration
         onNavigate('student-dashboard');
-      } catch {
+      } catch (error) {
         setIsSubmitting(false);
         setSubmitError('Registration failed. Please try again or contact admin.');
+        console.error('Registration error:', error);
       }
     });
   }, [formData]);
