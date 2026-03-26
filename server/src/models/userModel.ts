@@ -60,7 +60,7 @@ const userSchema = new Schema<User>(
     batch: {
       type: Schema.Types.ObjectId,
       ref: "Batch",
-      required: true,
+      required: false, // Made optional temporarily
     },
     role: {
       type: String,
@@ -70,7 +70,7 @@ const userSchema = new Schema<User>(
     course: {
       type: Schema.Types.ObjectId,
       ref: "Course",
-      required: true,
+      required: false, // Made optional temporarily
     },
     isVerified: {
       type: Boolean,

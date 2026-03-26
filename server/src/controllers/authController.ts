@@ -9,15 +9,22 @@ import crypto from "crypto";
 export const register = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const {
-      name,
-      universityId,
+      fullName,
       email,
       password,
-      phoneNumber,
+      phone,
+      university,
       department,
+      session,
+      rollNumber,
       course,
       batch,
     } = req.body;
+
+    // Map client field names to server field names
+    const name = fullName;
+    const universityId = rollNumber;
+    const phoneNumber = phone;
 
     const existingUser = await User.findOne({
       $or: [{ email }, { universityId }],
@@ -27,23 +34,20 @@ export const register = catchAsync(
       return next(new AppError("User already exists", 400));
     }
 
-    if (!course || !batch) {
-      return next(
-        new AppError("Course and batch are required", 400)
-      );
-    }
-
-    const userData = {
+    // Build user data object
+    const userData: any = {
       name,
       universityId,
       email,
       password,
       phoneNumber,
       department,
-      course,
-      batch,
-      role: "student",
+      role: "student" as const,
     };
+
+    // Add course and batch only if provided
+    if (course) userData.course = course;
+    if (batch) userData.batch = batch;
 
     if (config.EMAIL_VERIFICATION) {
       Object.assign(userData, {
