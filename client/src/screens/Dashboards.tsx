@@ -178,6 +178,7 @@ export function StudentDashboard({
 }) {
   const [studentProjects, setStudentProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [milestones, setMilestones] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -193,11 +194,37 @@ export function StudentDashboard({
           cache: "no-store",
         });
         const projectsData = await projectsRes.json();
-        setStudentProjects(projectsData.data || []);
+        const projects = projectsData.data || [];
+        setStudentProjects(projects);
 
         if (activitiesRes.status !== 304) {
           const activitiesData = await activitiesRes.json();
           setActivities(activitiesData.data || []);
+        }
+
+        // Fetch milestones for all projects
+        if (projects.length > 0) {
+          const allMilestones: any[] = [];
+          for (const project of projects) {
+            try {
+              const milestonesRes = await fetch(
+                `${API_URL}/v1/projects/${project._id}/milestones`,
+                {
+                  headers: getAuthHeaders(),
+                }
+              );
+              const milestonesData = await milestonesRes.json();
+              const projectMilestones = Array.isArray(milestonesData.data)
+                ? milestonesData.data
+                : Array.isArray(milestonesData)
+                ? milestonesData
+                : [];
+              allMilestones.push(...projectMilestones);
+            } catch (err) {
+              console.error(`Failed to fetch milestones for project ${project._id}`, err);
+            }
+          }
+          setMilestones(allMilestones);
         }
       } catch (err) {
         console.error("Dashboard load failed", err);
@@ -253,8 +280,8 @@ export function StudentDashboard({
         />
         <KPICard
           title="Pending Review"
-          value={studentProjects.filter((p) => p.status === "submitted").length}
-          subtitle="Milestones"
+          value={milestones.filter((m) => m.status === "submitted" || m.status === "completed").length}
+          subtitle="Milestones awaiting approval"
           icon={<Eye className="h-5 w-5" />}
           color="purple"
         />
