@@ -86,8 +86,11 @@ export const dataService = {
         rollNumber: data.rollNumber,
         role: (data.role || 'student') as 'student' | 'supervisor',
       });
+      // Return the full response data which includes token and user
+      console.log('Registration response:', response.data);
       return response.data;
     } catch (error) {
+      console.error('Registration error in dataService:', error);
       throw new Error(getErrorMessage(error));
     }
   },
