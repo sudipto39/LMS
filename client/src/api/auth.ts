@@ -65,6 +65,8 @@ export interface RegisterPayload {
   department: string;
   session: string;
   rollNumber: string;
+  course?: string; // ObjectId of course
+  batch?: string; // ObjectId of batch
   role?: 'student' | 'supervisor'; // Default: student
 }
 

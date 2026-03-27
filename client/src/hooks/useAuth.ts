@@ -35,28 +35,40 @@ export function useAuth() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
+      // Don't validate on every page load - trust the token until it expires
+      // The server will return 401 if token is invalid, which will trigger logout
+      setState({
+        user: null, // Will be fetched lazily when needed
+        token,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      });
+      
+      // Optionally fetch user data in background (non-blocking)
       authAPI.getMe()
         .then((res) => {
-          // Handle response: { status, data: { user } }
           const user = res.data.data?.user || res.data;
-          setState({
+          setState((prev) => ({
+            ...prev,
             user: user as User,
-            token,
-            isAuthenticated: true,
-            isLoading: false,
-            error: null,
-          });
+          }));
         })
-        .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('refresh_token');
-          setState({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: null,
-          });
+        .catch((err) => {
+          // Only logout if token is actually invalid
+          const isAuthError = err?.response?.status === 401 || err?.response?.status === 403;
+          if (isAuthError) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh_token');
+            setState({
+              user: null,
+              token: null,
+              isAuthenticated: false,
+              isLoading: false,
+              error: null,
+            });
+          }
+          // For other errors, keep user logged in
         });
     } else {
       setState((s) => ({ ...s, isLoading: false }));
@@ -98,7 +110,7 @@ export function useAuth() {
   }, []);
 
   const logout = useCallback(async () => {
-    const refreshToken = localStorage.getItem('giteaforge_refresh_token');
+    const refreshToken = localStorage.getItem('refresh_token');
     try { 
       await authAPI.logout(refreshToken || undefined); 
     } catch { 

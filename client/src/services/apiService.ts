@@ -97,12 +97,12 @@ export const auth = {
    * POST /api/v1/auth/logout
    */
   async logout() {
-    const refreshToken = localStorage.getItem('refreshToken');
+    const refreshToken = localStorage.getItem('refresh_token');
     try {
       await authAPI.logout(refreshToken || undefined);
     } finally {
       localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('refresh_token');
     }
   },
 
@@ -129,7 +129,7 @@ export const auth = {
    * POST /api/v1/auth/refresh
    */
   async refreshToken() {
-    const refreshToken = localStorage.getItem('refreshToken');
+    const refreshToken = localStorage.getItem('refresh_token');
     if (!refreshToken) throw new Error('No refresh token');
     
     const response = await authAPI.refresh(refreshToken);

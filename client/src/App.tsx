@@ -659,6 +659,8 @@ export function App() {
         return <ProfilePage />;
       case "supervisor-dashboard":
         return <SupervisorDashboard onNavigate={navigateTo} />;
+      case "supervisor-projects":
+        return <SupervisorDashboard onNavigate={navigateTo} />;
       case "supervisor-project-detail":
         return <SupervisorProjectDetail onNavigate={navigateTo} />;
       case "supervisor-reviews":

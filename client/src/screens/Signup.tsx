@@ -33,7 +33,7 @@ export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
   });
 
   const [step, setStep] = useState<1 | 2>(1);
-  const [showSuccess, setShowSuccess] = useState(false);
+  // const [showSuccess, setShowSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof SignupFormData, string>>>({});
@@ -102,7 +102,7 @@ export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
     // Call real API (falls back to demo if backend unavailable)
     import('@/services/dataService').then(async ({ default: ds }) => {
       try {
-        await ds.register({
+        const response = await ds.register({
           fullName: formData.fullName,
           email: formData.email,
           password: formData.password,
@@ -114,11 +114,34 @@ export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
           rollNumber: formData.rollNo,
           role: 'student',
         });
+        
+        // Clear any existing auth data first
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
+        // Store authentication token and user data from the response
+        // Backend returns: { status, token, data: { user } }
+        if (response.token) {
+          localStorage.setItem('token', response.token);
+          console.log('Token stored after registration');
+        }
+        
+        // Extract user from nested data structure
+        const user = response.data?.user || response.user;
+        if (user) {
+          localStorage.setItem('user', JSON.stringify(user));
+          console.log('User stored after registration:', user.name || user.fullName);
+        } else {
+          console.warn('No user data in registration response');
+        }
+        
         setIsSubmitting(false);
-        setShowSuccess(true);
-      } catch {
+        // Redirect to student dashboard after successful registration
+        onNavigate('student-dashboard');
+      } catch (error) {
         setIsSubmitting(false);
         setSubmitError('Registration failed. Please try again or contact admin.');
+        console.error('Registration error:', error);
       }
     });
   }, [formData]);
@@ -142,31 +165,32 @@ export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
   const iconClass = "h-4 w-4 text-neutral-400 dark:text-[#484f58] shrink-0";
   const errorClass = "text-xs text-red-500 dark:text-red-400 mt-1 flex items-center gap-1";
 
-  if (showSuccess) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-[#0d1117] p-4">
-        <div className="w-full max-w-md text-center">
-          <div className="rounded-lg bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-[#30363d] p-10">
-            <div className="flex items-center justify-center mb-4">
-              <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <ShieldCheck className="h-8 w-8 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-            <h2 className="text-xl font-bold text-neutral-900 dark:text-[#f0f6fc] mb-2">Account Request Submitted!</h2>
-            <p className="text-sm text-neutral-500 dark:text-[#8b949e] mb-2">
-              Your registration request has been sent to the administrator for approval.
-            </p>
-            <p className="text-xs text-neutral-400 dark:text-[#484f58] mb-6">
-              You&apos;ll receive an email at <span className="font-medium text-neutral-600 dark:text-[#8b949e]">{formData.email}</span> once your account is activated.
-            </p>
-            <Button className="w-full" onClick={() => onNavigate('login')}>
-              Go to Login
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Commented out success card - now redirects directly to dashboard
+  // if (showSuccess) {
+  //   return (
+  //     <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-[#0d1117] p-4">
+  //       <div className="w-full max-w-md text-center">
+  //         <div className="rounded-lg bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-[#30363d] p-10">
+  //           <div className="flex items-center justify-center mb-4">
+  //             <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+  //               <ShieldCheck className="h-8 w-8 text-green-600 dark:text-green-400" />
+  //             </div>
+  //           </div>
+  //           <h2 className="text-xl font-bold text-neutral-900 dark:text-[#f0f6fc] mb-2">Account Request Submitted!</h2>
+  //           <p className="text-sm text-neutral-500 dark:text-[#8b949e] mb-2">
+  //             Your registration request has been sent to the administrator for approval.
+  //           </p>
+  //           <p className="text-xs text-neutral-400 dark:text-[#484f58] mb-6">
+  //             You&apos;ll receive an email at <span className="font-medium text-neutral-600 dark:text-[#8b949e]">{formData.email}</span> once your account is activated.
+  //           </p>
+  //           <Button className="w-full" onClick={() => onNavigate('login')}>
+  //             Go to Login
+  //           </Button>
+  //         </div>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   return (
     <div className="min-h-screen flex" onKeyDown={handleKeyDown}>
