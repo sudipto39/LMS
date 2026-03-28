@@ -1477,11 +1477,20 @@ export function SupervisorDashboard({
   const [projects, setProjects] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
         const token = localStorage.getItem("token");
+        if (!token) {
+          setError("No authentication token found");
+          setLoading(false);
+          return;
+        }
+
+        console.log("SupervisorDashboard: Fetching data...");
+        
         const [projectsRes, activitiesRes] = await Promise.all([
           fetch(`${API_URL}/v1/projects/supervised`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -1490,15 +1499,35 @@ export function SupervisorDashboard({
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
+
+        console.log("Projects response status:", projectsRes.status);
+        console.log("Activities response status:", activitiesRes.status);
+        
+        if (!projectsRes.ok) {
+          const errorData = await projectsRes.json();
+          console.error("Projects fetch failed:", errorData);
+          throw new Error(errorData.message || "Failed to fetch supervised projects");
+        }
+
+        if (!activitiesRes.ok) {
+          const errorData = await activitiesRes.json();
+          console.error("Activities fetch failed:", errorData);
+          throw new Error(errorData.message || "Failed to fetch supervisor activities");
+        }
         
         const projectsData = await projectsRes.json();
         const activitiesData = await activitiesRes.json();
         
+        console.log("Projects data:", projectsData);
+        console.log("Activities data:", activitiesData);
+        
         // Handle response structure - extract data array
         setProjects(Array.isArray(projectsData.data) ? projectsData.data : Array.isArray(projectsData) ? projectsData : []);
         setActivities(Array.isArray(activitiesData.data) ? activitiesData.data : Array.isArray(activitiesData) ? activitiesData : []);
-      } catch (err) {
+        setError(null);
+      } catch (err: any) {
         console.error("Failed to load supervisor dashboard", err);
+        setError(err.message || "Failed to load dashboard data");
         setProjects([]);
         setActivities([]);
       } finally {
@@ -1509,6 +1538,23 @@ export function SupervisorDashboard({
   }, []);
 
   if (loading) return <LoadingSpinner text="Loading dashboard..." />;
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className={cn("text-2xl font-bold", heading)}>Supervisor Dashboard</h1>
+          <p className={cn("text-sm", subtext)}>
+            Welcome back. Here&apos;s your supervision overview.
+          </p>
+        </div>
+        <ErrorDisplay 
+          message={error} 
+          onRetry={() => window.location.reload()} 
+        />
+      </div>
+    );
+  }
 
   const needsReviewCount = projects.filter((p) => 
     p.status === "submitted" || p.needsReview

@@ -522,6 +522,13 @@ export function App() {
         setPage("landing");
         setHistory(["landing"]);
       }
+      setUserLoading(false);
+      return;
+    }
+
+    // Only load user if we don't have user data yet
+    if (currentUser) {
+      setUserLoading(false);
       return;
     }
 
@@ -531,7 +538,9 @@ export function App() {
         const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) throw new Error("Unauthorized");
+        if (!res.ok) {
+          throw new Error("Unauthorized");
+        }
 
         const json = await res.json();
         const user = json.data?.user || json.user;
@@ -540,7 +549,7 @@ export function App() {
 
         setCurrentUser({
           id: user._id,
-          fullName: user.fullName,
+          fullName: user.fullName || user.name,
           role: user.role,
         });
 
@@ -550,16 +559,12 @@ export function App() {
         console.log("User role:", userRole, "Default page:", defaultPages[userRole]);
         
         // Always redirect to the correct dashboard for the user's role
-        // This ensures supervisors don't see student dashboard
         const correctDashboard = defaultPages[userRole];
-        if (page !== correctDashboard && !["landing", "login", "signup"].includes(page)) {
-          console.log("Redirecting from", page, "to", correctDashboard);
-          setHistory([correctDashboard]);
-          setPage(correctDashboard);
-        } else if (["landing", "login", "signup"].includes(page)) {
-          setHistory([correctDashboard]);
-          setPage(correctDashboard);
-        }
+        console.log("Current page:", page, "Correct dashboard:", correctDashboard);
+        
+        // Set the correct dashboard page
+        setHistory([correctDashboard]);
+        setPage(correctDashboard);
       } catch (err) {
         console.error("Failed to load user:", err);
         handleLogout();
@@ -569,7 +574,7 @@ export function App() {
     };
 
     loadUser();
-  }, []);
+  }, [currentUser]);
 
   const navigateTo = useCallback((newPage: Page) => {
     setHistory((prev) => [...prev, newPage]);
@@ -613,29 +618,46 @@ export function App() {
 
   const handleLogin = async (r: Role) => {
     const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) return;
+    if (!token) {
+      console.error("No token found after login");
+      return;
+    }
 
     try {
       setUserLoading(true);
+      console.log("Fetching user data after login...");
+      
       const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Unauthorized");
+      
+      if (!res.ok) {
+        throw new Error("Failed to fetch user data");
+      }
 
       const json = await res.json();
       const user = json.data?.user || json.user;
 
-      setCurrentUser({
+      console.log("User data received:", user);
+
+      const userData = {
         id: user._id,
-        fullName: user.fullName,
+        fullName: user.fullName || user.name,
         role: user.role,
-      });
+      };
+
+      setCurrentUser(userData);
 
       const userRole = user.role as Role;
       setRole(userRole);
-      setHistory([defaultPages[userRole]]);
-      setPage(defaultPages[userRole]);
-    } catch {
+      
+      const correctDashboard = defaultPages[userRole];
+      console.log("Setting page to:", correctDashboard);
+      
+      setHistory([correctDashboard]);
+      setPage(correctDashboard);
+    } catch (err) {
+      console.error("Login error:", err);
       handleLogout();
     } finally {
       setUserLoading(false);
@@ -768,9 +790,16 @@ export function App() {
     }
   };
 
-  // Show loading only for public pages
-  if (userLoading && ["landing", "login", "signup"].includes(page)) {
-    return null;
+  // Show loading screen while fetching user data
+  if (userLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-neutral-50 dark:bg-[#0d1117]">
+        <div className="text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-neutral-200 dark:border-[#30363d] border-t-blue-500 mx-auto mb-4" />
+          <p className="text-sm text-neutral-500 dark:text-[#8b949e]">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
