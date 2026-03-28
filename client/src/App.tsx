@@ -515,14 +515,8 @@ export function App() {
   }, [page]);
 
   useEffect(() => {
-    const isLoggedIn = !["landing", "login", "signup"].includes(page);
-    if (!isLoggedIn) return;
-
     const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
-      handleLogout();
-      return;
-    }
+    if (!token) return;
 
     const loadUser = async () => {
       try {
@@ -543,8 +537,12 @@ export function App() {
 
         const userRole = user.role as Role;
         setRole(userRole);
-        setHistory([defaultPages[userRole]]);
-        setPage(defaultPages[userRole]);
+        
+        // Only set page if we're on landing/login/signup
+        if (["landing", "login", "signup"].includes(page)) {
+          setHistory([defaultPages[userRole]]);
+          setPage(defaultPages[userRole]);
+        }
       } catch {
         handleLogout();
       } finally {
@@ -595,10 +593,35 @@ export function App() {
     return crumbs;
   })();
 
-  const handleLogin = (r: Role) => {
-    setRole(r);
-    setHistory([defaultPages[r]]);
-    setPage(defaultPages[r]);
+  const handleLogin = async (r: Role) => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+
+    try {
+      setUserLoading(true);
+      const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Unauthorized");
+
+      const json = await res.json();
+      const user = json.data?.user || json.user;
+
+      setCurrentUser({
+        id: user._id,
+        fullName: user.fullName,
+        role: user.role,
+      });
+
+      const userRole = user.role as Role;
+      setRole(userRole);
+      setHistory([defaultPages[userRole]]);
+      setPage(defaultPages[userRole]);
+    } catch {
+      handleLogout();
+    } finally {
+      setUserLoading(false);
+    }
   };
 
   const handleLogout = () => {
