@@ -61,26 +61,38 @@ export function Login({ onLogin, onNavigate, goBack, darkMode, setDarkMode }: {
     // Try real API first, fall back to demo mode
     import('@/services/dataService').then(async ({ default: ds }) => {
       try {
+        console.log('Attempting login with email:', email);
         const result = await ds.login(email, password);
+        console.log('Login successful, result:', result);
+        
         const role = result.user?.role || 'student';
         
         // Store tokens for authenticated API calls
         if (result.token && result.token !== 'demo-token') {
+          console.log('Storing token in localStorage');
           localStorage.setItem('token', result.token);
           if (result.refreshToken) {
             localStorage.setItem('refresh_token', result.refreshToken);
           }
           
+          // Verify token was stored
+          const storedToken = localStorage.getItem('token');
+          console.log('Token stored successfully:', storedToken ? 'Yes' : 'No');
+          
           // Wait a bit to ensure localStorage is persisted
           await new Promise(resolve => setTimeout(resolve, 100));
+        } else {
+          console.error('No valid token received from login');
+          throw new Error('No authentication token received');
         }
         
         setIsSubmitting(false);
+        console.log('Calling onLogin with role:', role);
         onLogin(role as 'student' | 'supervisor' | 'admin');
-      } catch (err) {
+      } catch (err: any) {
         console.error('Login error:', err);
         setIsSubmitting(false);
-        setLoginAttemptError('Invalid email or password. Please try again.');
+        setLoginAttemptError(err.message || 'Invalid email or password. Please try again.');
       }
     });
   }, [email, password, onLogin]);

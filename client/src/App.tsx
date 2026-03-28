@@ -516,9 +516,11 @@ export function App() {
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
+    
+    // If no token and we're on a protected page, redirect to landing
     if (!token) {
-      // No token, ensure we're on a public page
       if (!["landing", "login", "signup"].includes(page)) {
+        console.log("No token found, redirecting to landing");
         setPage("landing");
         setHistory(["landing"]);
       }
@@ -526,55 +528,66 @@ export function App() {
       return;
     }
 
-    // Only load user if we don't have user data yet
+    // If we already have user data, don't fetch again
     if (currentUser) {
       setUserLoading(false);
       return;
     }
 
+    // Load user data from API
     const loadUser = async () => {
       try {
         setUserLoading(true);
+        console.log("Loading user data with token:", token.substring(0, 20) + "...");
+        
         const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        
         if (!res.ok) {
+          console.error("Failed to fetch user, status:", res.status);
           throw new Error("Unauthorized");
         }
 
         const json = await res.json();
         const user = json.data?.user || json.user;
 
-        console.log("Loaded user:", user);
+        console.log("User data loaded successfully:", user);
 
-        setCurrentUser({
+        const userData = {
           id: user._id,
           fullName: user.fullName || user.name,
           role: user.role,
-        });
+        };
+
+        setCurrentUser(userData);
 
         const userRole = user.role as Role;
         setRole(userRole);
         
-        console.log("User role:", userRole, "Default page:", defaultPages[userRole]);
-        
-        // Always redirect to the correct dashboard for the user's role
         const correctDashboard = defaultPages[userRole];
-        console.log("Current page:", page, "Correct dashboard:", correctDashboard);
+        console.log("Setting dashboard:", correctDashboard, "for role:", userRole);
         
-        // Set the correct dashboard page
-        setHistory([correctDashboard]);
-        setPage(correctDashboard);
+        // Only set page if we're on a public page (landing/login/signup)
+        // This prevents overriding navigation after login
+        if (["landing", "login", "signup"].includes(page)) {
+          setHistory([correctDashboard]);
+          setPage(correctDashboard);
+        }
       } catch (err) {
         console.error("Failed to load user:", err);
-        handleLogout();
+        // Only logout if we're sure the token is invalid
+        localStorage.removeItem(TOKEN_KEY);
+        setCurrentUser(null);
+        setPage("login");
+        setHistory(["login"]);
       } finally {
         setUserLoading(false);
       }
     };
 
     loadUser();
-  }, [currentUser]);
+  }, [currentUser, page]);
 
   const navigateTo = useCallback((newPage: Page) => {
     setHistory((prev) => [...prev, newPage]);
@@ -617,55 +630,25 @@ export function App() {
   })();
 
   const handleLogin = async (r: Role) => {
+    // The token should already be stored by the Login component
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
-      console.error("No token found after login");
+      console.error("No token found after login - this should not happen");
       return;
     }
 
-    try {
-      setUserLoading(true);
-      console.log("Fetching user data after login...");
-      
-      const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      
-      if (!res.ok) {
-        throw new Error("Failed to fetch user data");
-      }
-
-      const json = await res.json();
-      const user = json.data?.user || json.user;
-
-      console.log("User data received:", user);
-
-      const userData = {
-        id: user._id,
-        fullName: user.fullName || user.name,
-        role: user.role,
-      };
-
-      setCurrentUser(userData);
-
-      const userRole = user.role as Role;
-      setRole(userRole);
-      
-      const correctDashboard = defaultPages[userRole];
-      console.log("Setting page to:", correctDashboard);
-      
-      setHistory([correctDashboard]);
-      setPage(correctDashboard);
-    } catch (err) {
-      console.error("Login error:", err);
-      handleLogout();
-    } finally {
-      setUserLoading(false);
-    }
+    console.log("handleLogin called, token exists, triggering user data load");
+    
+    // Clear current user to trigger the useEffect to load user data
+    setCurrentUser(null);
+    setUserLoading(true);
   };
 
   const handleLogout = () => {
+    console.log("Logging out user");
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem("refresh_token");
+    setCurrentUser(null);
     setPage("landing");
     setHistory(["landing"]);
     setSidebarOpen(false);
