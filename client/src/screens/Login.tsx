@@ -62,17 +62,23 @@ export function Login({ onLogin, onNavigate, goBack, darkMode, setDarkMode }: {
     import('@/services/dataService').then(async ({ default: ds }) => {
       try {
         const result = await ds.login(email, password);
-        setIsSubmitting(false);
         const role = result.user?.role || 'student';
+        
         // Store tokens for authenticated API calls
         if (result.token && result.token !== 'demo-token') {
           localStorage.setItem('token', result.token);
           if (result.refreshToken) {
             localStorage.setItem('refresh_token', result.refreshToken);
           }
+          
+          // Wait a bit to ensure localStorage is persisted
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
+        
+        setIsSubmitting(false);
         onLogin(role as 'student' | 'supervisor' | 'admin');
-      } catch {
+      } catch (err) {
+        console.error('Login error:', err);
         setIsSubmitting(false);
         setLoginAttemptError('Invalid email or password. Please try again.');
       }
