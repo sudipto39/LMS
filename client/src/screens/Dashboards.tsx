@@ -1480,28 +1480,57 @@ export function SupervisorDashboard({
 
   useEffect(() => {
     const fetchDashboard = async () => {
-      const token = localStorage.getItem("token");
-      const [projectsRes, activitiesRes] = await Promise.all([
-        fetch(`${API_URL}/v1/projects/supervised`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_URL}/v1/activities/supervisor`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
-      setProjects(await projectsRes.json());
-      setActivities(await activitiesRes.json());
-      setLoading(false);
+      try {
+        const token = localStorage.getItem("token");
+        const [projectsRes, activitiesRes] = await Promise.all([
+          fetch(`${API_URL}/v1/projects/supervised`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_URL}/v1/activities/supervisor`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        
+        const projectsData = await projectsRes.json();
+        const activitiesData = await activitiesRes.json();
+        
+        // Handle response structure - extract data array
+        setProjects(Array.isArray(projectsData.data) ? projectsData.data : Array.isArray(projectsData) ? projectsData : []);
+        setActivities(Array.isArray(activitiesData.data) ? activitiesData.data : Array.isArray(activitiesData) ? activitiesData : []);
+      } catch (err) {
+        console.error("Failed to load supervisor dashboard", err);
+        setProjects([]);
+        setActivities([]);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchDashboard();
   }, []);
 
   if (loading) return <LoadingSpinner text="Loading dashboard..." />;
 
+  const needsReviewCount = projects.filter((p) => 
+    p.status === "submitted" || p.needsReview
+  ).length;
+  
+  const inactiveCount = projects.filter((p) => {
+    if (!p.lastPush) return true;
+    const daysSince = Math.floor((Date.now() - new Date(p.lastPush).getTime()) / (1000 * 60 * 60 * 24));
+    return daysSince > 7;
+  }).length;
+  
+  const upcomingDeadlinesCount = projects.filter((p) => {
+    if (!p.endDate && !p.deadline) return false;
+    const deadline = new Date(p.endDate || p.deadline);
+    const daysUntil = Math.floor((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return daysUntil >= 0 && daysUntil <= 14;
+  }).length;
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className={cn("text-2xl font-bold", heading)}>Dashboard</h1>
+        <h1 className={cn("text-2xl font-bold", heading)}>Supervisor Dashboard</h1>
         <p className={cn("text-sm", subtext)}>
           Welcome back. Here&apos;s your supervision overview.
         </p>
@@ -1517,21 +1546,21 @@ export function SupervisorDashboard({
         />
         <KPICard
           title="Needs Review"
-          value={projects.filter((p) => p.needsReview).length}
+          value={needsReviewCount}
           subtitle="Pending submissions"
           icon={<Eye className="h-5 w-5" />}
           color="yellow"
         />
         <KPICard
           title="Inactive > 7 days"
-          value={projects.filter((p) => p.inactiveDays > 7).length}
+          value={inactiveCount}
           subtitle="No recent commits"
           icon={<AlertTriangle className="h-5 w-5" />}
           color="red"
         />
         <KPICard
           title="Upcoming Deadlines"
-          value={projects.filter((p) => p.upcomingDeadline).length}
+          value={upcomingDeadlinesCount}
           subtitle="Next 2 weeks"
           icon={<Calendar className="h-5 w-5" />}
           color="purple"
@@ -1591,17 +1620,19 @@ export function SupervisorDashboard({
                       <td className="py-3 px-5">
                         <p className={cn("font-medium", heading)}>{p.title}</p>
                         <p className={cn("text-xs", mutedText)}>
-                          {p.student?.name} · {p.batch}
+                          {typeof p.student === "object" && p.student !== null 
+                            ? (p.student as any).name || (p.student as any).fullName
+                            : p.student || "Unknown"} · {typeof p.batch === "object" && p.batch !== null ? (p.batch as any).name : p.batch || "—"}
                         </p>
                       </td>
                       <td className="py-3 px-3">
                         <StatusPill status={p.status} />
                       </td>
                       <td className="py-3 px-3 hidden md:table-cell w-36">
-                        <ProgressBar value={p.progress} size="sm" />
+                        <ProgressBar value={p.progress || 0} size="sm" />
                       </td>
                       <td className="py-3 px-3 hidden sm:table-cell">
-                        <InactivityBadge lastPush={p.lastPush} />
+                        <InactivityBadge lastPush={p.lastPush || p.updatedAt} />
                       </td>
                       <td className="py-3 px-3">
                         <Button
