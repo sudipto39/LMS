@@ -516,7 +516,14 @@ export function App() {
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) return;
+    if (!token) {
+      // No token, ensure we're on a public page
+      if (!["landing", "login", "signup"].includes(page)) {
+        setPage("landing");
+        setHistory(["landing"]);
+      }
+      return;
+    }
 
     const loadUser = async () => {
       try {
@@ -529,6 +536,8 @@ export function App() {
         const json = await res.json();
         const user = json.data?.user || json.user;
 
+        console.log("Loaded user:", user);
+
         setCurrentUser({
           id: user._id,
           fullName: user.fullName,
@@ -538,12 +547,21 @@ export function App() {
         const userRole = user.role as Role;
         setRole(userRole);
         
-        // Only set page if we're on landing/login/signup
-        if (["landing", "login", "signup"].includes(page)) {
-          setHistory([defaultPages[userRole]]);
-          setPage(defaultPages[userRole]);
+        console.log("User role:", userRole, "Default page:", defaultPages[userRole]);
+        
+        // Always redirect to the correct dashboard for the user's role
+        // This ensures supervisors don't see student dashboard
+        const correctDashboard = defaultPages[userRole];
+        if (page !== correctDashboard && !["landing", "login", "signup"].includes(page)) {
+          console.log("Redirecting from", page, "to", correctDashboard);
+          setHistory([correctDashboard]);
+          setPage(correctDashboard);
+        } else if (["landing", "login", "signup"].includes(page)) {
+          setHistory([correctDashboard]);
+          setPage(correctDashboard);
         }
-      } catch {
+      } catch (err) {
+        console.error("Failed to load user:", err);
         handleLogout();
       } finally {
         setUserLoading(false);
@@ -665,6 +683,41 @@ export function App() {
   }
 
   const renderContent = () => {
+    // Don't render anything until we know the user's role
+    if (userLoading) {
+      return (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-neutral-200 dark:border-[#30363d] border-t-blue-500 mx-auto mb-4" />
+            <p className="text-sm text-neutral-500 dark:text-[#8b949e]">Loading...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Verify user has access to the current page
+    if (currentUser) {
+      const userRole = currentUser.role;
+      const pagePrefix = page.split("-")[0]; // e.g., "student", "supervisor", "admin"
+      
+      // Check if user is trying to access a page they shouldn't
+      if (pagePrefix === "student" && userRole !== "student") {
+        console.warn("Non-student trying to access student page, redirecting...");
+        setTimeout(() => navigateTo(defaultPages[userRole]), 0);
+        return null;
+      }
+      if (pagePrefix === "supervisor" && userRole !== "supervisor" && userRole !== "admin") {
+        console.warn("Non-supervisor trying to access supervisor page, redirecting...");
+        setTimeout(() => navigateTo(defaultPages[userRole]), 0);
+        return null;
+      }
+      if (pagePrefix === "admin" && userRole !== "admin") {
+        console.warn("Non-admin trying to access admin page, redirecting...");
+        setTimeout(() => navigateTo(defaultPages[userRole]), 0);
+        return null;
+      }
+    }
+
     switch (page) {
       case "student-dashboard":
         return <StudentDashboard onNavigate={navigateTo} />;
@@ -715,7 +768,10 @@ export function App() {
     }
   };
 
-  if (userLoading) return null;
+  // Show loading only for public pages
+  if (userLoading && ["landing", "login", "signup"].includes(page)) {
+    return null;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-50 dark:bg-[#0d1117]">
