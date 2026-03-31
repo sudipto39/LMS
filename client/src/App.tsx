@@ -515,86 +515,45 @@ export function App() {
   }, [page]);
 
   useEffect(() => {
+    const isLoggedIn = !["landing", "login", "signup"].includes(page);
+    if (!isLoggedIn) return;
+
     const token = localStorage.getItem(TOKEN_KEY);
-    
-    // If no token and we're on a protected page, redirect to landing
     if (!token) {
-      if (!["landing", "login", "signup"].includes(page)) {
-        console.log("No token found, redirecting to landing");
-        setPage("landing");
-        setHistory(["landing"]);
-      }
-      setUserLoading(false);
+      handleLogout();
       return;
     }
 
-    // If we already have user data, don't fetch again
-    if (currentUser) {
-      setUserLoading(false);
-      return;
-    }
-
-    // Only load user data on initial mount or when token exists but no user data
-    // Don't run this after login (handleLogin will handle that)
-    if (page === "landing" || page === "login" || page === "signup") {
-      setUserLoading(false);
-      return;
-    }
-
-    // Load user data from API (for page refresh scenarios)
     const loadUser = async () => {
       try {
         setUserLoading(true);
-        console.log("Loading user data on mount with token:", token.substring(0, 20) + "...");
-        
         const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        
-        if (!res.ok) {
-          console.error("Failed to fetch user, status:", res.status);
-          throw new Error("Unauthorized");
-        }
+        if (!res.ok) throw new Error("Unauthorized");
 
         const json = await res.json();
         const user = json.data?.user || json.user;
 
-        console.log("User data loaded successfully:", user);
-
-        const userData = {
+        setCurrentUser({
           id: user._id,
-          fullName: user.fullName || user.name,
+          fullName: user.fullName,
           role: user.role,
-        };
-
-        setCurrentUser(userData);
+        });
 
         const userRole = user.role as Role;
         setRole(userRole);
-        
-        const correctDashboard = defaultPages[userRole];
-        console.log("Setting dashboard:", correctDashboard, "for role:", userRole);
-        
-        // Redirect to correct dashboard if on wrong page
-        const pagePrefix = page.split("-")[0];
-        if (pagePrefix !== userRole && !["activity", "settings"].includes(page)) {
-          setHistory([correctDashboard]);
-          setPage(correctDashboard);
-        }
-      } catch (err) {
-        console.error("Failed to load user:", err);
-        // Only logout if we're sure the token is invalid
-        localStorage.removeItem(TOKEN_KEY);
-        setCurrentUser(null);
-        setPage("login");
-        setHistory(["login"]);
+        setHistory([defaultPages[userRole]]);
+        setPage(defaultPages[userRole]);
+      } catch {
+        handleLogout();
       } finally {
         setUserLoading(false);
       }
     };
 
     loadUser();
-  }, [currentUser, page]);
+  }, []);
 
   const navigateTo = useCallback((newPage: Page) => {
     setHistory((prev) => [...prev, newPage]);
@@ -636,62 +595,14 @@ export function App() {
     return crumbs;
   })();
 
-  const handleLogin = async (r: Role) => {
-    // The token should already be stored by the Login component
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
-      console.error("No token found after login - this should not happen");
-      return;
-    }
-
-    console.log("handleLogin called, fetching user data...");
-    
-    try {
-      setUserLoading(true);
-      
-      const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      
-      if (!res.ok) {
-        console.error("Failed to fetch user after login, status:", res.status);
-        throw new Error("Failed to fetch user data");
-      }
-
-      const json = await res.json();
-      const user = json.data?.user || json.user;
-
-      console.log("User data fetched after login:", user);
-
-      const userData = {
-        id: user._id,
-        fullName: user.fullName || user.name,
-        role: user.role,
-      };
-
-      setCurrentUser(userData);
-
-      const userRole = user.role as Role;
-      setRole(userRole);
-      
-      const correctDashboard = defaultPages[userRole];
-      console.log("Redirecting to dashboard:", correctDashboard, "for role:", userRole);
-      
-      setHistory([correctDashboard]);
-      setPage(correctDashboard);
-    } catch (err) {
-      console.error("Login error:", err);
-      handleLogout();
-    } finally {
-      setUserLoading(false);
-    }
+  const handleLogin = (r: Role) => {
+    setRole(r);
+    setHistory([defaultPages[r]]);
+    setPage(defaultPages[r]);
   };
 
   const handleLogout = () => {
-    console.log("Logging out user");
     localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem("refresh_token");
-    setCurrentUser(null);
     setPage("landing");
     setHistory(["landing"]);
     setSidebarOpen(false);
@@ -731,41 +642,6 @@ export function App() {
   }
 
   const renderContent = () => {
-    // Don't render anything until we know the user's role
-    if (userLoading) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-neutral-200 dark:border-[#30363d] border-t-blue-500 mx-auto mb-4" />
-            <p className="text-sm text-neutral-500 dark:text-[#8b949e]">Loading...</p>
-          </div>
-        </div>
-      );
-    }
-
-    // Verify user has access to the current page
-    if (currentUser) {
-      const userRole = currentUser.role;
-      const pagePrefix = page.split("-")[0]; // e.g., "student", "supervisor", "admin"
-      
-      // Check if user is trying to access a page they shouldn't
-      if (pagePrefix === "student" && userRole !== "student") {
-        console.warn("Non-student trying to access student page, redirecting...");
-        setTimeout(() => navigateTo(defaultPages[userRole]), 0);
-        return null;
-      }
-      if (pagePrefix === "supervisor" && userRole !== "supervisor" && userRole !== "admin") {
-        console.warn("Non-supervisor trying to access supervisor page, redirecting...");
-        setTimeout(() => navigateTo(defaultPages[userRole]), 0);
-        return null;
-      }
-      if (pagePrefix === "admin" && userRole !== "admin") {
-        console.warn("Non-admin trying to access admin page, redirecting...");
-        setTimeout(() => navigateTo(defaultPages[userRole]), 0);
-        return null;
-      }
-    }
-
     switch (page) {
       case "student-dashboard":
         return <StudentDashboard onNavigate={navigateTo} />;
@@ -816,17 +692,7 @@ export function App() {
     }
   };
 
-  // Show loading screen while fetching user data
-  if (userLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-neutral-50 dark:bg-[#0d1117]">
-        <div className="text-center">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-neutral-200 dark:border-[#30363d] border-t-blue-500 mx-auto mb-4" />
-          <p className="text-sm text-neutral-500 dark:text-[#8b949e]">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  if (userLoading) return null;
 
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-50 dark:bg-[#0d1117]">
