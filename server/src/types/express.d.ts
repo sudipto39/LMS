@@ -1,11 +1,12 @@
-import { Types } from "mongoose";
+import type { Role } from "../generated/prisma/index.js";
 
 declare global {
   namespace Express {
     interface Request {
       user?: {
-        id: string | Types.ObjectId;
-        role: string;
+        id: string;
+        role: Role;
+        isEmailVerified: boolean;
       };
     }
   }

@@ -1,48 +1,48 @@
-import mongoose from "mongoose";
-import { config } from "./env.js";
+// src/config/db.ts
+import { PrismaClient } from "../generated/prisma/index.js";
+import { PrismaPg } from "@prisma/adapter-pg";
+import pg from "pg";
+import { env } from "./env.js";
 
-const connectDB = async (): Promise<void> => {
-  try {
-    // Connection options for better reliability
-    const connOptions = {
-      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5s
-      socketTimeoutMS: 45000,        // Close sockets after 45s of inactivity
-      family: 4,                     // Use IPv4 only
-      maxPoolSize: 10,               // Maintain up to 10 socket connections
-    };
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
 
-    if (!process.env.MONGODB_URI) {
-        console.log('MONGODB_URI:', config.MONGODB_URI);
-  throw new Error("❌ MONGODB_URI is missing in .env");
+const pool = new pg.Pool({
+  connectionString: env.DATABASE_URL,
+});
+
+const adapter = new PrismaPg(pool);
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter,
+    log:
+      env.NODE_ENV === "development"
+        ? ["query", "error", "warn"]
+        : ["error"],
+  });
+
+if (env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
 }
 
-    await mongoose.connect(config.MONGODB_URI, connOptions);
-    
-    console.log("✅ MongoDB connected successfully");
-    
-    // Handle connection events after successful connection
-    mongoose.connection.on('connected', () => {
-      console.log("📡 Mongoose connected to MongoDB");
-    });
-
-    mongoose.connection.on('error', (err) => {
-      console.error("❌ Mongoose connection error:", err.message);
-    });
-
-  } catch (error: any) {
-    console.error("💥 MongoDB connection failed:", error.message);
-    
-    // Exit process on connection failure (adjust as needed for your app)
+export const connectDB = async (): Promise<void> => {
+  try {
+    await prisma.$connect();
+    console.log("✅ PostgreSQL connected successfully via Prisma");
+  } catch (error) {
+    console.error(
+      "💥 Database connection failed:",
+      error instanceof Error ? error.message : error
+    );
     process.exit(1);
   }
 };
 
-// Handle graceful shutdown
-process.on('SIGINT', async () => {
-  console.log("🛑 Gracefully shutting down...");
-  await mongoose.connection.close();
-  console.log("📴 MongoDB connection closed");
-  process.exit(0);
-});
-
-export default connectDB;
+export const disconnectDB = async (): Promise<void> => {
+  await prisma.$disconnect();
+  await pool.end();
+  console.log("📴 PostgreSQL connection closed");
+};

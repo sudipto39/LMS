@@ -1,18 +1,33 @@
+// src/schemas/signUpSchema.ts
 import { z } from "zod";
 
-export const signUpValidation = z.object({
-  email: z
-    .string()
-    .email("Invalid email address")
-    .regex(
-      /[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?/,
-    ),
-  password: z.string().min(8, "Password must be at least 8 characters long"),
-  phoneNumber: z.string().length(10, "Phone number must be 10 digits long"),
-  department: z
-    .string()
-    .min(2, "Department must be at least 2 characters long"),
-  session: z
-    .number()
-    .int(),
+export const signUpSchema = z.object({
+  body: z.object({
+    name: z
+      .string()
+      .min(2, "Name must be at least 2 characters")
+      .max(50, "Name must be at most 50 characters"),
+
+    email: z
+      .string()
+      .email("Invalid email address")
+      .toLowerCase(),
+
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[0-9]/, "Password must contain at least one number")
+      .regex(
+        /[!@#$%^&*(),.?":{}|<>]/,
+        "Password must contain at least one special character"
+      ),
+
+    role: z
+      .enum(["STUDENT", "SUPERVISOR"])
+      .optional()
+      .default("STUDENT"),
+  }),
 });
+
+export type SignUpInput = z.infer<typeof signUpSchema>["body"];

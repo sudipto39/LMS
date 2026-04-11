@@ -1,65 +1,71 @@
-import jwt, { JwtPayload } from "jsonwebtoken";
-import { Request, Response, NextFunction, RequestHandler } from "express";
-import User from "../models/userModel.js";
-import catchAsync from "../utils/catchAsync.js";
-import { AppError } from "../utils/appError.js";
+// src/middlewares/authMiddleware.ts
+import type { Request, Response, NextFunction, RequestHandler } from "express";
+import { prisma } from "../config/db.js";
+import { catchAsync } from "../utils/catchAsync.js";
+import { UnauthorizedError, ForbiddenError } from "../utils/appError.js";
+import { verifyAccessToken } from "../utils/createSendToken.js";
+import type { Role } from "../generated/prisma/index.js";
 
-export interface authenticatedRequest extends Request {
-  user: {
-    id: string;
-    role: string;
-  };
-}
+// ─── Protect middleware ───────────────────────────────────────────────────────
+
 export const protect: RequestHandler = catchAsync(
-  async (req, _res, next) => {
-    // cast ONCE internally
-    const authReq = req as authenticatedRequest;
-
-    let token: string | undefined;
-
-    if (
-      authReq.headers.authorization &&
-      authReq.headers.authorization.startsWith('Bearer')
-    ) {
-      token = authReq.headers.authorization.split(' ')[1];
-    } else if (authReq.cookies?.jwt) {
-      token = authReq.cookies.jwt;
+  async (req: Request, _res: Response, next: NextFunction) => {
+    // 1. Extract token from Authorization header only
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      throw new UnauthorizedError("You are not logged in");
     }
 
-    if (!token) {
-      return next(new AppError('You are not logged in', 401));
+    const token = authHeader.split(" ")[1];
+    if (!token) throw new UnauthorizedError("You are not logged in");
+
+    // 2. Verify token — throws if expired or invalid
+    let decoded: { id: string; role: Role };
+    try {
+      decoded = verifyAccessToken(token);
+    } catch {
+      throw new UnauthorizedError("Invalid or expired token. Please log in again");
     }
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET as string
-    ) as jwt.JwtPayload;
+    // 3. Check user still exists in DB
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: {
+        id: true,
+        role: true,
+        isEmailVerified: true,
+      },
+    });
 
-    const currentUser = await User.findById(decoded.id).select('role');
-
-    if (!currentUser) {
-      return next(new AppError('The user no longer exists', 401));
+    if (!user) {
+      throw new UnauthorizedError("The user belonging to this token no longer exists");
     }
 
-    authReq.user = {
-      id: currentUser._id.toString(),
-      role: currentUser.role,
-    };
-
+    // 4. Attach to request
+    req.user = user;
     next();
   }
 );
 
-export const restrictTo = (...roles: string[]): RequestHandler => {
-  return (req, _res, next) => {
-    const authReq = req as authenticatedRequest;
+// ─── Role restriction middleware ──────────────────────────────────────────────
 
-    if (!authReq.user || !roles.includes(authReq.user.role)) {
-      return next(
-        new AppError('You do not have permission to perform this action', 403)
-      );
+export const restrictTo = (...roles: Role[]): RequestHandler =>
+  (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      throw new ForbiddenError();
     }
-
     next();
   };
+
+// ─── Email verification middleware ────────────────────────────────────────────
+
+export const requireVerifiedEmail: RequestHandler = (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) => {
+  if (!req.user?.isEmailVerified) {
+    throw new UnauthorizedError("Please verify your email address before accessing this resource");
+  }
+  next();
 };

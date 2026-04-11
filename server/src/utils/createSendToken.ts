@@ -1,98 +1,77 @@
-import jwt, { Secret } from 'jsonwebtoken';
-import { Response } from 'express';
-import { User } from '../models/userModel.js'; // Adjust path to your User model
+// src/utils/createSendToken.ts
+import jwt from "jsonwebtoken";
+import type { Response } from "express";
+import type { Role } from "../generated/prisma/index.js";
+import { redis } from "../config/redis.js";
+import { env } from "../config/env.js";
 
+// ─── Token signing ────────────────────────────────────────────────────────────
 
-declare module 'jsonwebtoken' {
-  function sign(payload: any, secret: string, options?: any): string;
+export const signAccessToken = (id: string, role: Role): string =>
+  jwt.sign({ id, role }, env.JWT_ACCESS_SECRET, {
+    expiresIn: env.JWT_ACCESS_EXPIRES_IN,
+  } as jwt.SignOptions);
+
+export const signRefreshToken = (id: string): string =>
+  jwt.sign({ id }, env.JWT_REFRESH_SECRET, {
+    expiresIn: env.JWT_REFRESH_EXPIRES_IN,
+  } as jwt.SignOptions);
+
+// ─── Token verification ───────────────────────────────────────────────────────
+
+export const verifyAccessToken = (token: string) =>
+  jwt.verify(token, env.JWT_ACCESS_SECRET) as { id: string; role: Role };
+
+export const verifyRefreshToken = (token: string) =>
+  jwt.verify(token, env.JWT_REFRESH_SECRET) as { id: string };
+
+// ─── Redis refresh token store ────────────────────────────────────────────────
+
+const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+
+export const storeRefreshToken = (userId: string, token: string) =>
+  redis.setex(`refresh:${userId}`, REFRESH_TTL_SECONDS, token);
+
+export const getStoredRefreshToken = (userId: string) =>
+  redis.get(`refresh:${userId}`);
+
+export const revokeRefreshToken = (userId: string) =>
+  redis.del(`refresh:${userId}`);
+
+// ─── Main helper ──────────────────────────────────────────────────────────────
+
+interface SafeUser {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  isEmailVerified: boolean;
+  giteaUsername: string | null;
+  createdAt: Date;
 }
 
-const JWT_SECRET: string = process.env.JWT_SECRET!;
-const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN!;  
-
-const signToken = (id: string, role: User["role"]): string => {
-  if (!JWT_SECRET) {
-    throw new Error('JWT_SECRET is not defined');
-  }
-
-  return jwt.sign(
-    { id, role },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }  // Now TypeScript happy!
-  );
-};
-
-
-// Send token in both JWT response AND httpOnly cookie
-// const createSendToken = (user: User, statusCode: number, res: Response): void => {
-//   const token = signToken(user._id.toString());
-  
-//   const cookieOptions: any = {
-//     expires: new Date(
-//       Date.now() + (parseInt(process.env.JWT_COOKIE_EXPIRES_IN || '90') * 24 * 60 * 60 * 1000)
-//     ),
-//     httpOnly: true,  // Prevents XSS (document.cookie access)
-//     sameSite: 'strict'  // CSRF protection
-//   };
-  
-//   if (process.env.NODE_ENV === 'production') {
-//     cookieOptions.secure = true;  // HTTPS only
-//   }
-
-//   // Set httpOnly cookie
-//   res.cookie('jwt', token, cookieOptions);
-
-//   // Remove password from response
-//   const userObj = {
-//     ...user.toObject(),
-//     password: undefined
-//   };
-
-//   // Send JSON response with token
-//   res.status(statusCode).json({
-//     status: 'success',
-//     token,
-//     data: { user: userObj }
-//   });
-// };
-
-const createSendToken = (
-  user: User,
+export const createSendToken = async (
+  user: SafeUser,
   statusCode: number,
   res: Response
-): Response => {
-  const token = signToken(user._id.toString(), user.role);
+): Promise<void> => {
+  const accessToken = signAccessToken(user.id, user.role);
+  const refreshToken = signRefreshToken(user.id);
 
-  const cookieOptions: any = {
-    expires: new Date(
-      Date.now() +
-        parseInt(process.env.JWT_COOKIE_EXPIRES_IN || '90') *
-          24 *
-          60 *
-          60 *
-          1000
-    ),
+  // Store refresh token in Redis
+  await storeRefreshToken(user.id, refreshToken);
+
+  // Refresh token in httpOnly cookie
+  res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    sameSite: 'strict',
-  };
+    secure: env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: REFRESH_TTL_SECONDS * 1000,
+  });
 
-  if (process.env.NODE_ENV === 'production') {
-    cookieOptions.secure = true;
-  }
-
-  res.cookie('jwt', token, cookieOptions);
-
-  const userObj = {
-    ...user.toObject(),
-    password: undefined,
-  };
-
-  return res.status(statusCode).json({
-    status: 'success',
-    token,
-    data: { user: userObj },
+  res.status(statusCode).json({
+    status: "success",
+    accessToken,
+    data: { user },
   });
 };
-
-
-export { signToken, createSendToken };
