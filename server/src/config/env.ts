@@ -1,17 +1,52 @@
-import dotenv from 'dotenv';
-dotenv.config();
-const parsedPort = Number(process.env.PORT);
+// src/config/env.ts
+import { z } from "zod";
 
-export const config = {
-  EMAIL_VERIFICATION: process.env.EMAIL_VERIFICATION === 'true',
-  JWT_SECRET: process.env.JWT_SECRET!,
-  MONGODB_URI: process.env.MONGODB_URI!,
-  NODE_ENV: process.env.NODE_ENV,
-  PORT: Number.isInteger(parsedPort) ? parsedPort : 5000,
-  CLIENT_URL: process.env.CLIENT_URL!,
-  RESEND_API_KEY: process.env.RESEND_API_KEY || '',
-  GITEA_BASE_URL: process.env.GITEA_BASE_URL,
-  GITEA_WEBHOOK_SECRET: process.env.GITEA_WEBHOOK_SECRET,
-  GITEA_ADMIN_TOKEN: process.env.GITEA_ADMIN_TOKEN,
+const envSchema = z.object({
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default("development"),
+  PORT: z.coerce.number().int().positive().default(5000),
 
-} as const;
+  // Database
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+
+  // Redis
+  REDIS_URL: z.string().default("redis://localhost:6379"),
+
+  // JWT — using symmetric secret for simplicity; upgrade to RS256 keypair in prod
+  JWT_ACCESS_SECRET: z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 characters"),
+  JWT_REFRESH_SECRET: z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 characters"),
+  JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
+  JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+
+  // Email verification toggle
+  EMAIL_VERIFICATION: z
+  .preprocess(
+    (v) => (v === "true" ? true : false),
+    z.boolean()
+  )
+  .default(false),
+
+  // Client
+  CLIENT_URL: z.string().url("CLIENT_URL must be a valid URL"),
+
+  // Resend
+  RESEND_API_KEY: z.string().default(""),
+
+  // Gitea
+  GITEA_BASE_URL: z.string().url("GITEA_BASE_URL must be a valid URL"),
+  GITEA_ADMIN_TOKEN: z.string().min(1, "GITEA_ADMIN_TOKEN is required"),
+  GITEA_WEBHOOK_SECRET: z.string().min(1, "GITEA_WEBHOOK_SECRET is required"),
+});
+
+const parsed = envSchema.safeParse(process.env);
+
+if (!parsed.success) {
+  console.error("❌ Invalid environment variables:\n");
+  parsed.error.issues.forEach((issue) => {
+    console.error(`  ${issue.path.join(".")}: ${issue.message}`);
+  });
+  process.exit(1);
+}
+
+export const env = parsed.data;
