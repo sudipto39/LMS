@@ -1,11 +1,17 @@
-import { regex, z } from "zod";
+// src/schemas/signInSchema.ts
+import { z } from "zod";
 
-export const signInValidation = z.object({
-  email: z
-    .string()
-    .email("Invalid email address")
-    .regex(
-      /[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?/,
-    ),
-  password: z.string().min(8, "Password must be at least 8 characters long"),
+export const signInSchema = z.object({
+  body: z.object({
+    email: z
+      .string()
+      .email("Invalid email address")
+      .toLowerCase(),
+
+    password: z
+      .string()
+      .min(1, "Password is required"),
+  }),
 });
+
+export type SignInInput = z.infer<typeof signInSchema>["body"];
