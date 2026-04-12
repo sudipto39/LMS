@@ -1,3 +1,4 @@
+// src/controllers/authController.ts
 import type { Request, Response, NextFunction } from "express";
 import { catchAsync } from "../utils/catchAsync.js";
 import { AppError } from "../utils/appError.js";
@@ -26,8 +27,7 @@ export const register = catchAsync(async (req: Request, res: Response) => {
 
   res.status(201).json({
     status: "success",
-    message:
-      "Registration successful. Please check your email for the verification code.",
+    message: "Registration successful. Please check your email for the verification code.",
     data: { userId: result.userId },
   });
 });
@@ -41,7 +41,7 @@ export const verifyEmail = catchAsync(
     const { email, code } = req.body;
     const user = await authService.verifyEmail(email, code);
     await createSendToken(user, 200, res);
-  },
+  }
 );
 
 export const login = catchAsync(async (req: Request, res: Response) => {
@@ -82,23 +82,36 @@ export const refreshToken = catchAsync(
     }
 
     const accessToken = signAccessToken(user.id, user.role);
-
-    res.status(200).json({
-      status: "success",
-      accessToken,
-    });
-  },
+    res.status(200).json({ status: "success", accessToken });
+  }
 );
 
 export const forgotPassword = catchAsync(
   async (req: Request, res: Response) => {
     const result = await authService.forgotPassword(req.body.email);
     res.status(200).json({ status: "success", ...result });
-  },
+  }
 );
 
-export const resetPassword = catchAsync(async (req: Request, res: Response) => {
-  const { email, code, password } = req.body;
-  const result = await authService.resetPassword(email, code, password);
-  res.status(200);
+export const resetPassword = catchAsync(
+  async (req: Request, res: Response) => {
+    const { email, code, password } = req.body;
+    const result = await authService.resetPassword(email, code, password);
+    res.status(200).json({ status: "success", ...result });
+  }
+);
+
+export const logout = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (userId) await revokeRefreshToken(userId);
+
+  res.cookie("refreshToken", "", {
+    httpOnly: true,
+    expires: new Date(0),
+  });
+
+  res.status(200).json({
+    status: "success",
+    message: "Logged out successfully",
+  });
 });
