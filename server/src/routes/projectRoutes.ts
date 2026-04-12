@@ -1,4 +1,5 @@
-import express from "express";
+// src/routes/projectRoutes.ts
+import { Router } from "express";
 import {
   createProject,
   getMyProjects,
@@ -8,20 +9,18 @@ import {
 } from "../controllers/projectController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
-const router = express.Router();
+const router = Router();
 
-router.post("/create", protect, restrictTo("student"), createProject);
-router.get("/me", protect, restrictTo("student"), getMyProjects);
-
+router.post("/create", protect, restrictTo("STUDENT"), createProject);
+router.get("/me", protect, restrictTo("STUDENT"), getMyProjects);
 router.get(
   "/supervised",
   protect,
-  restrictTo("supervisor", "admin"),
-  getSupervisedProjects,
+  restrictTo("SUPERVISOR", "ADMIN"),
+  getSupervisedProjects
 );
-
-// Single project by ID — must be AFTER /me and /supervised so those don't match as :id
+// /:id must be AFTER named routes
 router.get("/:id", protect, getProjectById);
-router.patch("/:id", protect, restrictTo("student"), updateProject);
+router.patch("/:id", protect, restrictTo("STUDENT"), updateProject);
 
 export default router;

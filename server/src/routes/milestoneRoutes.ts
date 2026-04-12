@@ -1,4 +1,5 @@
-import express from 'express';
+// src/routes/milestoneRoutes.ts
+import { Router } from "express";
 import {
   createMilestone,
   getProjectMilestones,
@@ -6,58 +7,52 @@ import {
   approveMilestone,
   rejectMilestone,
   getMySubmissions,
-} from '../controllers/milestoneController.js';
+} from "../controllers/milestoneController.js";
+import { protect, restrictTo } from "../middlewares/authMiddleware.js";
+import { upload } from "../middlewares/fileUploadMiddleware.js";
 
-import { protect, restrictTo } from '../middlewares/authMiddleware.js';
-import { upload } from '../middlewares/fileUploadMiddleware.js';
-
-const router = express.Router();
+const router = Router();
 
 router.post(
-  '/projects/:projectId/milestones',
+  "/projects/:projectId/milestones",
   protect,
+  restrictTo("STUDENT"),
   createMilestone
 );
 
 router.get(
-  '/projects/:projectId/milestones',
+  "/projects/:projectId/milestones",
   protect,
   getProjectMilestones
 );
 
 router.patch(
-  '/milestones/:id/submit',
+  "/milestones/:id/submit",
   protect,
-  restrictTo('student'),
+  restrictTo("STUDENT"),
+  upload.array("files", 5),
   submitMilestone
 );
 
 router.patch(
-  '/milestones/:id/approve',
+  "/milestones/:id/approve",
   protect,
-  restrictTo('projectSupervisor', 'admin'),
+  restrictTo("SUPERVISOR", "ADMIN"),
   approveMilestone
 );
 
 router.patch(
-  '/milestones/:id/reject',
+  "/milestones/:id/reject",
   protect,
-  restrictTo('projectSupervisor', 'admin'),
+  restrictTo("SUPERVISOR", "ADMIN"),
   rejectMilestone
 );
 
 router.get(
-  '/me/submissions',
+  "/me/submissions",
   protect,
-  restrictTo('student'),
+  restrictTo("STUDENT"),
   getMySubmissions
-);
-router.patch(
-  '/milestones/:id/submit',
-  protect,
-  restrictTo('student'),
-  upload.array('files', 5),
-  submitMilestone
 );
 
 export default router;

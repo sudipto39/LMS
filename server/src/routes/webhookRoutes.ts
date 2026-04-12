@@ -1,39 +1,94 @@
-import { Router, Request, Response } from "express";
+// src/routes/webhookRoutes.ts
+import { Router } from "express";
+import express from "express";
 import crypto from "crypto";
+import type { Request, Response } from "express";
 import { giteaConfig } from "../config/gitea.js";
+import { prisma } from "../config/db.js";
 import { logActivity } from "../services/activityService.js";
 
 const router = Router();
 
-export const handleGiteaWebhook = async (req: Request, res: Response) => {
+const handleGiteaWebhook = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const signature = req.headers["x-gitea-signature"] as string;
 
+  // HMAC-SHA256 verification using timingSafeEqual
   const expected = crypto
     .createHmac("sha256", giteaConfig.webhookSecret)
-    .update(JSON.stringify(req.body))
+    .update(req.body as Buffer)
     .digest("hex");
 
-  if (signature !== expected) {
-    return res.status(401).send("Invalid signature");
+  const expectedBuf = Buffer.from(`sha256=${expected}`, "utf8");
+  const actualBuf = Buffer.from(signature ?? "", "utf8");
+
+  const isValid =
+    expectedBuf.length === actualBuf.length &&
+    crypto.timingSafeEqual(expectedBuf, actualBuf);
+
+  if (!isValid) {
+    res.status(401).json({ message: "Invalid signature" });
+    return;
   }
 
-  const commits = req.body.commits || [];
+  // Respond immediately — process async
+  res.status(200).json({ received: true });
 
-  for (const commit of commits) {
-    await logActivity({
-      type: "push",
-      message: `${commit.author.name} pushed commit`,
-      metadata: {
-        commitId: commit.id,
-        message: commit.message,
-        author: commit.author.name,
-      },
-    });
-  }
+  const event = req.headers["x-gitea-event"] as string;
 
-  res.status(200).send("Webhook processed");
+  if (event !== "push") return;
+
+  const payload = JSON.parse((req.body as Buffer).toString());
+  const repoName = payload.repository?.name as string | undefined;
+
+  if (!repoName) return;
+
+  const project = await prisma.project.findUnique({
+    where: { repoName },
+    select: { id: true, ownerId: true },
+  });
+
+  if (!project) return;
+
+  const commits: Array<{
+    id: string;
+    message: string;
+    author: { name: string };
+    added: string[];
+    modified: string[];
+    removed: string[];
+    timestamp: string;
+  }> = payload.commits ?? [];
+
+  if (commits.length === 0) return;
+
+  await Promise.all(
+    commits.map((commit) =>
+      logActivity({
+        type: "PUSH",
+        payload: {
+          hash: commit.id,
+          message: commit.message,
+          author: commit.author.name,
+          timestamp: commit.timestamp,
+          added: commit.added.length,
+          modified: commit.modified.length,
+          removed: commit.removed.length,
+        },
+        userId: project.ownerId,
+        projectId: project.id,
+      })
+    )
+  );
 };
 
-router.post("/gitea", handleGiteaWebhook);
+// Raw body parser — must come before express.json() in app.ts
+router.post(
+  "/gitea",
+  express.raw({ type: "application/json" }),
+  handleGiteaWebhook
+);
 
 export default router;
