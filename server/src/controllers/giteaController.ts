@@ -1,60 +1,51 @@
-import { Request, Response, NextFunction } from "express";
-import catchAsync from "../utils/catchAsync.js";
-import { AppError } from "../utils/appError.js";
-import * as giteaService from "../services/giteaService.js";
+// src/controllers/giteaController.ts
+import type { Request, Response } from "express";
+import { catchAsync } from "../utils/catchAsync.js";
+import { BadRequestError } from "../utils/appError.js";
+import { giteaService } from "../services/giteaService.js";
+import { requireParam } from "../utils/requireParam.js";
 
 export const createRepository = catchAsync(
   async (req: Request, res: Response) => {
-    const { name } = req.body;
+    const { name, description } = req.body as {
+      name: string;
+      description?: string;
+    };
+    if (!name) throw new BadRequestError("Repository name is required");
 
-    const repo = await giteaService.createRepo(name);
-
-    res.status(201).json({
-      status: "success",
-      data: repo,
-    });
-  },
+    const repo = await giteaService.createRepo(
+      req.user!.id,
+      name,
+      description
+    );
+    res.status(201).json({ status: "success", data: repo });
+  }
 );
 
-export const getRepository = catchAsync(async (req: Request, res: Response) => {
-  const { owner, repo } = req.params;
-
-  if (typeof owner !== "string" || typeof repo !== "string") {
-    throw new AppError("Invalid repository parameters", 400);
+export const getRepository = catchAsync(
+  async (req: Request, res: Response) => {
+    const owner = requireParam(req.params["owner"], "owner");
+    const repo = requireParam(req.params["repo"], "repo");
+    const data = await giteaService.getRepo(owner, repo);
+    res.status(200).json({ status: "success", data });
   }
+);
 
-  const repoData = await giteaService.getRepo(owner, repo);
-
-  res.status(200).json({
-    status: "success",
-    data: repoData,
-  });
-});
-
-export const listCommits = catchAsync(async (req: Request, res: Response) => {
-  const { owner, repo } = req.params;
-
-  if (typeof owner !== "string" || typeof repo !== "string") {
-    throw new AppError("Invalid repository parameters", 400);
+export const listCommits = catchAsync(
+  async (req: Request, res: Response) => {
+    const owner = requireParam(req.params["owner"], "owner");
+    const repo = requireParam(req.params["repo"], "repo");
+    const limit = Number(req.query["limit"]) || 20;
+    const data = await giteaService.getCommits(owner, repo, limit);
+    res.status(200).json({ status: "success", data });
   }
-
-  const commits = await giteaService.getRepoCommits(owner, repo);
-
-  res.status(200).json({
-    status: "success",
-    data: commits,
-  });
-});
+);
 
 export const listBranches = catchAsync(
   async (req: Request, res: Response) => {
-    const { owner, repo } = req.params as { owner: string; repo: string };
-
-    const branches = await giteaService.getBranches(owner, repo);
-
-    res.status(200).json({
-      status: "success",
-      data: branches,
-    });
+    const owner = requireParam(req.params["owner"], "owner");
+    const repo = requireParam(req.params["repo"], "repo");
+    const data = await giteaService.getBranches(owner, repo);
+    res.status(200).json({ status: "success", data });
   }
 );

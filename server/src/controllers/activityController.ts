@@ -1,124 +1,61 @@
-import { Request, Response, RequestHandler, NextFunction } from "express";
-import mongoose from "mongoose";
-import Activity from "../models/activityModel.js";
-import catchAsync from "../utils/catchAsync.js";
-import { AppError } from "../utils/appError.js";
-import { authenticatedRequest } from "../middlewares/authMiddleware.js";
+// src/controllers/activityController.ts
+import type { Request, Response } from "express";
+import { prisma } from "../config/db.js";
+import { catchAsync } from "../utils/catchAsync.js";
+import { requireParam } from "../utils/requireParam.js";
 
-/*
---------------------------------------------------
-Get Logged-in User Activity
---------------------------------------------------
-*/
+const activityInclude = {
+  user: { select: { id: true, name: true, role: true } },
+  project: { select: { id: true, title: true } },
+} as const;
+
 export const getMyActivity = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const authReq = req as authenticatedRequest;
-
-    if (!authReq.user) {
-      return next(new AppError("Not authenticated", 401));
-    }
-
-    const activities = await Activity.find({
-      actor: authReq.user.id,
-    })
-      .sort({ createdAt: -1 })
-      .limit(20)
-      .lean();
-
-    res.status(200).json({
-      success: true,
-      data: activities,
+  async (req: Request, res: Response) => {
+    const activities = await prisma.activity.findMany({
+      where: { userId: req.user!.id },
+      include: activityInclude,
+      orderBy: { createdAt: "desc" },
+      take: 20,
     });
+    res.status(200).json({ status: "success", data: activities });
   }
 );
 
-/*
---------------------------------------------------
-Get Activity for a Specific Project
---------------------------------------------------
-*/
-export const getProjectActivity: RequestHandler = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const projectId = req.params.projectId;
-
-    if (!projectId || typeof projectId !== "string") {
-      return next(new AppError("Invalid project id", 400));
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(projectId)) {
-      return next(new AppError("Invalid project id", 400));
-    }
-
-    const activities = await Activity.find({
-      project: projectId,
-    })
-      .sort({ createdAt: -1 })
-      .populate("actor", "name role")
-      .populate("milestone", "title")
-      .lean();
-
+export const getProjectActivity = catchAsync(
+  async (req: Request, res: Response) => {
+    const projectId = requireParam(req.params["projectId"], "projectId");
+    const activities = await prisma.activity.findMany({
+      where: { projectId },
+      include: activityInclude,
+      orderBy: { createdAt: "desc" },
+    });
     res.status(200).json({
-      success: true,
+      status: "success",
       count: activities.length,
       data: activities,
     });
   }
 );
 
-/*
---------------------------------------------------
-Get Activity for Supervisor Projects
---------------------------------------------------
-*/
 export const getSupervisorActivity = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const authReq = req as authenticatedRequest;
-
-    if (!authReq.user) {
-      return next(new AppError("Not authenticated", 401));
-    }
-
-    res.set("Cache-Control", "no-store");
-    
-    const activities = await Activity.find()
-      .populate({
-        path: "project",
-        match: { supervisor: authReq.user.id },
-        select: "title",
-      })
-      .populate("actor", "name")
-      .sort({ createdAt: -1 })
-      .limit(30)
-      .lean();
-
-    const filteredActivities = activities.filter(
-      (activity: any) => activity.project !== null
-    );
-
-    res.status(200).json({
-      success: true,
-      data: filteredActivities,
+  async (req: Request, res: Response) => {
+    const activities = await prisma.activity.findMany({
+      where: { project: { supervisorId: req.user!.id } },
+      include: activityInclude,
+      orderBy: { createdAt: "desc" },
+      take: 30,
     });
+    res.status(200).json({ status: "success", data: activities });
   }
 );
 
-/*
---------------------------------------------------
-Get All Activity (Admin)
---------------------------------------------------
-*/
-export const getAdminActivity: RequestHandler = catchAsync(
+export const getAdminActivity = catchAsync(
   async (_req: Request, res: Response) => {
-    const activities = await Activity.find()
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .populate("actor", "name role")
-      .populate("project", "title")
-      .lean();
-
-    res.status(200).json({
-      success: true,
-      data: activities,
+    const activities = await prisma.activity.findMany({
+      include: activityInclude,
+      orderBy: { createdAt: "desc" },
+      take: 50,
     });
+    res.status(200).json({ status: "success", data: activities });
   }
 );

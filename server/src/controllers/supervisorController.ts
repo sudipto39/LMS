@@ -1,35 +1,24 @@
-import { Request, Response, NextFunction } from "express";
-import { Types } from "mongoose";
-import User from "../models/userModel.js"
-import Project from "../models/projectModel.js";
-import Milestone from "../models/milestoneModel.js";
-import ActivityModel from "../models/activityModel.js";
-import { RequestHandler } from "express";
-import catchAsync from "../utils/catchAsync.js";
-import { AppError } from "../utils/appError.js";
+// src/controllers/supervisorController.ts
+import type { Request, Response } from "express";
+import { prisma } from "../config/db.js";
+import { catchAsync } from "../utils/catchAsync.js";
+import {
+  NotFoundError,
+  BadRequestError,
+  ForbiddenError,
+} from "../utils/appError.js";
 import { logActivity } from "../services/activityService.js";
+import { requireParam } from "../utils/requireParam.js";
 
-export const getAllSupervisors: RequestHandler = catchAsync(
-  async (req: Request, res: Response) => {
-    const { courseId } = req.query;
-
-    const filter: any = {
-      role: "supervisor",
-      isActive: true,
-    };
-
-    // optional course filter
-    if (courseId && typeof courseId === "string") {
-      filter.course = courseId;
-    }
-
-    const supervisors = await User.find(filter)
-      .select("_id name email")
-      .sort({ name: 1 })
-      .lean();
-
+export const getAllSupervisors = catchAsync(
+  async (_req: Request, res: Response) => {
+    const supervisors = await prisma.user.findMany({
+      where: { role: "SUPERVISOR" },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: "asc" },
+    });
     res.status(200).json({
-      success: true,
+      status: "success",
       count: supervisors.length,
       data: supervisors,
     });
@@ -37,174 +26,138 @@ export const getAllSupervisors: RequestHandler = catchAsync(
 );
 
 export const getSupervisorDashboard = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return next(new AppError("Unauthorized", 401));
-    }
+  async (req: Request, res: Response) => {
+    const supervisorId = req.user!.id;
 
-    const supervisorId = new Types.ObjectId(req.user.id);
-
-    const [projectsCount, pendingMilestones, recentActivity] =
+    const [totalProjects, pendingMilestones, recentActivity] =
       await Promise.all([
-        Project.countDocuments({ supervisor: supervisorId }),
-
-        Milestone.aggregate([
-          {
-            $lookup: {
-              from: "projects",
-              localField: "project",
-              foreignField: "_id",
-              as: "project",
-            },
+        prisma.project.count({ where: { supervisorId } }),
+        prisma.milestone.count({
+          where: { status: "SUBMITTED", project: { supervisorId } },
+        }),
+        prisma.activity.findMany({
+          where: { project: { supervisorId } },
+          include: {
+            project: { select: { id: true, title: true } },
+            user: { select: { id: true, name: true } },
           },
-          { $unwind: "$project" },
-          {
-            $match: {
-              "project.supervisor": supervisorId,
-              status: "submitted",
-            },
-          },
-          { $count: "pendingReviews" },
-        ]),
-
-        ActivityModel.find({ actor: supervisorId })
-          .sort({ createdAt: -1 })
-          .limit(10)
-          .populate("project", "title")
-          .populate("milestone", "title order"),
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        }),
       ]);
 
     res.status(200).json({
       status: "success",
-      data: {
-        totalProjects: projectsCount,
-        pendingReviews: pendingMilestones[0]?.pendingReviews || 0,
-        recentActivity,
-      },
+      data: { totalProjects, pendingMilestones, recentActivity },
     });
   }
 );
 
 export const getAssignedProjects = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return next(new AppError("Unauthorized", 401));
-    }
-
-    const supervisorId = new Types.ObjectId(req.user.id);
-
-    const projects = await Project.find({
-      supervisor: supervisorId,
-    })
-      .populate("owner", "name email")
-      .sort({ createdAt: -1 });
-
+  async (req: Request, res: Response) => {
+    const projects = await prisma.project.findMany({
+      where: { supervisorId: req.user!.id },
+      include: {
+        owner: { select: { id: true, name: true, email: true } },
+        _count: { select: { milestones: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
     res.status(200).json({
       status: "success",
-      results: projects.length,
+      count: projects.length,
       data: projects,
     });
   }
 );
 
 export const getPendingMilestones = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return next(new AppError("Unauthorized", 401));
-    }
-
-    const supervisorId = new Types.ObjectId(req.user.id);
-
-    const milestones = await Milestone.find({
-      status: "submitted",
-    })
-      .populate({
-        path: "project",
-        match: { supervisor: supervisorId },
-        select: "title owner",
-        populate: {
-          path: "owner",
-          select: "name email",
+  async (req: Request, res: Response) => {
+    const milestones = await prisma.milestone.findMany({
+      where: {
+        status: "SUBMITTED",
+        project: { supervisorId: req.user!.id },
+      },
+      include: {
+        project: {
+          select: {
+            id: true,
+            title: true,
+            owner: { select: { id: true, name: true, email: true } },
+          },
         },
-      })
-      .populate("submittedBy", "name email");
-
-    const filteredMilestones = milestones.filter((m) => m.project !== null);
-
+      },
+      orderBy: { submittedAt: "asc" },
+    });
     res.status(200).json({
       status: "success",
-      results: filteredMilestones.length,
-      data: filteredMilestones,
+      count: milestones.length,
+      data: milestones,
     });
   }
 );
 
 export const reviewMilestone = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const { status, feedback } = req.body;
+  async (req: Request, res: Response) => {
+    const id = requireParam(req.params["id"], "id");
+    const { status, feedback } = req.body as {
+      status: "APPROVED" | "REJECTED";
+      feedback?: string;
+    };
 
-    if (!req.user) {
-      return next(new AppError("Unauthorized", 401));
+    if (!["APPROVED", "REJECTED"].includes(status)) {
+      throw new BadRequestError("Status must be APPROVED or REJECTED");
     }
 
-    if (!["approved", "rejected"].includes(status)) {
-      return next(new AppError("Status must be approved or rejected", 400));
-    }
+    const milestone = await prisma.milestone.findUnique({
+      where: { id },
+      include: { project: { select: { supervisorId: true } } },
+    });
 
-    const milestone = await Milestone.findById(req.params.id).populate(
-      "project"
-    );
+    if (!milestone) throw new NotFoundError("Milestone");
 
-    if (!milestone) {
-      return next(new AppError("Milestone not found", 404));
-    }
+    const isAdmin = req.user!.role === "ADMIN";
+    const isSupervisor = milestone.project.supervisorId === req.user!.id;
+    if (!isAdmin && !isSupervisor) throw new ForbiddenError();
 
-    milestone.status = status;
-    milestone.supervisorFeedback = feedback;
-    milestone.reviewedBy = new Types.ObjectId(req.user.id);
-
-    await milestone.save();
-
-    const projectId =
-      typeof milestone.project === "object"
-        ? milestone.project._id
-        : milestone.project;
+    const updated = await prisma.milestone.update({
+      where: { id },
+      data: {
+        status,
+        feedback: feedback ?? null,
+        reviewedAt: new Date(),
+      },
+    });
 
     await logActivity({
-      actor: req.user.id,
-      project: projectId,
-      milestone: milestone._id,
-      type: "review",
-      message: `Milestone ${status} by supervisor`,
+      type: `MILESTONE_${status}`,
+      payload: { milestoneTitle: milestone.title, feedback: feedback ?? "" },
+      userId: req.user!.id,
+      projectId: milestone.projectId,
     });
 
     res.status(200).json({
       status: "success",
-      message: `Milestone ${status} successfully`,
-      data: milestone,
+      message: `Milestone ${status.toLowerCase()} successfully`,
+      data: updated,
     });
   }
 );
 
-export const getSupervisorActivity = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return next(new AppError("Unauthorized", 401));
-    }
-
-    const supervisorId = new Types.ObjectId(req.user.id);
-
-    const activities = await ActivityModel.find({
-      actor: supervisorId,
-    })
-      .sort({ createdAt: -1 })
-      .limit(20)
-      .populate("project", "title")
-      .populate("milestone", "title order");
-
+export const getSupervisorActivityFeed = catchAsync(
+  async (req: Request, res: Response) => {
+    const activities = await prisma.activity.findMany({
+      where: { project: { supervisorId: req.user!.id } },
+      include: {
+        project: { select: { id: true, title: true } },
+        user: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
     res.status(200).json({
       status: "success",
-      results: activities.length,
+      count: activities.length,
       data: activities,
     });
   }

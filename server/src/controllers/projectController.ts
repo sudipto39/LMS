@@ -1,301 +1,168 @@
-import catchAsync from "../utils/catchAsync.js";
-import Project from "../models/projectModel.js";
-import User from "../models/userModel.js";
-import "../models/batchModel.js";
-import "../models/courseModel.js";
-import { authenticatedRequest } from "../middlewares/authMiddleware.js";
-import { AppError } from "../utils/appError.js";
-import { Types } from "mongoose";
-import { RequestHandler } from "express";
-import { createRepo } from "../services/giteaService.js";
+// src/controllers/projectController.ts
+import type { Request, Response } from "express";
+import { prisma } from "../config/db.js";
+import { catchAsync } from "../utils/catchAsync.js";
+import {
+  NotFoundError,
+  ForbiddenError,
+  BadRequestError,
+} from "../utils/appError.js";
+import { giteaService } from "../services/giteaService.js";
+import { logActivity } from "../services/activityService.js";
+import { requireParam } from "../utils/requireParam.js";
+import { env } from "../config/env.js";
 
-/**
- * STEP 1 — Create Project Draft
- */
-export const createProject: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const authReq = req as authenticatedRequest;
+const projectInclude = {
+  owner: { select: { id: true, name: true, email: true } },
+  supervisor: { select: { id: true, name: true, email: true } },
+  batch: { select: { id: true, name: true } },
+  _count: { select: { milestones: true } },
+} as const;
 
-    const user = await User.findById(authReq.user.id).select("course batch");
+export const createProject = catchAsync(
+  async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { title, description, batchId, repoName } = req.body as {
+      title: string;
+      description?: string;
+      batchId: string;
+      repoName?: string;
+    };
 
-    if (!user) {
-      return next(new AppError("User not found", 404));
-    }
+    if (!title) throw new BadRequestError("Project title is required");
+    if (!batchId) throw new BadRequestError("Batch ID is required");
 
-    if (!user.course || !user.batch) {
-      return next(
-        new AppError(
-          "Your profile is incomplete. Course or batch missing.",
-          400,
-        ),
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { giteaUsername: true },
+    });
+
+    if (!user?.giteaUsername) {
+      throw new BadRequestError(
+        "Please set up your Gitea username in your profile before creating a project"
       );
     }
 
-    // Accept both frontend field names and backend field names
-    const technologies =
-      authReq.body.techStack || authReq.body.technologies || [];
-    const supervisor =
-      authReq.body.supervisorId || authReq.body.supervisor || null;
+    const sanitizedName = (repoName ?? title)
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
 
-    // Handle repo creation if requested
-    let repoUrl: string | undefined;
-    const { repoOption, repoName, existingRepoUrl } = authReq.body;
+    const repo = await giteaService.createRepo(
+      user.giteaUsername,
+      sanitizedName,
+      description
+    );
 
-    console.log(`📋 Project creation request - repoOption: ${repoOption}, repoName: ${repoName}`);
+    await giteaService.createWebhook(
+      user.giteaUsername,
+      sanitizedName,
+      `${env.CLIENT_URL}/api/v1/webhooks/gitea`
+    );
 
-    if (repoOption === "create_new") {
-      try {
-        // Use provided repoName or fallback to sanitized title
-        const sanitizedTitle = authReq.body.title
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
-        
-        const finalRepoName = repoName || sanitizedTitle;
-        
-        if (!finalRepoName) {
-          return next(new AppError("Repository name is required", 400));
-        }
-
-        console.log(`🔨 Creating Gitea repo with name: ${finalRepoName}`);
-        const repo = await createRepo(finalRepoName, authReq.body.description);
-        repoUrl = repo.html_url || repo.clone_url;
-        
-        console.log(`✅ Created Gitea repo: ${finalRepoName} at ${repoUrl}`);
-      } catch (err: any) {
-        console.error(`❌ Failed to create Gitea repo:`, err);
-        console.error(`Error details:`, err.response?.data || err.message);
-        return next(
-          new AppError(
-            `Failed to create Gitea repository: ${err.response?.data?.message || err.message}`,
-            502,
-          ),
-        );
-      }
-    } else if (repoOption === "link_existing" && existingRepoUrl) {
-      repoUrl = existingRepoUrl;
-      console.log(`🔗 Linking existing repo: ${repoUrl}`);
-    }
-
-    const projectData: Record<string, unknown> = {
-      title: authReq.body.title,
-      description: authReq.body.description,
-      technologies,
-      owner: new Types.ObjectId(authReq.user.id),
-      course: user.course,
-      batch: user.batch,
-      supervisor,
-      status: "draft",
-      isActive: true,
-    };
-
-    if (repoUrl) {
-      projectData.repoUrl = repoUrl;
-    }
-
-    const project = await Project.create(projectData);
-
-    console.log(`✅ Project created successfully: ${project._id}, repoUrl: ${project.repoUrl || 'none'}`);
-
-    res.status(201).json({
-      success: true,
-      message: "Project draft created",
-      data: project,
+    const project = await prisma.project.create({
+      data: {
+        title,
+        ...(description !== undefined && { description }),
+        repoName: repo.name,
+        repoUrl: repo.html_url,
+        ownerId: userId,
+        batchId,
+      },
+      include: projectInclude,
     });
-  },
+
+    await logActivity({
+      type: "PROJECT_CREATED",
+      payload: { projectTitle: title, repoName: repo.name },
+      userId,
+      projectId: project.id,
+    });
+
+    res.status(201).json({ status: "success", data: project });
+  }
 );
 
-/**
- * STEP 2 — Configure Repository
- */
-export const setupRepository: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const authReq = req as authenticatedRequest;
-    const { id } = authReq.params;
-
-    if (!id || Array.isArray(id) || !Types.ObjectId.isValid(id)) {
-      return next(new AppError("Invalid project ID", 400));
-    }
-
-    const { repoUrl } = authReq.body;
-
-    if (!repoUrl) {
-      return next(new AppError("Repository URL is required", 400));
-    }
-
-    const project = await Project.findOne({
-      _id: id,
-      owner: authReq.user.id,
-      isActive: true,
+export const getMyProjects = catchAsync(
+  async (req: Request, res: Response) => {
+    const projects = await prisma.project.findMany({
+      where: { ownerId: req.user!.id },
+      include: projectInclude,
+      orderBy: { createdAt: "desc" },
     });
-
-    if (!project) {
-      return next(new AppError("Project not found", 404));
-    }
-
-    if (project.repoUrl) {
-      return next(new AppError("Repository already configured", 400));
-    }
-
-    project.repoUrl = repoUrl;
-    await project.save();
-
     res.status(200).json({
-      success: true,
-      message: "Repository configured successfully",
-      data: project,
-    });
-  },
-);
-
-/**
- * STEP 3 — Save Milestones
- */
-export const setupMilestones: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const authReq = req as authenticatedRequest;
-    const { id } = authReq.params;
-
-    if (!id || Array.isArray(id) || !Types.ObjectId.isValid(id)) {
-      return next(new AppError("Invalid project ID", 400));
-    }
-
-    const { milestones } = authReq.body;
-
-    if (!milestones || !Array.isArray(milestones)) {
-      return next(new AppError("Milestones must be an array", 400));
-    }
-
-    const project = await Project.findOne({
-      _id: id,
-      owner: authReq.user.id,
-      isActive: true,
-    });
-
-    if (!project) {
-      return next(new AppError("Project not found", 404));
-    }
-
-    project.milestones = milestones;
-    project.status = "submitted";
-
-    await project.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Milestones saved and project submitted",
-      data: project,
-    });
-  },
-);
-
-/**
- * Student — View Own Projects
- */
-export const getMyProjects: RequestHandler = catchAsync(async (req, res) => {
-  const authReq = req as authenticatedRequest;
-
-  const projects = await Project.find({
-    owner: authReq.user.id,
-    isActive: true,
-  })
-    .populate("supervisor", "name email")
-    .populate("course", "name code")
-    .populate("batch", "name startYear endYear")
-    .sort({ createdAt: -1 });
-
-  res.status(200).json({
-    success: true,
-    count: projects.length,
-    data: projects,
-  });
-});
-
-/**
- * Supervisor — View Assigned Projects
- */
-export const getSupervisedProjects: RequestHandler = catchAsync(
-  async (req, res) => {
-    const authReq = req as authenticatedRequest;
-
-    const projects = await Project.find({
-      supervisor: authReq.user.id,
-      isActive: true,
-    })
-      .populate("owner", "name email universityId")
-      .populate("course", "name code")
-      .populate("batch", "name startYear endYear")
-      .sort({ createdAt: -1 });
-
-    res.status(200).json({
-      success: true,
+      status: "success",
       count: projects.length,
       data: projects,
     });
-  },
+  }
 );
 
-/**
- * Get Single Project by ID
- */
-export const getProjectById: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const { id } = req.params;
-
-    if (!id || Array.isArray(id) || !Types.ObjectId.isValid(id)) {
-      return next(new AppError("Invalid project ID", 400));
-    }
-
-    const project = await Project.findOne({ _id: id, isActive: true })
-      .populate("supervisor", "name email")
-      .populate("owner", "name email universityId")
-      .populate("course", "name code")
-      .populate("batch", "name startYear endYear");
-
-    if (!project) {
-      return next(new AppError("Project not found", 404));
-    }
-
-    res.status(200).json({
-      success: true,
-      data: project,
+export const getSupervisedProjects = catchAsync(
+  async (req: Request, res: Response) => {
+    const projects = await prisma.project.findMany({
+      where: { supervisorId: req.user!.id },
+      include: projectInclude,
+      orderBy: { createdAt: "desc" },
     });
-  },
+    res.status(200).json({
+      status: "success",
+      count: projects.length,
+      data: projects,
+    });
+  }
 );
 
-/**
- * Update Project
- */
-export const updateProject: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const authReq = req as authenticatedRequest;
-    const { id } = authReq.params;
+export const getProjectById = catchAsync(
+  async (req: Request, res: Response) => {
+    const id = requireParam(req.params["id"], "id");
 
-    if (!id || Array.isArray(id) || !Types.ObjectId.isValid(id)) {
-      return next(new AppError("Invalid project ID", 400));
-    }
-
-    const project = await Project.findOneAndUpdate(
-      {
-        _id: id,
-        owner: authReq.user.id,
-        isActive: true,
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        ...projectInclude,
+        milestones: { orderBy: { createdAt: "asc" } },
+        activities: { orderBy: { createdAt: "desc" }, take: 10 },
       },
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      },
-    );
-
-    if (!project) {
-      return next(new AppError("Project not found or access denied", 404));
-    }
-
-    res.status(200).json({
-      success: true,
-      data: project,
     });
-  },
+
+    if (!project) throw new NotFoundError("Project");
+
+    const isOwner = project.ownerId === req.user!.id;
+    const isSupervisor = project.supervisorId === req.user!.id;
+    const isAdmin = req.user!.role === "ADMIN";
+    if (!isOwner && !isSupervisor && !isAdmin) throw new ForbiddenError();
+
+    res.status(200).json({ status: "success", data: project });
+  }
+);
+
+export const updateProject = catchAsync(
+  async (req: Request, res: Response) => {
+    const id = requireParam(req.params["id"], "id");
+    const { title, description } = req.body as {
+      title?: string;
+      description?: string;
+    };
+
+    const existing = await prisma.project.findUnique({
+      where: { id },
+      select: { ownerId: true },
+    });
+
+    if (!existing) throw new NotFoundError("Project");
+    if (existing.ownerId !== req.user!.id) throw new ForbiddenError();
+
+    const project = await prisma.project.update({
+      where: { id },
+      data: {
+        ...(title && { title }),
+        ...(description !== undefined && { description }),
+      },
+      include: projectInclude,
+    });
+
+    res.status(200).json({ status: "success", data: project });
+  }
 );
