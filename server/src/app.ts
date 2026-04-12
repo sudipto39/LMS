@@ -1,56 +1,73 @@
-import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
-import compression from 'compression';
-import authRouter from './routes/authRoutes.js';
-import { config } from './config/env.js';
-import { globalErrorHandler } from './middlewares/globalErrorHandler.js';
-import { notFound } from './middlewares/notFound.js';
-import projectRouter from './routes/projectRoutes.js';
-import milestoneRouter from './routes/milestoneRoutes.js';
-import userRouter from './routes/userRoutes.js';
-import activityRouter from './routes/activityRoutes.js';
-import giteaRouter from './routes/giteaRoutes.js';
-import adminRouter from './routes/adminRoutes.js';
-import supervisorRouter from './routes/supervisorRoutes.js'
-import courseRouter from './routes/courseRoutes.js'
-import webhookRouter from './routes/webhookRoutes.js'
+// src/app.ts
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import rateLimit from "express-rate-limit";
+import compression from "compression";
+import cookieParser from "cookie-parser";
+import { env } from "./config/env.js";
+import { globalErrorHandler } from "./middlewares/globalErrorHandler.js";
+import { notFound } from "./middlewares/notFound.js";
 
+// Routes
+import authRouter from "./routes/authRoutes.js";
+import userRouter from "./routes/userRoutes.js";
+import adminRouter from "./routes/adminRoutes.js";
+import courseRouter from "./routes/courseRoutes.js";
+import projectRouter from "./routes/projectRoutes.js";
+import milestoneRouter from "./routes/milestoneRoutes.js";
+import activityRouter from "./routes/activityRoutes.js";
+import supervisorRouter from "./routes/supervisorRoutes.js";
+import giteaRouter from "./routes/giteaRoutes.js";
+import webhookRouter from "./routes/webhookRoutes.js";
 
 export const app = express();
 
-// 2. Security Middleware
+// ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
-const allowedOrigins = config.CLIENT_URL
-  .split(',')
-  .map(o => o.trim().replace(/\/$/, ''));
+const allowedOrigins = env.CLIENT_URL
+  .split(",")
+  .map((o) => o.trim().replace(/\/$/, ""));
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // Postman / server calls
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const cleanOrigin = origin.replace(/\/$/, "");
+      if (allowedOrigins.includes(cleanOrigin)) return callback(null, true);
+      return callback(new Error(`CORS blocked: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 
-    const cleanOrigin = origin.replace(/\/$/, '');
+// ─── Webhook route FIRST (needs raw body, before express.json) ────────────────
+app.use("/api/v1/webhooks", webhookRouter);
 
-    if (allowedOrigins.includes(cleanOrigin)) {
-      return callback(null, true);
-    }
+// ─── Body parsers ─────────────────────────────────────────────────────────────
+app.use(express.json({ limit: "50kb" }));
+app.use(express.urlencoded({ extended: true, limit: "50kb" }));
+app.use(cookieParser());
+app.use(compression());
 
-    return callback(new Error(`CORS blocked: ${origin}`));
-  },
-  credentials: true,
-}));
+// ─── Logging ──────────────────────────────────────────────────────────────────
+if (env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+}
 
-// 3. Rate Limiting (protect auth endpoints)
-const isDev = config.NODE_ENV === 'development';
+// ─── Static files ─────────────────────────────────────────────────────────────
+app.use("/uploads", express.static("uploads"));
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+const isDev = env.NODE_ENV === "development";
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDev ? 100 : 5, // relaxed in development
-  message: 'Too many login attempts, try again later',
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 100 : 10,
+  message: "Too many requests from this IP, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -62,57 +79,44 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// 4. Body Parsers
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-app.use(compression());
-app.use((req, res, next) => {
+app.use("/api/v1", apiLimiter);
+
+// ─── No-cache header ──────────────────────────────────────────────────────────
+app.use((_req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
 });
 
-// 5. Logging
-if (config.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-}
+// ─── Routes ───────────────────────────────────────────────────────────────────
+app.use("/api/v1/auth", authLimiter, authRouter);
+app.use("/api/v1/users", userRouter);
+app.use("/api/v1/admin", adminRouter);
+app.use("/api/v1/courses", courseRouter);
+app.use("/api/v1/projects", projectRouter);
+app.use("/api/v1", milestoneRouter);
+app.use("/api/v1/activities", activityRouter);
+app.use("/api/v1/supervisors", supervisorRouter);
+app.use("/api/v1/gitea", giteaRouter);
 
-// 6. Apply rate limiting to all API routes
-app.use('/api/v1', apiLimiter);
-
-// stricter limiter for auth
-app.use('/api/v1/auth', authLimiter, authRouter);
-app.use('/api/v1/projects', projectRouter);
-app.use('/api/v1', milestoneRouter);
-app.use('/api/v1/users', userRouter);
-app.use('/api/v1/activities', activityRouter);
-app.use('/api/v1/admin', adminRouter);
-app.use('/api/v1/supervisors', supervisorRouter);
-app.use('/api/v1/gitea', giteaRouter);
-app.use('/api/v1/courses', courseRouter);
-app.use('/api/v1/webhooks', webhookRouter);
-
-// 7. Base Route
+// ─── Health checks ────────────────────────────────────────────────────────────
 app.get("/", (_req, res) => {
   res.status(200).json({
-    success: true,
-    message: "API is running 🚀",
-    env: config.NODE_ENV 
+    status: "success",
+    message: "GiteaForge API is running 🚀",
+    env: env.NODE_ENV,
   });
 });
 
-// 8. Health Check Endpoint
 app.get("/health", (_req, res) => {
   res.status(200).json({
     status: "ok",
     uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
-// 404 handler (NO route matched)
+// ─── Error handling ───────────────────────────────────────────────────────────
 app.use(notFound);
-
-// global error handler (LAST middleware)
 app.use(globalErrorHandler);
 
 export default app;
