@@ -8,7 +8,10 @@ import { requireParam } from "../utils/requireParam.js";
 const safeUserSelect = {
   id: true,
   name: true,
+  universityId: true,
   email: true,
+  phoneNumber: true,
+  department: true,
   role: true,
   isEmailVerified: true,
   giteaUsername: true,
@@ -19,26 +22,62 @@ const safeUserSelect = {
 export const getMe = catchAsync(async (req: Request, res: Response) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user!.id },
-    select: safeUserSelect,
+    select: {
+      ...safeUserSelect,
+      enrollments: {
+        select: {
+          batch: {
+            select: {
+              id: true,
+              name: true,
+              startYear: true,
+              endYear: true,
+              course: {
+                select: {
+                  id: true,
+                  title: true,
+                  code: true,
+                  school: true,
+                  durationYears: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   });
+
   if (!user) throw new NotFoundError("User");
   res.status(200).json({ status: "success", data: user });
 });
 
 export const updateMe = catchAsync(async (req: Request, res: Response) => {
-  const { name, giteaUsername } = req.body as {
+  const { name, giteaUsername, phoneNumber, department } = req.body as {
     name?: string;
     giteaUsername?: string;
+    phoneNumber?: string;
+    department?: string;
   };
-  const updates: { name?: string; giteaUsername?: string } = {};
+
+  const updates: {
+    name?: string;
+    giteaUsername?: string;
+    phoneNumber?: string;
+    department?: string;
+  } = {};
+
   if (name) updates.name = name;
   if (giteaUsername) updates.giteaUsername = giteaUsername;
+  if (phoneNumber) updates.phoneNumber = phoneNumber;
+  if (department) updates.department = department;
 
   const user = await prisma.user.update({
     where: { id: req.user!.id },
     data: updates,
     select: safeUserSelect,
   });
+
   res.status(200).json({ status: "success", data: user });
 });
 
@@ -61,7 +100,20 @@ export const getUserById = catchAsync(
     const id = requireParam(req.params["id"], "id");
     const user = await prisma.user.findUnique({
       where: { id },
-      select: safeUserSelect,
+      select: {
+        ...safeUserSelect,
+        enrollments: {
+          select: {
+            batch: {
+              select: {
+                id: true,
+                name: true,
+                course: { select: { id: true, title: true, code: true } },
+              },
+            },
+          },
+        },
+      },
     });
     if (!user) throw new NotFoundError("User");
     res.status(200).json({ status: "success", data: user });
@@ -72,7 +124,12 @@ export const getAllSupervisors = catchAsync(
   async (_req: Request, res: Response) => {
     const supervisors = await prisma.user.findMany({
       where: { role: "SUPERVISOR" },
-      select: { id: true, name: true, email: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        department: true,
+      },
       orderBy: { name: "asc" },
     });
     res.status(200).json({

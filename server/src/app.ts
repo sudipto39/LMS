@@ -1,4 +1,3 @@
-// src/app.ts
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -10,11 +9,11 @@ import { env } from "./config/env.js";
 import { globalErrorHandler } from "./middlewares/globalErrorHandler.js";
 import { notFound } from "./middlewares/notFound.js";
 
-// Routes
 import authRouter from "./routes/authRoutes.js";
 import userRouter from "./routes/userRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import courseRouter from "./routes/courseRoutes.js";
+import batchRouter from "./routes/batchRoutes.js";
 import projectRouter from "./routes/projectRoutes.js";
 import milestoneRouter from "./routes/milestoneRoutes.js";
 import activityRouter from "./routes/activityRoutes.js";
@@ -44,7 +43,7 @@ app.use(
   })
 );
 
-// ─── Webhook route FIRST (needs raw body, before express.json) ────────────────
+// ─── Webhook route FIRST (needs raw body before express.json) ─────────────────
 app.use("/api/v1/webhooks", webhookRouter);
 
 // ─── Body parsers ─────────────────────────────────────────────────────────────
@@ -81,7 +80,7 @@ const apiLimiter = rateLimit({
 
 app.use("/api/v1", apiLimiter);
 
-// ─── No-cache header ──────────────────────────────────────────────────────────
+// ─── No-cache ─────────────────────────────────────────────────────────────────
 app.use((_req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
@@ -92,6 +91,7 @@ app.use("/api/v1/auth", authLimiter, authRouter);
 app.use("/api/v1/users", userRouter);
 app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/courses", courseRouter);
+app.use("/api/v1/batches", batchRouter);
 app.use("/api/v1/projects", projectRouter);
 app.use("/api/v1", milestoneRouter);
 app.use("/api/v1/activities", activityRouter);

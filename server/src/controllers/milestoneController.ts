@@ -13,10 +13,11 @@ import { requireParam } from "../utils/requireParam.js";
 export const createMilestone = catchAsync(
   async (req: Request, res: Response) => {
     const projectId = requireParam(req.params["projectId"], "projectId");
-    const { title, description, dueDate } = req.body as {
+    const { title, description, dueDate, order } = req.body as {
       title: string;
       description?: string;
       dueDate?: string;
+      order?: number;
     };
 
     if (!title) throw new BadRequestError("Milestone title is required");
@@ -33,6 +34,7 @@ export const createMilestone = catchAsync(
       data: {
         title,
         projectId,
+        order: order ?? 0,
         ...(description !== undefined && { description }),
         ...(dueDate && { dueDate: new Date(dueDate) }),
       },
@@ -45,10 +47,16 @@ export const createMilestone = catchAsync(
 export const getProjectMilestones = catchAsync(
   async (req: Request, res: Response) => {
     const projectId = requireParam(req.params["projectId"], "projectId");
+
     const milestones = await prisma.milestone.findMany({
-      where: { projectId },
-      orderBy: { createdAt: "asc" },
+      where: { projectId, isActive: true },
+      include: {
+        submittedBy: { select: { id: true, name: true } },
+        reviewedBy: { select: { id: true, name: true } },
+      },
+      orderBy: { order: "asc" },
     });
+
     res.status(200).json({
       status: "success",
       count: milestones.length,
@@ -60,6 +68,7 @@ export const getProjectMilestones = catchAsync(
 export const submitMilestone = catchAsync(
   async (req: Request, res: Response) => {
     const id = requireParam(req.params["id"], "id");
+    const { studentNotes } = req.body as { studentNotes?: string };
 
     const milestone = await prisma.milestone.findUnique({
       where: { id },
@@ -74,7 +83,12 @@ export const submitMilestone = catchAsync(
 
     const updated = await prisma.milestone.update({
       where: { id },
-      data: { status: "SUBMITTED", submittedAt: new Date() },
+      data: {
+        status: "SUBMITTED",
+        submittedAt: new Date(),
+        submittedById: req.user!.id,
+        ...(studentNotes !== undefined && { studentNotes }),
+      },
     });
 
     await logActivity({
@@ -108,8 +122,9 @@ export const approveMilestone = catchAsync(
       where: { id },
       data: {
         status: "APPROVED",
-        feedback: feedback ?? null,
         reviewedAt: new Date(),
+        reviewedById: req.user!.id,
+        ...(feedback !== undefined && { feedback }),
       },
     });
 
@@ -144,8 +159,9 @@ export const rejectMilestone = catchAsync(
       where: { id },
       data: {
         status: "REJECTED",
-        feedback: feedback ?? null,
         reviewedAt: new Date(),
+        reviewedById: req.user!.id,
+        ...(feedback !== undefined && { feedback }),
       },
     });
 
@@ -166,9 +182,11 @@ export const getMySubmissions = catchAsync(
       where: {
         project: { ownerId: req.user!.id },
         status: { in: ["SUBMITTED", "APPROVED", "REJECTED"] },
+        isActive: true,
       },
       include: {
         project: { select: { id: true, title: true } },
+        reviewedBy: { select: { id: true, name: true } },
       },
       orderBy: { submittedAt: "desc" },
     });
