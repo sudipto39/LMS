@@ -1,5 +1,4 @@
-// src/services/sendVerificationEmail.ts
-import { resend } from "../config/resend.js";
+import { getResend } from "../config/resend.js";
 import { env } from "../config/env.js";
 
 const FROM_EMAIL = "no-reply@giteaforge.com";
@@ -19,7 +18,7 @@ interface PasswordResetEmailProps {
 
 export const emailService = {
   async sendVerificationEmail({ to, name, code }: VerificationEmailProps) {
-    const { error } = await resend.emails.send({
+    const { error } = await getResend().emails.send({
       from: FROM_EMAIL,
       to: [to],
       subject: `Verify your email — ${APP_NAME}`,
@@ -37,12 +36,11 @@ export const emailService = {
         </div>
       `,
     });
-
     if (error) throw new Error(`Verification email failed: ${error.message}`);
   },
 
   async sendPasswordResetEmail({ to, name, code }: PasswordResetEmailProps) {
-    const { error } = await resend.emails.send({
+    const { error } = await getResend().emails.send({
       from: FROM_EMAIL,
       to: [to],
       subject: `Reset your password — ${APP_NAME}`,
@@ -60,7 +58,6 @@ export const emailService = {
         </div>
       `,
     });
-
     if (error) throw new Error(`Password reset email failed: ${error.message}`);
   },
 };

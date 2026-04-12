@@ -1,9 +1,12 @@
-// src/index.ts
-import "./config/env.js"; // validates env vars at startup
+import dotenv from "dotenv";
+dotenv.config();
+import "dotenv/config"; 
+import "./config/env.js";
 import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { connectDB, disconnectDB } from "./config/db.js";
 import { connectRedis, disconnectRedis } from "./config/redis.js";
+
 
 async function startServer() {
   try {
