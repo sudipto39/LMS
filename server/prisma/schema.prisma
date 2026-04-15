@@ -20,16 +20,28 @@ enum Role {
 
 enum MilestoneStatus {
   PENDING
+  IN_PROGRESS
   SUBMITTED
   APPROVED
   REJECTED
 }
 
+enum ProjectStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
 model User {
   id               String    @id @default(cuid())
   name             String
+  universityId     String?   @unique
   email            String    @unique
   password         String
+  phoneNumber      String?
+  department       String?
   role             Role      @default(STUDENT)
   isEmailVerified  Boolean   @default(false)
   giteaUsername    String?   @unique
@@ -40,6 +52,8 @@ model User {
   ownedProjects      Project[]         @relation("ProjectOwner")
   activities         Activity[]
   enrollments        BatchEnrollment[]
+  submittedMilestones Milestone[]      @relation("MilestoneSubmitter")
+  reviewedMilestones  Milestone[]      @relation("MilestoneReviewer")
 
   @@map("users")
 }
@@ -48,6 +62,9 @@ model Batch {
   id          String   @id @default(cuid())
   name        String   @unique
   courseId    String
+  startYear   Int
+  endYear     Int
+  isActive    Boolean  @default(true)
   course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
 
@@ -68,11 +85,15 @@ model BatchEnrollment {
 }
 
 model Course {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  title         String
+  code          String?  @unique
+  school        String?
+  durationYears Int      @default(4)
+  description   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   batches Batch[]
 
@@ -80,16 +101,21 @@ model Course {
 }
 
 model Project {
-  id           String   @id @default(cuid())
+  id           String        @id @default(cuid())
   title        String
   description  String?
-  repoName     String?  @unique
-  repoUrl      String?
+  status       ProjectStatus @default(DRAFT)
+  repoName     String?       @unique
+  repoUrl      String?       @unique
+  technologies String[]
   ownerId      String
   supervisorId String?
   batchId      String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  startDate    DateTime?
+  endDate      DateTime?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   owner      User       @relation("ProjectOwner", fields: [ownerId], references: [id])
   supervisor User?      @relation("ProjectSupervisor", fields: [supervisorId], references: [id])
@@ -101,20 +127,29 @@ model Project {
 }
 
 model Milestone {
-  id          String          @id @default(cuid())
-  title       String
-  description String?
-  dueDate     DateTime?
-  status      MilestoneStatus @default(PENDING)
-  projectId   String
-  feedback    String?
-  submittedAt DateTime?
-  reviewedAt  DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id                 String          @id @default(cuid())
+  title              String
+  description        String?
+  order              Int             @default(0)
+  dueDate            DateTime?
+  status             MilestoneStatus @default(PENDING)
+  projectId          String
+  submittedById      String?
+  reviewedById       String?
+  feedback           String?
+  studentNotes       String?
+  submittedAt        DateTime?
+  reviewedAt         DateTime?
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  submittedBy User?   @relation("MilestoneSubmitter", fields: [submittedById], references: [id])
+  reviewedBy  User?   @relation("MilestoneReviewer", fields: [reviewedById], references: [id])
 
+  @@index([projectId, order])
+  @@index([projectId, status])
   @@map("milestones")
 }
 

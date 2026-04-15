@@ -1,6 +1,6 @@
-import express from "express";
+// src/routes/giteaRoutes.ts
+import { Router } from "express";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
-
 import {
   createRepository,
   getRepository,
@@ -8,16 +8,13 @@ import {
   listBranches,
 } from "../controllers/giteaController.js";
 
-const router = express.Router();
+const router = Router();
 
 router.use(protect);
 
-router.post("/repos", restrictTo("student"), createRepository);
-
+router.post("/repos", restrictTo("STUDENT"), createRepository);
 router.get("/repos/:owner/:repo", getRepository);
-
 router.get("/repos/:owner/:repo/commits", listCommits);
-
 router.get("/repos/:owner/:repo/branches", listBranches);
 
 export default router;

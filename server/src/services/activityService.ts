@@ -1,38 +1,30 @@
-import { Types } from "mongoose";
-import ActivityModel, { ActivityType } from "../models/activityModel.js";
+// src/services/activityService.ts
+import { prisma } from "../config/db.js";
+import type { Prisma } from "../generated/prisma/index.js";
 
 interface LogActivityParams {
-  actor?: string | Types.ObjectId;
-  project?: string | Types.ObjectId;
-  milestone?: string | Types.ObjectId;
-
-  type: ActivityType;
-  message: string;
-
-  metadata?: Record<string, any>;
+  type: string;
+  payload: Prisma.InputJsonValue;
+  userId?: string;
+  projectId?: string;
 }
 
 export const logActivity = async ({
-  actor,
-  project,
-  milestone,
   type,
-  message,
-  metadata = {},
-}: LogActivityParams) => {
+  payload,
+  userId,
+  projectId,
+}: LogActivityParams): Promise<void> => {
   try {
-    const activityData: any = {
-      type,
-      message,
-      metadata,
-    };
-
-    if (actor) activityData.actor = new Types.ObjectId(actor);
-    if (project) activityData.project = new Types.ObjectId(project);
-    if (milestone) activityData.milestone = new Types.ObjectId(milestone);
-
-    await ActivityModel.create(activityData);
+    await prisma.activity.create({
+      data: {
+        type,
+        payload,
+        ...(userId && { userId }),
+        ...(projectId && { projectId }),
+      },
+    });
   } catch (error) {
-    console.error("Activity logging failed:", error);
+    console.error("⚠️ Activity logging failed:", error);
   }
 };

@@ -1,32 +1,18 @@
-import { Router } from 'express';
+// src/routes/adminRoutes.ts
+import { Router } from "express";
 import {
   assignSupervisorToProject,
   getAllProjectsForAdmin,
   getAdminStats,
-} from '../controllers/adminController.js';
-import { protect, restrictTo } from '../middlewares/authMiddleware.js';
+} from "../controllers/adminController.js";
+import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
 const router = Router();
 
-router.get(
-  '/stats',
-  protect,
-  restrictTo('admin'),
-  getAdminStats
-);
+router.use(protect, restrictTo("ADMIN"));
 
-router.get(
-  '/projects',
-  protect,
-  restrictTo('admin'),
-  getAllProjectsForAdmin
-);
-
-router.patch(
-  '/projects/:id/assign-supervisor',
-  protect,
-  restrictTo('admin'),
-  assignSupervisorToProject
-);
+router.get("/stats", getAdminStats);
+router.get("/projects", getAllProjectsForAdmin);
+router.patch("/projects/:id/assign-supervisor", assignSupervisorToProject);
 
 export default router;

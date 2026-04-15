@@ -1,123 +1,117 @@
-import { Request, Response, RequestHandler } from "express";
-import Course from "../models/courseModel.js";
-import catchAsync from "../utils/catchAsync.js";
-import { AppError } from "../utils/appError.js";
+// src/controllers/courseController.ts
+import type { Request, Response } from "express";
+import { prisma } from "../config/db.js";
+import { catchAsync } from "../utils/catchAsync.js";
+import { NotFoundError, BadRequestError } from "../utils/appError.js";
+import { requireParam } from "../utils/requireParam.js";
 
-export const createCourse: RequestHandler = catchAsync(
+export const createCourse = catchAsync(
   async (req: Request, res: Response) => {
-    const { name, code, school, durationYears } = req.body;
+    const { title, code, school, durationYears, description } = req.body as {
+      title: string;
+      code?: string;
+      school?: string;
+      durationYears?: number;
+      description?: string;
+    };
 
-    const existing = await Course.findOne({ code });
+    if (!title) throw new BadRequestError("Course title is required");
 
-    if (existing) {
-      throw new AppError("Course with this code already exists", 400);
-    }
-
-    const course = await Course.create({
-      name,
-      code,
-      school,
-      durationYears,
-      isActive: true,
+    const course = await prisma.course.create({
+      data: {
+        title,
+        ...(code !== undefined && { code }),
+        ...(school !== undefined && { school }),
+        ...(durationYears !== undefined && { durationYears }),
+        ...(description !== undefined && { description }),
+      },
     });
 
-    res.status(201).json({
-      success: true,
-      data: course,
-    });
-  },
+    res.status(201).json({ status: "success", data: course });
+  }
 );
 
-export const getAllCourses: RequestHandler = catchAsync(
-  async (req: Request, res: Response) => {
-    const { page = "1", limit = "20" } = req.query;
-
-    const pageNum = Number(page);
-    const limitNum = Number(limit);
-
-    const courses = await Course.find({ isActive: true })
-      .select("_id name code school")
-      .sort({ name: 1 })
-      .lean();
-
-    const total = await Course.countDocuments({ isActive: true });
+export const getAllCourses = catchAsync(
+  async (_req: Request, res: Response) => {
+    const courses = await prisma.course.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        title: true,
+        code: true,
+        school: true,
+        durationYears: true,
+        description: true,
+        createdAt: true,
+        _count: { select: { batches: true } },
+      },
+      orderBy: { title: "asc" },
+    });
 
     res.status(200).json({
-      success: true,
+      status: "success",
       count: courses.length,
-      total,
-      page: pageNum,
       data: courses,
     });
-  },
+  }
 );
 
-export const getCourseById: RequestHandler = catchAsync(
+export const getCourseById = catchAsync(
   async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = requireParam(req.params["id"], "id");
 
-    if (!id || Array.isArray(id)) {
-      throw new AppError("Invalid course id", 400);
-    }
-
-    const course = await Course.findById(id).lean();
-
-    if (!course) {
-      throw new AppError("Course not found", 404);
-    }
-
-    res.status(200).json({
-      success: true,
-      data: course,
+    const course = await prisma.course.findUnique({
+      where: { id },
+      include: { batches: true },
     });
-  },
+
+    if (!course) throw new NotFoundError("Course");
+    res.status(200).json({ status: "success", data: course });
+  }
 );
 
-export const updateCourse: RequestHandler = catchAsync(
+export const updateCourse = catchAsync(
   async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = requireParam(req.params["id"], "id");
+    const { title, code, school, durationYears, description, isActive } =
+      req.body as {
+        title?: string;
+        code?: string;
+        school?: string;
+        durationYears?: number;
+        description?: string;
+        isActive?: boolean;
+      };
 
-    if (!id || Array.isArray(id)) {
-      throw new AppError("Invalid course id", 400);
-    }
-
-    const course = await Course.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
+    const course = await prisma.course.update({
+      where: { id },
+      data: {
+        ...(title && { title }),
+        ...(code !== undefined && { code }),
+        ...(school !== undefined && { school }),
+        ...(durationYears !== undefined && { durationYears }),
+        ...(description !== undefined && { description }),
+        ...(isActive !== undefined && { isActive }),
+      },
     });
 
-    if (!course) {
-      throw new AppError("Course not found", 404);
-    }
-
-    res.status(200).json({
-      success: true,
-      data: course,
-    });
-  },
+    res.status(200).json({ status: "success", data: course });
+  }
 );
 
-export const deleteCourse: RequestHandler = catchAsync(
+export const deleteCourse = catchAsync(
   async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = requireParam(req.params["id"], "id");
 
-    if (!id || Array.isArray(id)) {
-      throw new AppError("Invalid course id", 400);
-    }
-
-    const course = await Course.findByIdAndUpdate(
-      id,
-      { isActive: false },
-      { new: true },
-    );
-
-    if (!course) {
-      throw new AppError("Course not found", 404);
-    }
+    // Soft delete
+    await prisma.course.update({
+      where: { id },
+      data: { isActive: false },
+    });
 
     res.status(200).json({
-      success: true,
+      status: "success",
       message: "Course deleted successfully",
     });
-  },
+  }
 );

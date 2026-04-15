@@ -1,189 +1,200 @@
-import { RequestHandler } from 'express';
-import { Types } from 'mongoose';
-import Milestone from '../models/milestoneModel.js';
-import Project from '../models/projectModel.js';
-import catchAsync from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
-import { authenticatedRequest } from '../middlewares/authMiddleware.js';
+// src/controllers/milestoneController.ts
+import type { Request, Response } from "express";
+import { prisma } from "../config/db.js";
+import { catchAsync } from "../utils/catchAsync.js";
+import {
+  NotFoundError,
+  ForbiddenError,
+  BadRequestError,
+} from "../utils/appError.js";
+import { logActivity } from "../services/activityService.js";
+import { requireParam } from "../utils/requireParam.js";
 
-export const createMilestone: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const authReq = req as authenticatedRequest;
-    const { projectId } = req.params;
+export const createMilestone = catchAsync(
+  async (req: Request, res: Response) => {
+    const projectId = requireParam(req.params["projectId"], "projectId");
+    const { title, description, dueDate, order } = req.body as {
+      title: string;
+      description?: string;
+      dueDate?: string;
+      order?: number;
+    };
 
-    if (!projectId || Array.isArray(projectId)) {
-      return next(new AppError('Invalid project ID', 400));
-    }
+    if (!title) throw new BadRequestError("Milestone title is required");
 
-    const project = await Project.findOne({
-      _id: new Types.ObjectId(projectId),
-      owner: authReq.user.id,
-      isActive: true,
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerId: true },
     });
 
-    if (!project) {
-      return next(new AppError('Project not found or access denied', 404));
-    }
+    if (!project) throw new NotFoundError("Project");
+    if (project.ownerId !== req.user!.id) throw new ForbiddenError();
 
-    const milestone = await Milestone.create({
-      ...req.body,
-      project: project._id,
-      status: 'pending',
+    const milestone = await prisma.milestone.create({
+      data: {
+        title,
+        projectId,
+        order: order ?? 0,
+        ...(description !== undefined && { description }),
+        ...(dueDate && { dueDate: new Date(dueDate) }),
+      },
     });
 
-    res.status(201).json({
-      success: true,
-      data: milestone,
-    });
+    res.status(201).json({ status: "success", data: milestone });
   }
 );
 
-export const getProjectMilestones: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const { projectId } = req.params;
+export const getProjectMilestones = catchAsync(
+  async (req: Request, res: Response) => {
+    const projectId = requireParam(req.params["projectId"], "projectId");
 
-    if (!projectId || Array.isArray(projectId)) {
-      return next(new AppError('Invalid project ID', 400));
-    }
-
-    const milestones = await Milestone.find({
-      project: new Types.ObjectId(projectId),
-      isActive: true,
-    }).sort({ order: 1 });
+    const milestones = await prisma.milestone.findMany({
+      where: { projectId, isActive: true },
+      include: {
+        submittedBy: { select: { id: true, name: true } },
+        reviewedBy: { select: { id: true, name: true } },
+      },
+      orderBy: { order: "asc" },
+    });
 
     res.status(200).json({
-      success: true,
+      status: "success",
       count: milestones.length,
       data: milestones,
     });
   }
 );
 
-export const submitMilestone: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const authReq = req as authenticatedRequest;
-    const { id } = req.params;
+export const submitMilestone = catchAsync(
+  async (req: Request, res: Response) => {
+    const id = requireParam(req.params["id"], "id");
+    const { studentNotes } = req.body as { studentNotes?: string };
 
-    if (!id || Array.isArray(id)) {
-      return next(new AppError('Invalid milestone ID', 400));
-    }
-
-    const milestone = await Milestone.findById(id).populate('project');
-
-    if (!milestone) {
-      return next(new AppError('Milestone not found', 404));
-    }
-
-    const project = milestone.project as any;
-
-    if (project.owner.toString() !== authReq.user.id) {
-      return next(new AppError('You are not allowed to submit this milestone', 403));
-    }
-
-    if (milestone.status === 'approved') {
-      return next(new AppError('Milestone already approved', 400));
-    }
-
-    milestone.status = 'submitted';
-    milestone.submittedAt = new Date();
-    milestone.studentNotes = req.body.studentNotes || '';
-
-    await milestone.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Milestone submitted successfully',
-      data: milestone,
+    const milestone = await prisma.milestone.findUnique({
+      where: { id },
+      include: { project: { select: { ownerId: true } } },
     });
+
+    if (!milestone) throw new NotFoundError("Milestone");
+    if (milestone.project.ownerId !== req.user!.id) throw new ForbiddenError();
+    if (milestone.status === "APPROVED") {
+      throw new BadRequestError("Milestone already approved");
+    }
+
+    const updated = await prisma.milestone.update({
+      where: { id },
+      data: {
+        status: "SUBMITTED",
+        submittedAt: new Date(),
+        submittedById: req.user!.id,
+        ...(studentNotes !== undefined && { studentNotes }),
+      },
+    });
+
+    await logActivity({
+      type: "MILESTONE_SUBMITTED",
+      payload: { milestoneTitle: milestone.title },
+      userId: req.user!.id,
+      projectId: milestone.projectId,
+    });
+
+    res.status(200).json({ status: "success", data: updated });
   }
 );
 
-export const approveMilestone: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const authReq = req as authenticatedRequest;
-    const { id } = req.params;
+export const approveMilestone = catchAsync(
+  async (req: Request, res: Response) => {
+    const id = requireParam(req.params["id"], "id");
+    const { feedback } = req.body as { feedback?: string };
 
-    const milestone = await Milestone.findById(id).populate('project');
-
-    if (!milestone) {
-      return next(new AppError('Milestone not found', 404));
-    }
-
-    const project = milestone.project as any;
-
-    if (!project.supervisor || project.supervisor.toString() !== authReq.user.id) {
-      return next(new AppError('Not authorized to approve this milestone', 403));
-    }
-
-    milestone.status = 'approved';
-    milestone.supervisorFeedback = req.body.feedback || '';
-
-    await milestone.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Milestone approved',
-      data: milestone,
+    const milestone = await prisma.milestone.findUnique({
+      where: { id },
+      include: { project: { select: { supervisorId: true } } },
     });
+
+    if (!milestone) throw new NotFoundError("Milestone");
+
+    const isAdmin = req.user!.role === "ADMIN";
+    const isSupervisor = milestone.project.supervisorId === req.user!.id;
+    if (!isAdmin && !isSupervisor) throw new ForbiddenError();
+
+    const updated = await prisma.milestone.update({
+      where: { id },
+      data: {
+        status: "APPROVED",
+        reviewedAt: new Date(),
+        reviewedById: req.user!.id,
+        ...(feedback !== undefined && { feedback }),
+      },
+    });
+
+    await logActivity({
+      type: "MILESTONE_APPROVED",
+      payload: { milestoneTitle: milestone.title, feedback: feedback ?? "" },
+      userId: req.user!.id,
+      projectId: milestone.projectId,
+    });
+
+    res.status(200).json({ status: "success", data: updated });
   }
 );
 
-export const rejectMilestone: RequestHandler = catchAsync(
-  async (req, res, next) => {
-    const authReq = req as authenticatedRequest;
-    const { id } = req.params;
+export const rejectMilestone = catchAsync(
+  async (req: Request, res: Response) => {
+    const id = requireParam(req.params["id"], "id");
+    const { feedback } = req.body as { feedback?: string };
 
-    const milestone = await Milestone.findById(id).populate('project');
-
-    if (!milestone) {
-      return next(new AppError('Milestone not found', 404));
-    }
-
-    const project = milestone.project as any;
-
-    if (!project.supervisor || project.supervisor.toString() !== authReq.user.id) {
-      return next(new AppError('Not authorized to reject this milestone', 403));
-    }
-
-    milestone.status = 'rejected';
-    milestone.supervisorFeedback = req.body.feedback || '';
-
-    await milestone.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Milestone rejected',
-      data: milestone,
+    const milestone = await prisma.milestone.findUnique({
+      where: { id },
+      include: { project: { select: { supervisorId: true } } },
     });
+
+    if (!milestone) throw new NotFoundError("Milestone");
+
+    const isAdmin = req.user!.role === "ADMIN";
+    const isSupervisor = milestone.project.supervisorId === req.user!.id;
+    if (!isAdmin && !isSupervisor) throw new ForbiddenError();
+
+    const updated = await prisma.milestone.update({
+      where: { id },
+      data: {
+        status: "REJECTED",
+        reviewedAt: new Date(),
+        reviewedById: req.user!.id,
+        ...(feedback !== undefined && { feedback }),
+      },
+    });
+
+    await logActivity({
+      type: "MILESTONE_REJECTED",
+      payload: { milestoneTitle: milestone.title, feedback: feedback ?? "" },
+      userId: req.user!.id,
+      projectId: milestone.projectId,
+    });
+
+    res.status(200).json({ status: "success", data: updated });
   }
 );
 
-export const getMySubmissions: RequestHandler = catchAsync(
-  async (req, res) => {
-    const authReq = req as authenticatedRequest;
-
-    const milestones = await Milestone.find({
-      status: { $in: ['submitted', 'approved', 'rejected'] },
-    })
-      .populate({
-        path: 'project',
-        match: { owner: authReq.user.id },
-        select: 'title',
-      })
-      .sort({ submittedAt: -1 });
-
-    const filtered = milestones.filter((m) => m.project);
+export const getMySubmissions = catchAsync(
+  async (req: Request, res: Response) => {
+    const milestones = await prisma.milestone.findMany({
+      where: {
+        project: { ownerId: req.user!.id },
+        status: { in: ["SUBMITTED", "APPROVED", "REJECTED"] },
+        isActive: true,
+      },
+      include: {
+        project: { select: { id: true, title: true } },
+        reviewedBy: { select: { id: true, name: true } },
+      },
+      orderBy: { submittedAt: "desc" },
+    });
 
     res.status(200).json({
-      success: true,
-      count: filtered.length,
-      data: filtered.map((m) => ({
-        id: m._id,
-        title: m.title,
-        project: (m.project as any).title,
-        status: m.status,
-        submittedAt: m.submittedAt,
-      })),
+      status: "success",
+      count: milestones.length,
+      data: milestones,
     });
   }
 );

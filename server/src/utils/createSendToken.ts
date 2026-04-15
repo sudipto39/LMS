@@ -1,4 +1,3 @@
-// src/utils/createSendToken.ts
 import jwt from "jsonwebtoken";
 import type { Response } from "express";
 import type { Role } from "../generated/prisma/index.js";
@@ -29,26 +28,51 @@ export const verifyRefreshToken = (token: string) =>
 
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
-export const storeRefreshToken = (userId: string, token: string) =>
-  redis.setex(`refresh:${userId}`, REFRESH_TTL_SECONDS, token);
+export const storeRefreshToken = async (
+  userId: string,
+  token: string
+): Promise<void> => {
+  try {
+    await redis.setex(`refresh:${userId}`, REFRESH_TTL_SECONDS, token);
+  } catch {
+    console.warn("⚠️ Could not store refresh token — Redis unavailable");
+  }
+};
 
-export const getStoredRefreshToken = (userId: string) =>
-  redis.get(`refresh:${userId}`);
+export const getStoredRefreshToken = async (
+  userId: string
+): Promise<string | null> => {
+  try {
+    return await redis.get(`refresh:${userId}`);
+  } catch {
+    return null;
+  }
+};
 
-export const revokeRefreshToken = (userId: string) =>
-  redis.del(`refresh:${userId}`);
+export const revokeRefreshToken = async (userId: string): Promise<void> => {
+  try {
+    await redis.del(`refresh:${userId}`);
+  } catch {
+    // ignore
+  }
+};
 
-// ─── Main helper ──────────────────────────────────────────────────────────────
+// ─── Safe user type ───────────────────────────────────────────────────────────
 
 interface SafeUser {
   id: string;
   name: string;
+  universityId?: string | null;
   email: string;
+  phoneNumber?: string | null;
+  department?: string | null;
   role: Role;
   isEmailVerified: boolean;
-  giteaUsername: string | null;
+  giteaUsername?: string | null;
   createdAt: Date;
 }
+
+// ─── Main helper ──────────────────────────────────────────────────────────────
 
 export const createSendToken = async (
   user: SafeUser,
@@ -58,7 +82,7 @@ export const createSendToken = async (
   const accessToken = signAccessToken(user.id, user.role);
   const refreshToken = signRefreshToken(user.id);
 
-  // Store refresh token in Redis
+  // Store refresh token — non-fatal if Redis is down
   await storeRefreshToken(user.id, refreshToken);
 
   // Refresh token in httpOnly cookie
