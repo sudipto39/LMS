@@ -8,28 +8,63 @@ import {
 import { type ReactNode, useState } from 'react';
 
 /* ── Status Pills (GitHub-style flat) ── */
+// const statusColors: Record<ProjectStatus, string> = {
+//   'draft': 'bg-neutral-100 dark:bg-[#21262d] text-neutral-600 dark:text-[#8b949e] border-neutral-300 dark:border-[#30363d]',
+//   'in-progress': 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800',
+//   'submitted': 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 dark:border-yellow-800',
+//   'approved': 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800',
+//   'rejected': 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-800',
+// };
+
+// const milestoneColors: Record<MilestoneStatus, string> = {
+//   'pending': 'bg-neutral-100 dark:bg-[#21262d] text-neutral-600 dark:text-[#8b949e] border-neutral-300 dark:border-[#30363d]',
+//   'in-progress': 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800',
+//   'completed': 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800',
+//   'approved': 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800',
+//   'rejected': 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-800',
+// };
+
 const statusColors: Record<ProjectStatus, string> = {
-  'draft': 'bg-neutral-100 dark:bg-[#21262d] text-neutral-600 dark:text-[#8b949e] border-neutral-300 dark:border-[#30363d]',
-  'in-progress': 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800',
-  'submitted': 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 dark:border-yellow-800',
-  'approved': 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800',
-  'rejected': 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-800',
+  'DRAFT': 'bg-neutral-100 dark:bg-[#21262d] text-neutral-600 dark:text-[#8b949e] border-neutral-300 dark:border-[#30363d]',
+  'SUBMITTED': 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 dark:border-yellow-800',
+  'APPROVED': 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800',
+  'REJECTED': 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-800',
+  'ARCHIVED': 'bg-neutral-100 dark:bg-[#21262d] text-neutral-500 dark:text-[#8b949e] border-neutral-300 dark:border-[#30363d]',
 };
 
 const milestoneColors: Record<MilestoneStatus, string> = {
-  'pending': 'bg-neutral-100 dark:bg-[#21262d] text-neutral-600 dark:text-[#8b949e] border-neutral-300 dark:border-[#30363d]',
-  'in-progress': 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800',
-  'completed': 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800',
-  'approved': 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800',
-  'rejected': 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-800',
+  'PENDING': 'bg-neutral-100 dark:bg-[#21262d] text-neutral-600 dark:text-[#8b949e] border-neutral-300 dark:border-[#30363d]',
+  'IN_PROGRESS': 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800',
+  'SUBMITTED': 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 dark:border-yellow-800',
+  'APPROVED': 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800',
+  'REJECTED': 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-800',
 };
+
+// export function StatusPill({ status }: { status: ProjectStatus }) {
+//   if (!status) return null;
+//   return (
+//     <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', statusColors[status] || statusColors['draft'])}>
+//       <CircleDot className="h-3 w-3" />
+//       {status.replace('-', ' ')}
+//     </span>
+//   );
+// }
+
+// export function MilestoneStatusPill({ status }: { status: MilestoneStatus }) {
+//   if (!status) return null;
+//   return (
+//     <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', milestoneColors[status] || milestoneColors['pending'])}>
+//       {status.replace('-', ' ')}
+//     </span>
+//   );
+// }
 
 export function StatusPill({ status }: { status: ProjectStatus }) {
   if (!status) return null;
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', statusColors[status] || statusColors['draft'])}>
+    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', statusColors[status] || statusColors['DRAFT'])}>
       <CircleDot className="h-3 w-3" />
-      {status.replace('-', ' ')}
+      {status.replace(/_/g, ' ').toLowerCase()}
     </span>
   );
 }
@@ -37,8 +72,8 @@ export function StatusPill({ status }: { status: ProjectStatus }) {
 export function MilestoneStatusPill({ status }: { status: MilestoneStatus }) {
   if (!status) return null;
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', milestoneColors[status] || milestoneColors['pending'])}>
-      {status.replace('-', ' ')}
+    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize', milestoneColors[status] || milestoneColors['PENDING'])}>
+      {status.replace(/_/g, ' ').toLowerCase()}
     </span>
   );
 }
