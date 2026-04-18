@@ -5,7 +5,7 @@ import type {
   ActivityItem,
 } from "@/types";
 import dataService from "@/services/dataService";
-import { getGiteaURL } from "@/api/client";
+import  { getGiteaURL, tokenStore } from "@/api/client";
 const API_URL = import.meta.env.VITE_API_BASE_URL;
 
 import {
@@ -54,11 +54,21 @@ import { cn } from "@/utils/cn";
 
 const GITEA_URL = getGiteaURL() || "https://gitea.example.com";
 
+
+// const getAuthHeaders = (): HeadersInit => {
+//   const token = tokenStore.get();
+
+//   if (!token) return {};
+
+//   return {
+//     Authorization: `Bearer ${token}`,
+//     "Content-Type": "application/json",
+//   };
+// };
+
 const getAuthHeaders = (): HeadersInit => {
-  const token = localStorage.getItem("token");
-
+  const token = tokenStore.get();
   if (!token) return {};
-
   return {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -332,7 +342,7 @@ export function StudentDashboard({
                 </tr>
               </thead>
               <tbody>
-                {studentProjects.map((p) => (
+                {studentProjects.map((p: any) => (
                   <tr key={p._id} className={tableRow}>
                     <td className="py-3 px-5">
                       <p className={cn("font-medium", heading)}>{p.title}</p>
@@ -546,30 +556,72 @@ export function CreateProject({
     techStack: [] as string[],
   });
 
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      // const token = localStorage.getItem("token");
-      console.log("API_URL:", API_URL);
+  // useEffect(() => {
+  //   const fetchInitialData = async () => {
+  //     // const token = tokenStore.get();
+  //     console.log("API_URL:", API_URL);
 
+  //     const [supRes, courseRes] = await Promise.all([
+  //       fetch(`${API_URL}/v1/supervisors/allsupervisors`, {
+  //         headers: getAuthHeaders(),
+  //       }),
+  //       fetch(`${API_URL}/v1/courses/allcourses`, {
+  //         headers: getAuthHeaders(),
+  //       }),
+  //     ]);
+
+  //     console.log(tokenStore.get());
+  //     const supData = await supRes.json();
+  //     const courseData = await courseRes.json();
+
+  //     setSupervisors(supData.data); // ✅ important
+  //     setCourses(courseData.data);
+  //   };
+
+  //   fetchInitialData();
+  // }, []);
+
+  useEffect(() => {
+  const fetchInitialData = async () => {
+    try {
       const [supRes, courseRes] = await Promise.all([
         fetch(`${API_URL}/v1/supervisors/allsupervisors`, {
           headers: getAuthHeaders(),
         }),
-        fetch(`${API_URL}/v1/courses/allcourses`, {
+        fetch(`${API_URL}/v1/batches/courses`, {
           headers: getAuthHeaders(),
         }),
       ]);
 
-      console.log(localStorage.getItem("token"));
-      const supData = await supRes.json();
-      const courseData = await courseRes.json();
+      if (supRes.ok) {
+        const supData = await supRes.json();
+        setSupervisors(
+          (supData.data ?? []).map((s: { id: string; name: string }) => ({
+            _id: s.id,
+            name: s.name,
+          }))
+        );
+      }
 
-      setSupervisors(supData.data); // ✅ important
-      setCourses(courseData.data);
-    };
+      if (courseRes.ok) {
+        const courseData = await courseRes.json();
+        setCourses(
+          (courseData.data ?? []).map(
+            (c: { id: string; title: string }) => ({
+              _id: c.id,
+              name: c.title,
+              batch: "",
+            })
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Failed to fetch create project data:", err);
+    }
+  };
 
-    fetchInitialData();
-  }, []);
+  fetchInitialData();
+}, []);
 
   const toggleTech = (tech: string) => {
     setFormData((f) => ({
@@ -1007,7 +1059,7 @@ export function StudentProjectDetail({
   useEffect(() => {
     const fetchProjectDetail = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = tokenStore.get();
         const [projectRes, milestoneRes, filesRes] = await Promise.all([
           fetch(`${API_URL}/v1/projects/${projectId}`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -1400,7 +1452,7 @@ export function StudentSubmissions({
   useEffect(() => {
     const fetchSubmissions = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = tokenStore.get();
         const res = await fetch(`${API_URL}/v1/me/submissions`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -1480,7 +1532,7 @@ export function SupervisorDashboard({
 
   useEffect(() => {
     const fetchDashboard = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const [projectsRes, activitiesRes] = await Promise.all([
         fetch(`${API_URL}/v1/projects/supervised`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -1670,7 +1722,7 @@ export function SupervisorProjectDetail({
 
   useEffect(() => {
     const fetchData = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const [projectRes, milestoneRes, activityRes, filesRes, commentsRes] =
         await Promise.all([
           fetch(`${API_URL}/v1/projects/${projectId}`, {
@@ -2070,7 +2122,7 @@ export function SupervisorReviews({
 
   useEffect(() => {
     const fetchReviews = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/supervisors/milestones/pending`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -2153,7 +2205,7 @@ export function SupervisorGrades({
 
   useEffect(() => {
     const fetchGrades = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/supervisors/grades`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -2235,7 +2287,7 @@ export function AdminDashboard({
 
   useEffect(() => {
     const fetchDashboard = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const [statsRes, activityRes, statusRes] = await Promise.all([
         fetch(`${API_URL}/v1/admin/stats`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -2438,7 +2490,7 @@ export function AdminUsers() {
 
   useEffect(() => {
     const fetchUsers = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/users/getAllUsers`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -2672,7 +2724,7 @@ export function AdminBatches() {
 
   useEffect(() => {
     const fetchBatches = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/admin/batches`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -2769,7 +2821,7 @@ export function AdminGiteaSettings() {
 
   useEffect(() => {
     const fetchConfig = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/admin/gitea/config`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -2781,7 +2833,7 @@ export function AdminGiteaSettings() {
 
   const saveConfig = async () => {
     setSaving(true);
-    const token = localStorage.getItem("token");
+    const token = tokenStore.get();
     await fetch(`${API_URL}/v1/admin/gitea/config`, {
       method: "PUT",
       headers: {
@@ -2795,7 +2847,7 @@ export function AdminGiteaSettings() {
 
   const testConnection = async () => {
     setTesting(true);
-    const token = localStorage.getItem("token");
+    const token = tokenStore.get();
     const res = await fetch(`${API_URL}/v1/admin/gitea/test`, {
       method: "POST",
       headers: {
@@ -3009,7 +3061,7 @@ export function AdminAuditLogs() {
 
   useEffect(() => {
     const fetchLogs = async () => {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/admin/audit-logs`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -3058,7 +3110,7 @@ export function ActivityPage() {
   useEffect(() => {
     const fetchActivities = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = tokenStore.get();
         const res = await fetch(`${API_URL}/v1/activities/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -3130,7 +3182,7 @@ export function SettingsPage() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = tokenStore.get();
         const res = await fetch(`${API_URL}/v1/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -3151,7 +3203,7 @@ export function SettingsPage() {
     if (!profile) return;
     setSaving(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/users/updateMe`, {
         method: "PATCH",
         headers: {
@@ -3172,7 +3224,7 @@ export function SettingsPage() {
   const handleChangePassword = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/auth/reset-password/${token}`, {
         method: "PATCH",
         headers: {
@@ -3341,7 +3393,7 @@ export function ProfilePage() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = tokenStore.get();
         const res = await fetch(`${API_URL}/v1/users/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -3436,7 +3488,7 @@ export function ProfilePage() {
 //   useEffect(() => {
 //     const fetchFeedback = async () => {
 //       try {
-//         const token = localStorage.getItem("token");
+//         const token = tokenStore.get();
 //         const res = await fetch(
 //           `${API_URL}/v1/projects/${projectId}/feedback`,
 //           { headers: { Authorization: `Bearer ${token}` } },
@@ -3470,7 +3522,7 @@ function FeedbackThread({ projectId }: { projectId: string }) {
   useEffect(() => {
     const fetchFeedback = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = tokenStore.get();
         const res = await fetch(
           `${API_URL}/v1/projects/${projectId}/feedback`,
           { headers: { Authorization: `Bearer ${token}` } },
@@ -3499,7 +3551,7 @@ function FeedbackThread({ projectId }: { projectId: string }) {
     if (!newComment.trim()) return;
     setSending(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/projects/${projectId}/feedback`, {
         method: "POST",
         headers: {
@@ -3702,7 +3754,7 @@ function ChatView({
 
     const fetchMessages = async () => {
       setLoading(true);
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       const res = await fetch(
         `${API_URL}/v1/chat/conversations/${selectedChat}/messages`,
         {
@@ -3758,7 +3810,7 @@ function ChatView({
     }));
 
     try {
-      const token = localStorage.getItem("token");
+      const token = tokenStore.get();
       await fetch(
         `${API_URL}/v1/chat/conversations/${selectedChat}/messages`,
         {
@@ -4140,27 +4192,41 @@ function ChatView({
   );
 }
 
+// export function StudentMessages() {
+//   const [conversations, setConversations] = useState<Conversation[]>([]);
+
+//   useEffect(() => {
+//     const load = async () => {
+//       try {
+//         const token = tokenStore.get();
+//         const res = await fetch(`${API_URL}/v1/chat/student-conversations`, {
+//           headers: { Authorization: `Bearer ${token}` },
+//         });
+//         if (!res.ok) throw new Error("Failed to fetch conversations");
+//         const json = await res.json();
+//         setConversations(json.data || []);
+//       } catch (err) {
+//         console.error("Messages load failed", err);
+//         setConversations([]);
+//       }
+//     };
+//     load();
+//   }, []);
+
+//   return (
+//     <div className="space-y-4">
+//       <div>
+//         <h1 className={cn("text-2xl font-bold", heading)}>Messages</h1>
+//         <p className={cn("text-sm", subtext)}>
+//           Chat with your supervisors about your projects
+//         </p>
+//       </div>
+//       <ChatView conversations={conversations} userType="student" />
+//     </div>
+//   );
+// }
+
 export function StudentMessages() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${API_URL}/v1/chat/student-conversations`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Failed to fetch conversations");
-        const json = await res.json();
-        setConversations(json.data || []);
-      } catch (err) {
-        console.error("Messages load failed", err);
-        setConversations([]);
-      }
-    };
-    load();
-  }, []);
-
   return (
     <div className="space-y-4">
       <div>
@@ -4169,32 +4235,62 @@ export function StudentMessages() {
           Chat with your supervisors about your projects
         </p>
       </div>
-      <ChatView conversations={conversations} userType="student" />
+      <div className={cn(card, "flex flex-col items-center justify-center py-24 gap-4")}>
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 dark:bg-[#21262d]">
+          <MessageSquare className="h-8 w-8 text-neutral-400 dark:text-[#484f58]" />
+        </div>
+        <div className="text-center">
+          <h3 className={cn("text-lg font-semibold mb-1", heading)}>
+            Chat — Coming Soon
+          </h3>
+          <p className={cn("text-sm max-w-sm", subtext)}>
+            Real-time messaging with your supervisor is under development and will be available in the next release.
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-1 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+          In development
+        </span>
+      </div>
     </div>
   );
 }
 
+// export function SupervisorMessages() {
+//   const [conversations, setConversations] = useState<Conversation[]>([]);
+
+//   useEffect(() => {
+//     const load = async () => {
+//       try {
+//         const token = tokenStore.get();
+//         const res = await fetch(`${API_URL}/v1/chat/supervisor-conversations`, {
+//           headers: { Authorization: `Bearer ${token}` },
+//         });
+//         if (!res.ok) throw new Error("Failed to fetch conversations");
+//         const json = await res.json();
+//         setConversations(json.data || []);
+//       } catch (err) {
+//         console.error("Messages load failed", err);
+//         setConversations([]);
+//       }
+//     };
+//     load();
+//   }, []);
+
+//   return (
+//     <div className="space-y-4">
+//       <div>
+//         <h1 className={cn("text-2xl font-bold", heading)}>Messages</h1>
+//         <p className={cn("text-sm", subtext)}>
+//           Chat with your students about their projects
+//         </p>
+//       </div>
+//       <ChatView conversations={conversations} userType="supervisor" />
+//     </div>
+//   );
+// }
+
 export function SupervisorMessages() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${API_URL}/v1/chat/supervisor-conversations`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Failed to fetch conversations");
-        const json = await res.json();
-        setConversations(json.data || []);
-      } catch (err) {
-        console.error("Messages load failed", err);
-        setConversations([]);
-      }
-    };
-    load();
-  }, []);
-
   return (
     <div className="space-y-4">
       <div>
@@ -4203,7 +4299,23 @@ export function SupervisorMessages() {
           Chat with your students about their projects
         </p>
       </div>
-      <ChatView conversations={conversations} userType="supervisor" />
+      <div className={cn(card, "flex flex-col items-center justify-center py-24 gap-4")}>
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 dark:bg-[#21262d]">
+          <MessageSquare className="h-8 w-8 text-neutral-400 dark:text-[#484f58]" />
+        </div>
+        <div className="text-center">
+          <h3 className={cn("text-lg font-semibold mb-1", heading)}>
+            Chat — Coming Soon
+          </h3>
+          <p className={cn("text-sm max-w-sm", subtext)}>
+            Real-time messaging with students is under development and will be available in the next release.
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-1 text-xs font-medium text-yellow-700 dark:text-yellow-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+          In development
+        </span>
+      </div>
     </div>
   );
 }

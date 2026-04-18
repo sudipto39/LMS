@@ -1,10 +1,9 @@
 import { Button } from '@/components/ui';
 import { GitBranch, ArrowUpRight, Server, Moon, Sun, Layers, CheckCircle2 } from '@/components/Icons';
-import { getGiteaURL } from '@/api/client';
 import type { Page } from '@/types';
 
 // Get Gitea URL from environment variable (never hardcode!)
-const GITEA_HOST = (getGiteaURL() || 'https://gitea.example.com').replace(/^https?:\/\//, '');
+// const GITEA_HOST = (getGiteaURL() || 'https://gitea.example.com').replace(/^https?:\/\//, '');
 
 function TerminalBlock({ darkMode }: { darkMode: boolean }) {
   return (
@@ -16,7 +15,7 @@ function TerminalBlock({ darkMode }: { darkMode: boolean }) {
         <span className="ml-3 text-xs text-neutral-500">terminal</span>
       </div>
       <div className="p-4 space-y-1 text-[13px] leading-relaxed">
-        <p><span className="text-green-400">$</span> <span className="text-neutral-300">git remote add origin</span> <span className="text-blue-400">https://{GITEA_HOST}/org/my-project.git</span></p>
+        {/* <p><span className="text-green-400">$</span> <span className="text-neutral-300">git remote add origin</span> <span className="text-blue-400">https://{GITEA_HOST}/org/my-project.git</span></p> */}
         <p><span className="text-green-400">$</span> <span className="text-neutral-300">git push -u origin main</span></p>
         <p className="text-neutral-500">Enumerating objects: 42, done.</p>
         <p className="text-neutral-500">Compressing objects: 100% (38/38), done.</p>
