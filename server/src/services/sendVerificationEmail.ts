@@ -1,5 +1,5 @@
+// src/services/sendVerificationEmail.ts
 import { getResend } from "../config/resend.js";
-import { env } from "../config/env.js";
 
 const FROM_EMAIL = "no-reply@giteaforge.com";
 const APP_NAME = "GiteaForge";
