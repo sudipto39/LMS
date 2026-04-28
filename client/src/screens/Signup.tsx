@@ -1,7 +1,7 @@
 // import { useState, useCallback, useEffect } from 'react';
 // import { Button } from '@/components/ui';
-// import { 
-//   Mail, Lock, Layers, Moon, Sun, User, ChevronLeft, 
+// import {
+//   Mail, Lock, Layers, Moon, Sun, User, ChevronLeft,
 //   BookOpen, Hash, Globe, Calendar, AlertTriangle, Eye, EyeOff,
 //   ShieldCheck, Check
 // } from '@/components/Icons';
@@ -13,10 +13,10 @@
 // } from '@/utils/security';
 // import type { Page } from '@/types';
 
-// export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: { 
-//   onNavigate: (page: Page) => void; 
+// export function Signup({ onNavigate, goBack, darkMode, setDarkMode }: {
+//   onNavigate: (page: Page) => void;
 //   goBack: () => void;
-//   darkMode: boolean; 
+//   darkMode: boolean;
 //   setDarkMode: (v: boolean) => void;
 // }) {
 //   const [formData, setFormData] = useState<SignupFormData>({
@@ -114,18 +114,18 @@
 //           rollNumber: formData.rollNo,
 //           role: 'student',
 //         });
-        
+
 //         // Clear any existing auth data first
 //         localStorage.removeItem('token');
 //         localStorage.removeItem('user');
-        
+
 //         // Store authentication token and user data from the response
 //         // Backend returns: { status, token, data: { user } }
 //         if (response.token) {
 //           localStorage.setItem('token', response.token);
 //           console.log('Token stored after registration');
 //         }
-        
+
 //         // Extract user from nested data structure
 //         const user = response.data?.user || response.user;
 //         if (user) {
@@ -134,7 +134,7 @@
 //         } else {
 //           console.warn('No user data in registration response');
 //         }
-        
+
 //         setIsSubmitting(false);
 //         // Redirect to student dashboard after successful registration
 //         onNavigate('student-dashboard');
@@ -595,21 +595,36 @@
 //   );
 // }
 
-
-
 // src/screens/Signup.tsx
 import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui";
 import {
-  Mail, Lock, Layers, Moon, Sun, User, ChevronLeft,
-  BookOpen, Hash, Globe, Calendar, AlertTriangle, Eye, EyeOff,
-  ShieldCheck, Check,
+  Mail,
+  Lock,
+  Layers,
+  Moon,
+  Sun,
+  User,
+  ChevronLeft,
+  BookOpen,
+  Hash,
+  Globe,
+  Calendar,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Check,
 } from "@/components/Icons";
 import { Phone } from "lucide-react";
 import {
-  validateSignupStep1, checkPasswordStrength,
-  checkRateLimit, sanitizeInput, preventClickjacking,
-  type SignupFormData, type PasswordStrength,
+  validateSignupStep1,
+  checkPasswordStrength,
+  checkRateLimit,
+  sanitizeInput,
+  preventClickjacking,
+  type SignupFormData,
+  type PasswordStrength,
 } from "@/utils/security";
 import type { Page } from "@/types";
 import type { Course, Batch } from "@/types";
@@ -638,7 +653,10 @@ function validateStep2(data: ExtendedFormData): {
 }
 
 export function Signup({
-  onNavigate, goBack, darkMode, setDarkMode,
+  onNavigate,
+  goBack,
+  darkMode,
+  setDarkMode,
 }: {
   onNavigate: (page: Page) => void;
   goBack: () => void;
@@ -665,8 +683,11 @@ export function Signup({
   const [step, setStep] = useState<1 | 2>(1);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errors, setErrors] = useState<Partial<Record<keyof ExtendedFormData, string>>>({});
-  const [passwordStrength, setPasswordStrength] = useState<PasswordStrength | null>(null);
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof ExtendedFormData, string>>
+  >({});
+  const [passwordStrength, setPasswordStrength] =
+    useState<PasswordStrength | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -677,7 +698,11 @@ export function Signup({
   const [loadingBatches, setLoadingBatches] = useState(false);
 
   useEffect(() => {
-    try { preventClickjacking(); } catch { /* handled */ }
+    try {
+      preventClickjacking();
+    } catch {
+      /* handled */
+    }
   }, []);
 
   // Load courses on step 2 mount
@@ -724,7 +749,7 @@ export function Signup({
       });
       setSubmitError("");
     },
-    []
+    [],
   );
 
   const updateTextField = useCallback(
@@ -735,13 +760,15 @@ export function Signup({
           : sanitizeInput(value);
       updateField(field, sanitized);
     },
-    [updateField]
+    [updateField],
   );
 
   const handleStep1Next = useCallback(() => {
     const result = validateSignupStep1(formData);
     if (!result.valid) {
-      setErrors(result.errors as Partial<Record<keyof ExtendedFormData, string>>);
+      setErrors(
+        result.errors as Partial<Record<keyof ExtendedFormData, string>>,
+      );
       return;
     }
     setErrors({});
@@ -755,12 +782,22 @@ export function Signup({
       return;
     }
 
-    const rateCheck = checkRateLimit("signup", 3, 300000);
-    if (!rateCheck.allowed) {
-      setSubmitError(
-        `Too many signup attempts. Please wait ${rateCheck.retryAfter} seconds.`
-      );
-      return;
+    // const rateCheck = checkRateLimit("signup", 3, 300000);
+    // if (!rateCheck.allowed) {
+    //   setSubmitError(
+    //     `Too many signup attempts. Please wait ${rateCheck.retryAfter} seconds.`
+    //   );
+    //   return;
+    // }
+    const isDev = import.meta.env.DEV;
+    if (!isDev) {
+      const rateCheck = checkRateLimit("signup", 3, 300000);
+      if (!rateCheck.allowed) {
+        setSubmitError(
+          `Too many signup attempts. Please wait ${rateCheck.retryAfter} seconds.`,
+        );
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -783,7 +820,7 @@ export function Signup({
     } catch (err) {
       setSubmitError(
         getErrorMessage(err) ||
-          "Registration failed. Please try again or contact admin."
+          "Registration failed. Please try again or contact admin.",
       );
     } finally {
       setIsSubmitting(false);
@@ -797,7 +834,7 @@ export function Signup({
         else handleSubmit();
       }
     },
-    [step, handleStep1Next, handleSubmit]
+    [step, handleStep1Next, handleSubmit],
   );
 
   const inputWrap = (hasError: boolean) =>
@@ -827,7 +864,9 @@ export function Signup({
             <span className="text-2xl font-bold text-white">GiteaForge</span>
           </div>
           <h2 className="text-3xl font-bold text-white leading-snug mb-4">
-            Create Your<br />Student Account
+            Create Your
+            <br />
+            Student Account
           </h2>
           <p className="text-neutral-400 text-base leading-relaxed max-w-md mb-8">
             Register to access your institute's project management portal. Once
@@ -876,7 +915,11 @@ export function Signup({
             onClick={() => setDarkMode(!darkMode)}
             className="rounded-md p-2 hover:bg-neutral-100 dark:hover:bg-[#30363d] text-neutral-500 dark:text-[#8b949e] transition"
           >
-            {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {darkMode ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
           </button>
         </div>
 
@@ -973,7 +1016,9 @@ export function Signup({
                     <input
                       type="text"
                       value={formData.fullName}
-                      onChange={(e) => updateTextField("fullName", e.target.value)}
+                      onChange={(e) =>
+                        updateTextField("fullName", e.target.value)
+                      }
                       placeholder="Enter your full name"
                       className={inputField}
                       maxLength={100}
@@ -1210,7 +1255,9 @@ export function Signup({
                     <BookOpen className={iconClass} />
                     <select
                       value={formData.department}
-                      onChange={(e) => updateField("department", e.target.value)}
+                      onChange={(e) =>
+                        updateField("department", e.target.value)
+                      }
                       className={`${inputField} cursor-pointer`}
                     >
                       <option value="">Select Department</option>
@@ -1241,7 +1288,11 @@ export function Signup({
                   <label className={labelClass}>
                     Course <span className="text-red-500">*</span>
                   </label>
-                  <div className={inputWrap(!!(errors as Record<string, string>)["courseId"])}>
+                  <div
+                    className={inputWrap(
+                      !!(errors as Record<string, string>)["courseId"],
+                    )}
+                  >
                     <Globe className={iconClass} />
                     <select
                       value={formData.courseId}
@@ -1253,7 +1304,9 @@ export function Signup({
                       disabled={loadingCourses}
                     >
                       <option value="">
-                        {loadingCourses ? "Loading courses..." : "Select Course"}
+                        {loadingCourses
+                          ? "Loading courses..."
+                          : "Select Course"}
                       </option>
                       {courses.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -1275,7 +1328,11 @@ export function Signup({
                   <label className={labelClass}>
                     Batch <span className="text-red-500">*</span>
                   </label>
-                  <div className={inputWrap(!!(errors as Record<string, string>)["batchId"])}>
+                  <div
+                    className={inputWrap(
+                      !!(errors as Record<string, string>)["batchId"],
+                    )}
+                  >
                     <Calendar className={iconClass} />
                     <select
                       value={formData.batchId}
@@ -1359,9 +1416,24 @@ export function Signup({
                   >
                     {isSubmitting ? (
                       <span className="flex items-center gap-2">
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <svg
+                          className="animate-spin h-4 w-4"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            fill="none"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                          />
                         </svg>
                         Submitting...
                       </span>

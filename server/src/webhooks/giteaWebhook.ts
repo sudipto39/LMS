@@ -1,43 +1,82 @@
-import { Request, Response } from "express";
-import Project from "../models/projectModel.js";
+// src/webhooks/giteaWebhook.ts
+import crypto from "crypto";
+import type { Request, Response } from "express";
+import { prisma } from "../config/db.js";
+import { giteaConfig } from "../config/gitea.js";
 import { logActivity } from "../services/activityService.js";
 
-export const handleGiteaWebhook = async (req: Request, res: Response) => {
-  try {
-    const payload = req.body;
+const verifySignature = (rawBody: Buffer, signature: string): boolean => {
+  const expected = crypto
+    .createHmac("sha256", giteaConfig.webhookSecret)
+    .update(rawBody)
+    .digest("hex");
 
-    const repoUrl = payload.repository?.clone_url;
+  const expectedBuf = Buffer.from(`sha256=${expected}`, "utf8");
+  const actualBuf = Buffer.from(signature ?? "", "utf8");
 
-    if (!repoUrl) {
-      return res.status(200).send("No repo info");
-    }
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
+};
 
-    const project = await Project.findOne({ repoUrl });
+export const handleGiteaWebhook = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const signature = req.headers["x-gitea-signature"] as string | undefined;
 
-    if (!project) {
-      return res.status(200).send("Project not found");
-    }
+  if (!signature || !verifySignature(req.body as Buffer, signature)) {
+    res.status(401).json({ message: "Invalid signature" });
+    return;
+  }
 
-    const commits = payload.commits || [];
+  // Respond immediately — process async
+  res.status(200).json({ received: true });
 
-    for (const commit of commits) {
-      await logActivity({
-        project: project._id,
-        type: "push",
-        message: `${commit.author.name} pushed commit`,
-        metadata: {
-          commitId: commit.id,
+  const event = req.headers["x-gitea-event"] as string;
+  if (event !== "push") return;
+
+  const payload = JSON.parse((req.body as Buffer).toString()) as {
+    repository?: { name?: string };
+    commits?: Array<{
+      id: string;
+      message: string;
+      author: { name: string };
+      added: string[];
+      modified: string[];
+      removed: string[];
+      timestamp: string;
+    }>;
+  };
+
+  const repoName = payload.repository?.name;
+  if (!repoName) return;
+
+  const project = await prisma.project.findUnique({
+    where: { repoName },
+    select: { id: true, ownerId: true },
+  });
+
+  if (!project) return;
+
+  const commits = payload.commits ?? [];
+  if (commits.length === 0) return;
+
+  await Promise.all(
+    commits.map((commit) =>
+      logActivity({
+        type: "PUSH",
+        payload: {
+          hash: commit.id,
           message: commit.message,
           author: commit.author.name,
-          branch: payload.ref,
           timestamp: commit.timestamp,
+          added: commit.added.length,
+          modified: commit.modified.length,
+          removed: commit.removed.length,
         },
-      });
-    }
-
-    res.status(200).send("Webhook processed");
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Webhook failed");
-  }
+        userId: project.ownerId,
+        projectId: project.id,
+      })
+    )
+  );
 };
