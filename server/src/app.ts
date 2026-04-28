@@ -63,19 +63,36 @@ app.use("/uploads", express.static("uploads"));
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 const isDev = env.NODE_ENV === "development";
 
+// const authLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: isDev ? 100 : 10,
+//   message: "Too many requests from this IP, please try again later",
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
+
+// const apiLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: isDev ? 1000 : 100,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 100 : 10,
+  max: isDev ? 10000 : 10,
   message: "Too many requests from this IP, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => isDev,
 });
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 1000 : 100,
+  max: isDev ? 10000 : 100,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => isDev,
 });
 
 app.use("/api/v1", apiLimiter);
