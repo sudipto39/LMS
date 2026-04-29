@@ -13,8 +13,12 @@ let _accessToken: string | null = null;
 
 export const tokenStore = {
   get: () => _accessToken,
-  set: (token: string | null) => { _accessToken = token; },
-  clear: () => { _accessToken = null; },
+  set: (token: string | null) => {
+    _accessToken = token;
+  },
+  clear: () => {
+    _accessToken = null;
+  },
 };
 
 // ─── URL helpers ──────────────────────────────────────────────────────────────
@@ -80,14 +84,8 @@ client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   }
 
   // 3. Sanitize body — skip auth endpoints and FormData
-  const shouldSkip = SKIP_SANITIZE.some((path) =>
-    config.url?.includes(path)
-  );
-  if (
-    config.data &&
-    !(config.data instanceof FormData) &&
-    !shouldSkip
-  ) {
+  const shouldSkip = SKIP_SANITIZE.some((path) => config.url?.includes(path));
+  if (config.data && !(config.data instanceof FormData) && !shouldSkip) {
     config.data = sanitizeData(config.data);
   }
 
@@ -121,10 +119,31 @@ client.interceptors.response.use(
     };
 
     if (error.response?.status === 401 && !original._retry) {
-      // Don't retry auth endpoints
-      if (original.url?.includes("/auth/")) {
-        tokenStore.clear();
-        window.dispatchEvent(new CustomEvent("auth:logout"));
+      // // Don't retry auth endpoints
+      // if (original.url?.includes("/auth/")) {
+      //   tokenStore.clear();
+      //   window.dispatchEvent(new CustomEvent("auth:logout"));
+      //   return Promise.reject(error);
+      // }
+      // ── Never retry these endpoints — they cause infinite loops ──
+      const skipUrls = [
+        "/auth/logout",
+        "/auth/refresh-token",
+        "/auth/login",
+        "/auth/register",
+      ];
+
+      const isSkipUrl = skipUrls.some((url) => original.url?.includes(url));
+
+      if (isSkipUrl) {
+        // Only dispatch logout if NOT a logout/login request
+        if (
+          !original.url?.includes("/auth/logout") &&
+          !original.url?.includes("/auth/login")
+        ) {
+          tokenStore.clear();
+          window.dispatchEvent(new CustomEvent("auth:logout"));
+        }
         return Promise.reject(error);
       }
 
@@ -144,7 +163,7 @@ client.interceptors.response.use(
         const res = await axios.post(
           `${API_BASE}/v1/auth/refresh-token`,
           {},
-          { withCredentials: true }
+          { withCredentials: true },
         );
         const newToken = res.data.accessToken as string;
         tokenStore.set(newToken);
@@ -162,7 +181,7 @@ client.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default client;
