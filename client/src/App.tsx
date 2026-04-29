@@ -771,7 +771,6 @@
 //   );
 // }
 
-
 // src/App.tsx
 import { useState, useEffect, useCallback } from "react";
 import type { Role, Page } from "./types";
@@ -781,19 +780,36 @@ import { Landing } from "./screens/Landing";
 import { Login } from "./screens/Login";
 import { Signup } from "./screens/Signup";
 import {
-  StudentDashboard, StudentProjects, CreateProject, StudentProjectDetail,
-  StudentSubmissions, StudentMessages, SupervisorDashboard, SupervisorProjectDetail,
-  SupervisorReviews, SupervisorGrades, SupervisorMessages, AdminDashboard,
-  AdminUsers, AdminBatches, AdminGiteaSettings, AdminAuditLogs,
-  ActivityPage, SettingsPage, ProfilePage,
+  StudentDashboard,
+  StudentProjects,
+  CreateProject,
+  StudentProjectDetail,
+  StudentSubmissions,
+  StudentMessages,
+  SupervisorDashboard,
+  SupervisorProjectDetail,
+  SupervisorReviews,
+  SupervisorGrades,
+  SupervisorMessages,
+  AdminDashboard,
+  AdminUsers,
+  AdminBatches,
+  AdminGiteaSettings,
+  AdminAuditLogs,
+  ActivityPage,
+  SettingsPage,
+  ProfilePage,
 } from "./screens/Dashboards";
 import { ChevronLeft } from "./components/Icons";
 import {
-  preventClickjacking, startSessionTimeout,
-  clearSessionTimeout, secureStorage,
+  preventClickjacking,
+  startSessionTimeout,
+  clearSessionTimeout,
+  secureStorage,
 } from "./utils/security";
 import { useAuth } from "./hooks/useAuth";
 import { tokenStore } from "./api/client";
+import { useAuthContext } from "./context/AuthContext";
 
 // ─── Page metadata ────────────────────────────────────────────────────────────
 
@@ -828,8 +844,12 @@ const parentPages: Partial<Record<Page, Page>> = {
 };
 
 const rootPages: Page[] = [
-  "landing", "login", "signup",
-  "student-dashboard", "supervisor-dashboard", "admin-dashboard",
+  "landing",
+  "login",
+  "signup",
+  "student-dashboard",
+  "supervisor-dashboard",
+  "admin-dashboard",
 ];
 
 const pageTitles: Partial<Record<Page, string>> = {
@@ -861,18 +881,23 @@ const pageTitles: Partial<Record<Page, string>> = {
 
 export function App() {
   const { user, isAuthenticated, isLoading, logout, role } = useAuth();
+  const { clearAuth } = useAuthContext();
 
   const [page, setPage] = useState<Page>("landing");
   const [history, setHistory] = useState<Page[]>(["landing"]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sessionWarning, setSessionWarning] = useState(false);
   const [darkMode, setDarkMode] = useState(
-    () => localStorage.getItem("giteaforge-dark") === "true"
+    () => localStorage.getItem("giteaforge-dark") === "true",
   );
 
   // Anti-clickjacking
   useEffect(() => {
-    try { preventClickjacking(); } catch { /* handled */ }
+    try {
+      preventClickjacking();
+    } catch {
+      /* handled */
+    }
   }, []);
 
   // Dark mode
@@ -884,19 +909,31 @@ export function App() {
 
   // Listen for auth:logout event from axios interceptor
   useEffect(() => {
+    let logoutInProgress = false;
     const handleForceLogout = () => {
+      if (logoutInProgress) return; // ← prevent re-entry
+      logoutInProgress = true;
+
       tokenStore.clear();
       logout();
       setPage("login");
       setHistory(["login"]);
+      clearAuth();
     };
     window.addEventListener("auth:logout", handleForceLogout);
-    return () => window.removeEventListener("auth:logout", handleForceLogout);
-  }, [logout]);
+    return () => {
+      window.removeEventListener("auth:logout", handleForceLogout);
+      logoutInProgress = false;
+    };
+  }, [clearAuth]);
 
   // Redirect to dashboard after login
   useEffect(() => {
-    if (isAuthenticated && user && ["landing", "login", "signup"].includes(page)) {
+    if (
+      isAuthenticated &&
+      user &&
+      ["landing", "login", "signup"].includes(page)
+    ) {
       const dash = defaultPages[user.role];
       setHistory([dash]);
       setPage(dash);
@@ -919,14 +956,14 @@ export function App() {
           setHistory(["login"]);
         },
         5 * 60 * 1000,
-        () => setSessionWarning(true)
+        () => setSessionWarning(true),
       );
     };
 
     handleActivity();
     const events = ["mousedown", "keydown", "scroll", "touchstart"];
     events.forEach((e) =>
-      window.addEventListener(e, handleActivity, { passive: true })
+      window.addEventListener(e, handleActivity, { passive: true }),
     );
     return () => {
       events.forEach((e) => window.removeEventListener(e, handleActivity));
@@ -956,7 +993,7 @@ export function App() {
       }
       return parentPages[current] ?? null;
     },
-    [user]
+    [user],
   );
 
   const canGoBack = history.length > 1 && !rootPages.includes(page);
@@ -992,11 +1029,28 @@ export function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-[#0d1117]">
         <div className="flex flex-col items-center gap-3">
-          <svg className="animate-spin h-8 w-8 text-neutral-400" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          <svg
+            className="animate-spin h-8 w-8 text-neutral-400"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+              fill="none"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
           </svg>
-          <p className="text-sm text-neutral-500 dark:text-[#8b949e]">Loading...</p>
+          <p className="text-sm text-neutral-500 dark:text-[#8b949e]">
+            Loading...
+          </p>
         </div>
       </div>
     );
@@ -1039,29 +1093,52 @@ export function App() {
   // ─── Authenticated pages ──────────────────────────────────────────────────
   const renderContent = () => {
     switch (page) {
-      case "student-dashboard": return <StudentDashboard onNavigate={navigateTo} />;
-      case "student-projects": return <StudentProjects onNavigate={navigateTo} />;
-      case "student-create-project": return <CreateProject onNavigate={navigateTo} />;
-      case "student-project-detail": return <StudentProjectDetail onNavigate={navigateTo} />;
-      case "student-submissions": return <StudentSubmissions onNavigate={navigateTo} />;
-      case "student-messages": return <StudentMessages />;
-      case "student-profile": return <ProfilePage />;
-      case "supervisor-dashboard": return <SupervisorDashboard onNavigate={navigateTo} />;
-      case "supervisor-projects": return <SupervisorDashboard onNavigate={navigateTo} />;
-      case "supervisor-project-detail": return <SupervisorProjectDetail onNavigate={navigateTo} />;
-      case "supervisor-reviews": return <SupervisorReviews onNavigate={navigateTo} />;
-      case "supervisor-grades": return <SupervisorGrades onNavigate={navigateTo} />;
-      case "supervisor-messages": return <SupervisorMessages />;
-      case "supervisor-profile": return <ProfilePage />;
-      case "admin-dashboard": return <AdminDashboard onNavigate={navigateTo} />;
-      case "admin-users": return <AdminUsers />;
-      case "admin-batches": return <AdminBatches />;
-      case "admin-gitea-settings": return <AdminGiteaSettings />;
-      case "admin-audit-logs": return <AdminAuditLogs />;
-      case "admin-profile": return <ProfilePage />;
-      case "activity": return <ActivityPage />;
-      case "settings": return <SettingsPage />;
-      default: return null;
+      case "student-dashboard":
+        return <StudentDashboard onNavigate={navigateTo} />;
+      case "student-projects":
+        return <StudentProjects onNavigate={navigateTo} />;
+      case "student-create-project":
+        return <CreateProject onNavigate={navigateTo} />;
+      case "student-project-detail":
+        return <StudentProjectDetail onNavigate={navigateTo} />;
+      case "student-submissions":
+        return <StudentSubmissions onNavigate={navigateTo} />;
+      case "student-messages":
+        return <StudentMessages />;
+      case "student-profile":
+        return <ProfilePage />;
+      case "supervisor-dashboard":
+        return <SupervisorDashboard onNavigate={navigateTo} />;
+      case "supervisor-projects":
+        return <SupervisorDashboard onNavigate={navigateTo} />;
+      case "supervisor-project-detail":
+        return <SupervisorProjectDetail onNavigate={navigateTo} />;
+      case "supervisor-reviews":
+        return <SupervisorReviews onNavigate={navigateTo} />;
+      case "supervisor-grades":
+        return <SupervisorGrades onNavigate={navigateTo} />;
+      case "supervisor-messages":
+        return <SupervisorMessages />;
+      case "supervisor-profile":
+        return <ProfilePage />;
+      case "admin-dashboard":
+        return <AdminDashboard onNavigate={navigateTo} />;
+      case "admin-users":
+        return <AdminUsers />;
+      case "admin-batches":
+        return <AdminBatches />;
+      case "admin-gitea-settings":
+        return <AdminGiteaSettings />;
+      case "admin-audit-logs":
+        return <AdminAuditLogs />;
+      case "admin-profile":
+        return <ProfilePage />;
+      case "activity":
+        return <ActivityPage />;
+      case "settings":
+        return <SettingsPage />;
+      default:
+        return null;
     }
   };
 
@@ -1086,9 +1163,11 @@ export function App() {
           onProfileClick={() => {
             if (!user) return;
             const profilePage: Page =
-              user.role === "STUDENT" ? "student-profile"
-              : user.role === "SUPERVISOR" ? "supervisor-profile"
-              : "admin-profile";
+              user.role === "STUDENT"
+                ? "student-profile"
+                : user.role === "SUPERVISOR"
+                  ? "supervisor-profile"
+                  : "admin-profile";
             navigateTo(profilePage);
           }}
         />
