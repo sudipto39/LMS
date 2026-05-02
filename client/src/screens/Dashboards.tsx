@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import type {
-  Page,
-  Project,
-  ActivityItem,
-} from "@/types";
+import type { Page, Project, ActivityItem } from "@/types";
 import dataService from "@/services/dataService";
-import  { getGiteaURL, tokenStore } from "@/api/client";
+import { getGiteaURL, tokenStore } from "@/api/client";
 const API_URL = import.meta.env.VITE_API_BASE_URL;
 
 import {
@@ -53,7 +49,6 @@ import { User as UserIcon } from "lucide-react";
 import { cn } from "@/utils/cn";
 
 const GITEA_URL = getGiteaURL() || "https://gitea.example.com";
-
 
 // const getAuthHeaders = (): HeadersInit => {
 //   const token = tokenStore.get();
@@ -221,17 +216,20 @@ export function StudentDashboard({
                 `${API_URL}/v1/projects/${project._id}/milestones`,
                 {
                   headers: getAuthHeaders(),
-                }
+                },
               );
               const milestonesData = await milestonesRes.json();
               const projectMilestones = Array.isArray(milestonesData.data)
                 ? milestonesData.data
                 : Array.isArray(milestonesData)
-                ? milestonesData
-                : [];
+                  ? milestonesData
+                  : [];
               allMilestones.push(...projectMilestones);
             } catch (err) {
-              console.error(`Failed to fetch milestones for project ${project._id}`, err);
+              console.error(
+                `Failed to fetch milestones for project ${project._id}`,
+                err,
+              );
             }
           }
           setMilestones(allMilestones);
@@ -290,7 +288,11 @@ export function StudentDashboard({
         />
         <KPICard
           title="Pending Review"
-          value={milestones.filter((m) => m.status === "submitted" || m.status === "completed").length}
+          value={
+            milestones.filter(
+              (m) => m.status === "submitted" || m.status === "completed",
+            ).length
+          }
           subtitle="Milestones awaiting approval"
           icon={<Eye className="h-5 w-5" />}
           color="purple"
@@ -347,7 +349,11 @@ export function StudentDashboard({
                     <td className="py-3 px-5">
                       <p className={cn("font-medium", heading)}>{p.title}</p>
                       <p className={cn("text-xs", mutedText)}>
-                        Prof. {typeof p.supervisor === "object" && p.supervisor !== null ? (p.supervisor as any).name : p.supervisor}
+                        Prof.{" "}
+                        {typeof p.supervisor === "object" &&
+                        p.supervisor !== null
+                          ? (p.supervisor as any).name
+                          : p.supervisor}
                       </p>
                     </td>
                     <td className="py-3 px-3">
@@ -430,23 +436,23 @@ export function StudentProjects({
   //   fetchProjects();
   // }, []);
   useEffect(() => {
-  const fetchProjects = async () => {
-    try {
-      const res = await fetch(`${API_URL}/v1/projects/me`, {
-        headers: getAuthHeaders(),
-      });
+    const fetchProjects = async () => {
+      try {
+        const res = await fetch(`${API_URL}/v1/projects/me`, {
+          headers: getAuthHeaders(),
+        });
 
-      const data = await res.json();
-      setProjects(data.data || []);
-    } catch (err) {
-      console.error("Failed to load projects", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+        const data = await res.json();
+        setProjects(data.data || []);
+      } catch (err) {
+        console.error("Failed to load projects", err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  fetchProjects();
-}, []);
+    fetchProjects();
+  }, []);
 
   if (loading) return <LoadingSpinner text="Loading projects..." />;
 
@@ -484,9 +490,11 @@ export function StudentProjects({
                 </div>
                 <p className={cn("text-sm mb-3", subtext)}>{p.description}</p>
                 <div className="flex flex-wrap gap-1.5 mb-3">
-                  {((p as any).technologies || p.techStack || []).map((t: string) => (
-                    <TechTag key={t} label={t} />
-                  ))}
+                  {((p as any).technologies || p.techStack || []).map(
+                    (t: string) => (
+                      <TechTag key={t} label={t} />
+                    ),
+                  )}
                 </div>
                 <div
                   className={cn(
@@ -495,10 +503,14 @@ export function StudentProjects({
                   )}
                 >
                   <span className="flex items-center gap-1">
-                    <UserIcon className="h-3.5 w-3.5" /> {typeof p.supervisor === "object" && p.supervisor !== null ? (p.supervisor as any).name : p.supervisor}
+                    <UserIcon className="h-3.5 w-3.5" />{" "}
+                    {typeof p.supervisor === "object" && p.supervisor !== null
+                      ? (p.supervisor as any).name
+                      : p.supervisor}
                   </span>
                   <span className="flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" /> Due: {(p as any).endDate
+                    <Calendar className="h-3.5 w-3.5" /> Due:{" "}
+                    {(p as any).endDate
                       ? new Date((p as any).endDate).toLocaleDateString()
                       : p.deadline || "—"}
                   </span>
@@ -582,46 +594,44 @@ export function CreateProject({
   // }, []);
 
   useEffect(() => {
-  const fetchInitialData = async () => {
-    try {
-      const [supRes, courseRes] = await Promise.all([
-        fetch(`${API_URL}/v1/supervisors/allsupervisors`, {
-          headers: getAuthHeaders(),
-        }),
-        fetch(`${API_URL}/v1/batches/courses`, {
-          headers: getAuthHeaders(),
-        }),
-      ]);
+    const fetchInitialData = async () => {
+      try {
+        const [supRes, courseRes] = await Promise.all([
+          fetch(`${API_URL}/v1/supervisors/allsupervisors`, {
+            headers: getAuthHeaders(),
+          }),
+          fetch(`${API_URL}/v1/batches/courses`, {
+            headers: getAuthHeaders(),
+          }),
+        ]);
 
-      if (supRes.ok) {
-        const supData = await supRes.json();
-        setSupervisors(
-          (supData.data ?? []).map((s: { id: string; name: string }) => ({
-            _id: s.id,
-            name: s.name,
-          }))
-        );
-      }
+        if (supRes.ok) {
+          const supData = await supRes.json();
+          setSupervisors(
+            (supData.data ?? []).map((s: { id: string; name: string }) => ({
+              _id: s.id,
+              name: s.name,
+            })),
+          );
+        }
 
-      if (courseRes.ok) {
-        const courseData = await courseRes.json();
-        setCourses(
-          (courseData.data ?? []).map(
-            (c: { id: string; title: string }) => ({
+        if (courseRes.ok) {
+          const courseData = await courseRes.json();
+          setCourses(
+            (courseData.data ?? []).map((c: { id: string; title: string }) => ({
               _id: c.id,
               name: c.title,
               batch: "",
-            })
-          )
-        );
+            })),
+          );
+        }
+      } catch (err) {
+        console.error("Failed to fetch create project data:", err);
       }
-    } catch (err) {
-      console.error("Failed to fetch create project data:", err);
-    }
-  };
+    };
 
-  fetchInitialData();
-}, []);
+    fetchInitialData();
+  }, []);
 
   const toggleTech = (tech: string) => {
     setFormData((f) => ({
@@ -1075,10 +1085,22 @@ export function StudentProjectDetail({
         setProject(projectData.data || projectData);
 
         const milestoneData = await milestoneRes.json();
-        setMilestones(Array.isArray(milestoneData.data) ? milestoneData.data : Array.isArray(milestoneData) ? milestoneData : []);
+        setMilestones(
+          Array.isArray(milestoneData.data)
+            ? milestoneData.data
+            : Array.isArray(milestoneData)
+              ? milestoneData
+              : [],
+        );
 
         const filesData = await filesRes.json();
-        setFiles(Array.isArray(filesData.data) ? filesData.data : Array.isArray(filesData) ? filesData : []);
+        setFiles(
+          Array.isArray(filesData.data)
+            ? filesData.data
+            : Array.isArray(filesData)
+              ? filesData
+              : [],
+        );
       } catch (err) {
         console.error(err);
       } finally {
@@ -1156,7 +1178,9 @@ export function StudentProjectDetail({
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Batch</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {typeof project.batch === "object" && project.batch !== null ? (project.batch as any).name : project.batch || "—"}
+                    {typeof project.batch === "object" && project.batch !== null
+                      ? (project.batch as any).name
+                      : project.batch || "—"}
                   </dd>
                 </div>
                 <div>
@@ -1179,9 +1203,11 @@ export function StudentProjectDetail({
               <div className="mt-4">
                 <dt className={cn("text-sm mb-1", mutedText)}>Tech Stack</dt>
                 <div className="flex flex-wrap gap-1.5">
-                  {(project.technologies || project.techStack || []).map((t: string) => (
-                    <TechTag key={t} label={t} />
-                  ))}
+                  {(project.technologies || project.techStack || []).map(
+                    (t: string) => (
+                      <TechTag key={t} label={t} />
+                    ),
+                  )}
                 </div>
               </div>
             </div>
@@ -1429,7 +1455,7 @@ export function StudentProjectDetail({
         </div>
       )}
 
-       {tab === "feedback" && (
+      {tab === "feedback" && (
         <div className={card}>
           <FeedbackThread projectId={project._id} />
         </div>
@@ -1458,7 +1484,13 @@ export function StudentSubmissions({
         });
         if (!res.ok) throw new Error("Failed to fetch submissions");
         const json = await res.json();
-        setSubmissions(Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : []);
+        setSubmissions(
+          Array.isArray(json.data)
+            ? json.data
+            : Array.isArray(json)
+              ? json
+              : [],
+        );
       } catch (err) {
         console.error("Submissions load failed", err);
         setSubmissions([]);
@@ -2295,13 +2327,15 @@ export function AdminDashboard({
         fetch(`${API_URL}/v1/activities/admin`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
+        // fetch(`${API_URL}/v1/admin/milestones/getProjectMilestones`, {
         fetch(`${API_URL}/v1/admin/milestones/getProjectMilestones`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
       setStats(await statsRes.json());
-      setActivities(await activityRes.json());
-      setStatusBreakdown(await statusRes.json());
+      const statusData = await statusRes.json();
+      setStatusBreakdown(statusData.data || []);
+      setStatusBreakdown(statusData.data || []);
       setLoading(false);
     };
     fetchDashboard();
@@ -3116,7 +3150,13 @@ export function ActivityPage() {
         });
         if (!res.ok) throw new Error("Failed to fetch activities");
         const json = await res.json();
-        setActivities(Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : []);
+        setActivities(
+          Array.isArray(json.data)
+            ? json.data
+            : Array.isArray(json)
+              ? json
+              : [],
+        );
       } catch (err) {
         console.error("Activity load failed", err);
         setActivities([]);
@@ -3231,7 +3271,10 @@ export function SettingsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ password: newPassword, passwordConfirm: newPassword }),
+        body: JSON.stringify({
+          password: newPassword,
+          passwordConfirm: newPassword,
+        }),
       });
       if (!res.ok) throw new Error("Password update failed");
       setToast("Password updated!");
@@ -3477,7 +3520,7 @@ export function ProfilePage() {
 /* ═══════════════════════════════════════════════════
    REUSABLE: FEEDBACK THREAD (Real API)
    ═══════════════════════════════════════════════════ */
-//changed on 25/03/26 as feedback was not loading 
+//changed on 25/03/26 as feedback was not loading
 // function FeedbackThread({ projectId }: { projectId: string }) {
 //   const [comments, setComments] = useState<any[]>([]);
 //   const [newComment, setNewComment] = useState("");
@@ -3493,11 +3536,11 @@ export function ProfilePage() {
 //           `${API_URL}/v1/projects/${projectId}/feedback`,
 //           { headers: { Authorization: `Bearer ${token}` } },
 //         );
-        
+
 //         if (!res.ok) {
 //           throw new Error(`Failed to fetch feedback: ${res.status}`);
 //         }
-        
+
 //         const data = await res.json();
 //         const feedbackList = data.data || data || [];
 //         setComments(Array.isArray(feedbackList) ? feedbackList : []);
@@ -3568,25 +3611,25 @@ function FeedbackThread({ projectId }: { projectId: string }) {
     }
     setSending(false);
   };
-//changed on 25/03/26 for feedback not loading
+  //changed on 25/03/26 for feedback not loading
   // return (
   //   <>
   //     <div className={cn("p-5", sectionBorder)}>
   //       <h3 className={cn("font-semibold", heading)}>Feedback Thread</h3>
   //     </div>
-      
+
   //     {loading && (
   //       <div className="p-5">
   //         <LoadingSpinner text="Loading feedback..." />
   //       </div>
   //     )}
-      
+
   //     {error && !loading && (
   //       <div className="p-5">
   //         <ErrorDisplay message={error} onRetry={() => window.location.reload()} />
   //       </div>
   //     )}
-      
+
   //     {!loading && !error && comments.length === 0 && (
   //       <div className="p-5">
   //         <EmptyState
@@ -3596,12 +3639,12 @@ function FeedbackThread({ projectId }: { projectId: string }) {
   //         />
   //       </div>
   //     )}
-      
+
   //     {!loading && !error && comments.length > 0 && (
   //       <div className="p-5 space-y-4">
   //         {comments.map((c) => (
 
-   return (
+  return (
     <>
       <div className={cn("p-5", sectionBorder)}>
         <h3 className={cn("font-semibold", heading)}>Feedback Thread</h3>
@@ -3615,7 +3658,10 @@ function FeedbackThread({ projectId }: { projectId: string }) {
 
       {error && !loading && (
         <div className="p-5">
-          <ErrorDisplay message={error} onRetry={() => window.location.reload()} />
+          <ErrorDisplay
+            message={error}
+            onRetry={() => window.location.reload()}
+          />
         </div>
       )}
 
@@ -3632,50 +3678,50 @@ function FeedbackThread({ projectId }: { projectId: string }) {
       {!loading && !error && comments.length > 0 && (
         <div className="p-5 space-y-4">
           {comments.map((c) => (
-          <div
-            key={c._id}
-            className={cn(
-              "flex gap-3",
-              c.author?.role === "student" ? "flex-row-reverse" : "",
-            )}
-          >
             <div
+              key={c._id}
               className={cn(
-                "h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white",
-                c.author?.role === "supervisor"
-                  ? "bg-purple-500"
-                  : "bg-blue-500",
+                "flex gap-3",
+                c.author?.role === "student" ? "flex-row-reverse" : "",
               )}
             >
-              {c.author?.fullName
-                ?.split(" ")
-                .map((n: string) => n[0])
-                .join("")
-                .slice(0, 2)}
-            </div>
-            <div
-              className={cn(
-                "max-w-lg rounded-lg p-3 text-sm",
-                c.author?.role === "supervisor"
-                  ? "bg-neutral-100 dark:bg-[#21262d] text-neutral-800 dark:text-[#c9d1d9]"
-                  : "bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-300",
-              )}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className={cn("font-semibold text-xs", heading)}>
-                  {c.author?.fullName}
-                </span>
-                <span className={cn("text-xs", mutedText)}>
-                  {new Date(c.createdAt).toLocaleString()}
-                </span>
+              <div
+                className={cn(
+                  "h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white",
+                  c.author?.role === "supervisor"
+                    ? "bg-purple-500"
+                    : "bg-blue-500",
+                )}
+              >
+                {c.author?.fullName
+                  ?.split(" ")
+                  .map((n: string) => n[0])
+                  .join("")
+                  .slice(0, 2)}
               </div>
-              <p>{c.content}</p>
-            </div>
+              <div
+                className={cn(
+                  "max-w-lg rounded-lg p-3 text-sm",
+                  c.author?.role === "supervisor"
+                    ? "bg-neutral-100 dark:bg-[#21262d] text-neutral-800 dark:text-[#c9d1d9]"
+                    : "bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-300",
+                )}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={cn("font-semibold text-xs", heading)}>
+                    {c.author?.fullName}
+                  </span>
+                  <span className={cn("text-xs", mutedText)}>
+                    {new Date(c.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <p>{c.content}</p>
+              </div>
             </div>
           ))}
         </div>
       )}
-      
+
       <div
         className={cn(
           "p-5 flex gap-2",
@@ -3692,7 +3738,10 @@ function FeedbackThread({ projectId }: { projectId: string }) {
           placeholder="Type your reply..."
           className={inputClass}
         />
-        <Button onClick={handleSend} disabled={sending || !newComment.trim() || loading}>
+        <Button
+          onClick={handleSend}
+          disabled={sending || !newComment.trim() || loading}
+        >
           {sending ? (
             <RefreshCw className="h-4 w-4 animate-spin" />
           ) : (
@@ -3703,7 +3752,6 @@ function FeedbackThread({ projectId }: { projectId: string }) {
     </>
   );
 }
-
 
 /* ═══════════════════════════════════════════════════
    STUDENT / SUPERVISOR MESSAGES — Chat Component
@@ -3811,17 +3859,14 @@ function ChatView({
 
     try {
       const token = tokenStore.get();
-      await fetch(
-        `${API_URL}/v1/chat/conversations/${selectedChat}/messages`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ content: text, type: "text" }),
+      await fetch(`${API_URL}/v1/chat/conversations/${selectedChat}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-      );
+        body: JSON.stringify({ content: text, type: "text" }),
+      });
     } catch {
       /* Optimistic handled already */
     }
@@ -4235,7 +4280,12 @@ export function StudentMessages() {
           Chat with your supervisors about your projects
         </p>
       </div>
-      <div className={cn(card, "flex flex-col items-center justify-center py-24 gap-4")}>
+      <div
+        className={cn(
+          card,
+          "flex flex-col items-center justify-center py-24 gap-4",
+        )}
+      >
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 dark:bg-[#21262d]">
           <MessageSquare className="h-8 w-8 text-neutral-400 dark:text-[#484f58]" />
         </div>
@@ -4244,7 +4294,8 @@ export function StudentMessages() {
             Chat — Coming Soon
           </h3>
           <p className={cn("text-sm max-w-sm", subtext)}>
-            Real-time messaging with your supervisor is under development and will be available in the next release.
+            Real-time messaging with your supervisor is under development and
+            will be available in the next release.
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-1 text-xs font-medium text-yellow-700 dark:text-yellow-400">
@@ -4299,7 +4350,12 @@ export function SupervisorMessages() {
           Chat with your students about their projects
         </p>
       </div>
-      <div className={cn(card, "flex flex-col items-center justify-center py-24 gap-4")}>
+      <div
+        className={cn(
+          card,
+          "flex flex-col items-center justify-center py-24 gap-4",
+        )}
+      >
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 dark:bg-[#21262d]">
           <MessageSquare className="h-8 w-8 text-neutral-400 dark:text-[#484f58]" />
         </div>
@@ -4308,7 +4364,8 @@ export function SupervisorMessages() {
             Chat — Coming Soon
           </h3>
           <p className={cn("text-sm max-w-sm", subtext)}>
-            Real-time messaging with students is under development and will be available in the next release.
+            Real-time messaging with students is under development and will be
+            available in the next release.
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 px-3 py-1 text-xs font-medium text-yellow-700 dark:text-yellow-400">
