@@ -1573,8 +1573,10 @@ export function SupervisorDashboard({
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
-      setProjects(await projectsRes.json());
-      setActivities(await activitiesRes.json());
+      const projectsData = await projectsRes.json();
+      setProjects(projectsData.data || []);
+      const activitiesData = await activitiesRes.json();
+      setActivities(activitiesData.data || []);
       setLoading(false);
     };
     fetchDashboard();
@@ -1773,11 +1775,16 @@ export function SupervisorProjectDetail({
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
-      setProject(await projectRes.json());
-      setMilestones(await milestoneRes.json());
-      setActivities(await activityRes.json());
-      setFiles(await filesRes.json());
-      setComments(await commentsRes.json());
+      const projectData = await projectRes.json();
+      setProject(projectData.data || projectData);
+      const milestoneData = await milestoneRes.json();
+      setMilestones(milestoneData.data || []);
+      const activityData = await activityRes.json();
+      setActivities(activityData.data || []);
+      const filesData = await filesRes.json();
+      setFiles(filesData.data || []);
+      const commentsData = await commentsRes.json();
+      setComments(commentsData.data || []);
       setLoading(false);
     };
     fetchData();
@@ -2158,7 +2165,8 @@ export function SupervisorReviews({
       const res = await fetch(`${API_URL}/v1/supervisors/milestones/pending`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setReviews(await res.json());
+      const data = await res.json();
+      setReviews(data.data || []);
       setLoading(false);
     };
     fetchReviews();
@@ -2241,7 +2249,8 @@ export function SupervisorGrades({
       const res = await fetch(`${API_URL}/v1/supervisors/grades`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setGrades(await res.json());
+      const data = await res.json();
+      setGrades(data.data || []);
       setLoading(false);
     };
     fetchGrades();
@@ -2525,12 +2534,18 @@ export function AdminUsers() {
 
   useEffect(() => {
     const fetchUsers = async () => {
-      const token = tokenStore.get();
-      const res = await fetch(`${API_URL}/v1/users/getAllUsers`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setUsers(await res.json());
-      setLoading(false);
+      try {
+        const token = tokenStore.get();
+        const res = await fetch(`${API_URL}/v1/users/getAllUsers`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        setUsers(data.data || []); // ← Extract the array
+        setLoading(false);
+      } catch (err) {
+        console.error("Failed to fetch users:", err);
+        setLoading(false);
+      }
     };
     fetchUsers();
   }, []);
@@ -2763,7 +2778,8 @@ export function AdminBatches() {
       const res = await fetch(`${API_URL}/v1/admin/batches`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setBatches(await res.json());
+      const data = await res.json();
+      setBatches(data.data || []);
       setLoading(false);
     };
     fetchBatches();
@@ -2860,7 +2876,8 @@ export function AdminGiteaSettings() {
       const res = await fetch(`${API_URL}/v1/admin/gitea/config`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setConfig(await res.json());
+      const data = await res.json();
+      setConfig(data.data || data);
       setLoading(false);
     };
     fetchConfig();
@@ -3100,7 +3117,8 @@ export function AdminAuditLogs() {
       const res = await fetch(`${API_URL}/v1/admin/audit-logs`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setLogs(await res.json());
+      const data = await res.json();
+      setLogs(data.data || []);
       setLoading(false);
     };
     fetchLogs();
