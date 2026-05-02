@@ -264,7 +264,7 @@ export function StudentDashboard({
         <KPICard
           title="Active Projects"
           value={studentProjects.length}
-          subtitle={`${studentProjects.filter((p) => p.status === "in-progress").length} in progress`}
+          subtitle={`${studentProjects.filter((p) => p.status === "SUBMITTED").length} in progress`}
           icon={<FolderGit2 className="h-5 w-5" />}
           color="blue"
         />
@@ -2531,6 +2531,51 @@ export function AdminUsers() {
     role: "student",
     department: "",
   });
+  const [submitting, setSubmitting] = useState(false);
+const [error, setError] = useState("");
+
+const handleCreateUser = async () => {
+  if (!form.name || !form.email) {
+    setError("Name and email are required");
+    return;
+  }
+  try {
+    setSubmitting(true);
+    setError("");
+    const token = tokenStore.get();
+    const res = await fetch(`${API_URL}/v1/auth/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: form.name,
+        email: form.email,
+        password: "Welcome@123", // default password
+        role: form.role.toUpperCase(),
+        department: form.department,
+      }),
+    });
+    const data = await res.json();
+    if (data.status === "success" || data.status === "ok") {
+      // Refresh users list
+      const usersRes = await fetch(`${API_URL}/v1/users/getAllUsers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const usersData = await usersRes.json();
+      setUsers(usersData.data || []);
+      setShowModal(false);
+      setForm({ name: "", email: "", role: "student", department: "" });
+    } else {
+      setError(data.message || "Failed to create user");
+    }
+  } catch (err) {
+    setError("Something went wrong");
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -2629,7 +2674,11 @@ export function AdminUsers() {
               <Button variant="secondary" onClick={() => setShowModal(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => setShowModal(false)}>Create User</Button>
+              {/* <Button onClick={() => setShowModal(false)}>Create User</Button> */}
+              {error && <p className="text-red-500 text-sm">{error}</p>}
+<Button onClick={handleCreateUser} disabled={submitting}>
+  {submitting ? "Creating..." : "Create User"}
+</Button>
             </div>
           </div>
         </Modal>
@@ -2768,27 +2817,326 @@ export function AdminUsers() {
 /* ═══════════════════════════════════════════════════
    ADMIN BATCHES
    ═══════════════════════════════════════════════════ */
+// export function AdminBatches() {
+//   const [batches, setBatches] = useState<any[]>([]);
+//   const [loading, setLoading] = useState(true);
+
+//   useEffect(() => {
+//     const fetchBatches = async () => {
+//       const token = tokenStore.get();
+//       const res = await fetch(`${API_URL}/v1/admin/batches`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+//       const data = await res.json();
+//       setBatches(data.data || []);
+//       setLoading(false);
+//     };
+//     fetchBatches();
+//   }, []);
+
+//   if (loading) return <LoadingSpinner text="Loading batches..." />;
+
+//   return (
+//     <div className="space-y-6">
+//       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+//         <div>
+//           <h1 className={cn("text-2xl font-bold", heading)}>
+//             Batches & Courses
+//           </h1>
+//           <p className={cn("text-sm", subtext)}>
+//             Manage academic batches and student-supervisor mappings
+//           </p>
+//         </div>
+//         <Button>
+//           <Plus className="h-4 w-4" /> Create Batch
+//         </Button>
+//       </div>
+
+//       <div className={threeColGrid}>
+//         {batches.map((b) => (
+//           <div key={b._id} className={cn(cardHover, "p-5")}>
+//             <div className="flex items-start justify-between mb-3">
+//               <div>
+//                 <h3 className={cn("font-semibold", heading)}>{b.name}</h3>
+//                 <p className={cn("text-xs", mutedText)}>
+//                   {b.supervisor?.name || b.supervisor || "—"}
+//                 </p>
+//               </div>
+//               <span
+//                 className={cn(
+//                   "rounded-full px-2 py-0.5 text-xs font-medium",
+//                   b.active
+//                     ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+//                     : "bg-neutral-100 dark:bg-[#21262d] text-neutral-500 dark:text-[#8b949e]",
+//                 )}
+//               >
+//                 {b.active ? "Active" : "Archived"}
+//               </span>
+//             </div>
+//             <div className={cn("flex gap-4 text-sm", bodyText)}>
+//               <span className="flex items-center gap-1">
+//                 <Users className={cn("h-3.5 w-3.5", mutedText)} />
+//                 {b.studentsCount} students
+//               </span>
+//               <span className="flex items-center gap-1">
+//                 <FolderGit2 className={cn("h-3.5 w-3.5", mutedText)} />
+//                 {b.projectsCount} projects
+//               </span>
+//             </div>
+//             <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-[#30363d] flex gap-2">
+//               <Button variant="ghost" size="sm">
+//                 Manage
+//               </Button>
+//               <Button variant="ghost" size="sm">
+//                 Assign Students
+//               </Button>
+//             </div>
+//           </div>
+//         ))}
+//         {batches.length === 0 && (
+//           <div className="col-span-full text-center text-sm text-neutral-500">
+//             No batches found
+//           </div>
+//         )}
+//       </div>
+//     </div>
+//   );
+// }
+
 export function AdminBatches() {
   const [batches, setBatches] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    name: "",
+    courseId: "",
+    startYear: new Date().getFullYear(),
+    endYear: new Date().getFullYear() + 4,
+  });
 
-  useEffect(() => {
-    const fetchBatches = async () => {
+  const fetchBatches = async () => {
+    try {
       const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/admin/batches`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       setBatches(data.data || []);
+    } catch (err) {
+      console.error("Failed to fetch batches:", err);
+    } finally {
       setLoading(false);
-    };
+    }
+  };
+
+  const fetchCourses = async () => {
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/courses/allcourses`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setCourses(data.data || []);
+    } catch (err) {
+      console.error("Failed to fetch courses:", err);
+    }
+  };
+
+  useEffect(() => {
     fetchBatches();
+    fetchCourses();
   }, []);
+
+  const handleCreateBatch = async () => {
+    if (!form.name || !form.courseId) {
+      setError("Batch name and course are required");
+      return;
+    }
+    if (form.endYear <= form.startYear) {
+      setError("End year must be after start year");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      setError("");
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/batches`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: form.name,
+          courseId: form.courseId,
+          startYear: form.startYear,
+          endYear: form.endYear,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        await fetchBatches();
+        setShowModal(false);
+        setForm({
+          name: "",
+          courseId: "",
+          startYear: new Date().getFullYear(),
+          endYear: new Date().getFullYear() + 4,
+        });
+      } else {
+        setError(data.message || "Failed to create batch");
+      }
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteBatch = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this batch?")) return;
+    try {
+      const token = tokenStore.get();
+      await fetch(`${API_URL}/v1/batches/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await fetchBatches();
+    } catch (err) {
+      console.error("Failed to delete batch:", err);
+    }
+  };
 
   if (loading) return <LoadingSpinner text="Loading batches..." />;
 
   return (
     <div className="space-y-6">
+      {/* ── Create Batch Modal ── */}
+      {showModal && (
+        <Modal
+          open={showModal}
+          onClose={() => {
+            setShowModal(false);
+            setError("");
+          }}
+          title="Create New Batch"
+        >
+          <div className="space-y-4">
+            {/* Batch Name */}
+            <div>
+              <label className={cn("block text-sm font-medium mb-1", heading)}>
+                Batch Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                className={inputClass}
+                placeholder="e.g. BCA 2024-2028"
+                value={form.name}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }
+              />
+            </div>
+
+            {/* Course */}
+            <div>
+              <label className={cn("block text-sm font-medium mb-1", heading)}>
+                Course <span className="text-red-500">*</span>
+              </label>
+              <select
+                className={selectClass}
+                value={form.courseId}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, courseId: e.target.value }))
+                }
+              >
+                <option value="">Select a course</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title} {c.code ? `(${c.code})` : ""}
+                  </option>
+                ))}
+              </select>
+              {courses.length === 0 && (
+                <p className={cn("text-xs mt-1", mutedText)}>
+                  No courses found. Create a course first.
+                </p>
+              )}
+            </div>
+
+            {/* Years */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  className={cn("block text-sm font-medium mb-1", heading)}
+                >
+                  Start Year <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  className={inputClass}
+                  value={form.startYear}
+                  min={2000}
+                  max={2100}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      startYear: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label
+                  className={cn("block text-sm font-medium mb-1", heading)}
+                >
+                  End Year <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  className={inputClass}
+                  value={form.endYear}
+                  min={2000}
+                  max={2100}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      endYear: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-md">
+                {error}
+              </p>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowModal(false);
+                  setError("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreateBatch} disabled={submitting}>
+                {submitting ? "Creating..." : "Create Batch"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className={cn("text-2xl font-bold", heading)}>
@@ -2798,55 +3146,68 @@ export function AdminBatches() {
             Manage academic batches and student-supervisor mappings
           </p>
         </div>
-        <Button>
+        <Button onClick={() => setShowModal(true)}>
           <Plus className="h-4 w-4" /> Create Batch
         </Button>
       </div>
 
+      {/* ── Batch Cards ── */}
       <div className={threeColGrid}>
         {batches.map((b) => (
-          <div key={b._id} className={cn(cardHover, "p-5")}>
+          <div key={b.id || b._id} className={cn(cardHover, "p-5")}>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className={cn("font-semibold", heading)}>{b.name}</h3>
                 <p className={cn("text-xs", mutedText)}>
-                  {b.supervisor?.name || b.supervisor || "—"}
+                  {b.course?.title || "—"} • {b.startYear}–{b.endYear}
                 </p>
               </div>
               <span
                 className={cn(
                   "rounded-full px-2 py-0.5 text-xs font-medium",
-                  b.active
+                  b.isActive
                     ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
                     : "bg-neutral-100 dark:bg-[#21262d] text-neutral-500 dark:text-[#8b949e]",
                 )}
               >
-                {b.active ? "Active" : "Archived"}
+                {b.isActive ? "Active" : "Archived"}
               </span>
             </div>
             <div className={cn("flex gap-4 text-sm", bodyText)}>
               <span className="flex items-center gap-1">
                 <Users className={cn("h-3.5 w-3.5", mutedText)} />
-                {b.studentsCount} students
+                {b.enrollments?.length ?? b.studentsCount ?? 0} students
               </span>
               <span className="flex items-center gap-1">
                 <FolderGit2 className={cn("h-3.5 w-3.5", mutedText)} />
-                {b.projectsCount} projects
+                {b.projects?.length ?? b.projectsCount ?? 0} projects
               </span>
             </div>
             <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-[#30363d] flex gap-2">
               <Button variant="ghost" size="sm">
                 Manage
               </Button>
-              <Button variant="ghost" size="sm">
-                Assign Students
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleDeleteBatch(b.id || b._id)}
+                className="text-red-500 hover:text-red-600"
+              >
+                Delete
               </Button>
             </div>
           </div>
         ))}
         {batches.length === 0 && (
-          <div className="col-span-full text-center text-sm text-neutral-500">
-            No batches found
+          <div className="col-span-full text-center py-12">
+            <p className={cn("text-sm", mutedText)}>No batches found</p>
+            <Button
+              className="mt-3"
+              variant="secondary"
+              onClick={() => setShowModal(true)}
+            >
+              <Plus className="h-4 w-4" /> Create your first batch
+            </Button>
           </div>
         )}
       </div>
