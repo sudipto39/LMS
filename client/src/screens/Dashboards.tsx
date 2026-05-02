@@ -264,7 +264,7 @@ export function StudentDashboard({
         <KPICard
           title="Active Projects"
           value={studentProjects.length}
-          subtitle={`${studentProjects.filter((p) => p.status === "in-progress").length} in progress`}
+          subtitle={`${studentProjects.filter((p) => p.status === "SUBMITTED").length} in progress`}
           icon={<FolderGit2 className="h-5 w-5" />}
           color="blue"
         />
