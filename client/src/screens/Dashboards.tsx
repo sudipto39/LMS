@@ -2327,14 +2327,15 @@ export function AdminDashboard({
         fetch(`${API_URL}/v1/activities/admin`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        // fetch(`${API_URL}/v1/admin/milestones/getProjectMilestones`, {
-        fetch(`${API_URL}/v1/admin/milestones/getProjectMilestones`, {
+        fetch(`${API_URL}/v1/admin/projects`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
-      setStats(await statsRes.json());
+      const statsData = await statsRes.json();
+      setStats(statsData.data || statsData);
+      const activityData = await activityRes.json();
+      setActivities(activityData.data || []);
       const statusData = await statusRes.json();
-      setStatusBreakdown(statusData.data || []);
       setStatusBreakdown(statusData.data || []);
       setLoading(false);
     };
