@@ -162,3 +162,17 @@ export const getSupervisorActivityFeed = catchAsync(
     });
   }
 );
+
+export const getSuperviorGrades = catchAsync(async (req, res) => {
+  const milestones = await prisma.milestone.findMany({
+    where: {
+      reviewedById: req.user!.id,
+      status: { in: ["APPROVED", "REJECTED"] }
+    },
+    include: {
+      project: { select: { title: true } },
+      submittedBy: { select: { name: true } }
+    }
+  });
+  res.status(200).json({ status: "success", data: milestones });
+});

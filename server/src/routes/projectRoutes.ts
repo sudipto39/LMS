@@ -22,5 +22,6 @@ router.get(
 // /:id must be AFTER named routes
 router.get("/:id", protect, getProjectById);
 router.patch("/:id", protect, restrictTo("STUDENT"), updateProject);
+router.get("/supervised", protect, restrictTo("SUPERVISOR"), getSupervisedProjects);
 
 export default router;
