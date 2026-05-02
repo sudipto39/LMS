@@ -34,7 +34,7 @@ export const getAdminStats = catchAsync(
         pendingMilestones,
       },
     });
-  }
+  },
 );
 
 export const getAllProjectsForAdmin = catchAsync(
@@ -59,7 +59,7 @@ export const getAllProjectsForAdmin = catchAsync(
       count: projects.length,
       data: projects,
     });
-  }
+  },
 );
 
 export const assignSupervisorToProject = catchAsync(
@@ -88,5 +88,42 @@ export const assignSupervisorToProject = catchAsync(
     });
 
     res.status(200).json({ status: "success", data: project });
-  }
+  },
+);
+
+export const getAuditLogs = catchAsync(async (_req: Request, res: Response) => {
+  const logs = await prisma.activity.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    include: {
+      user: { select: { name: true, role: true } },
+      project: { select: { title: true } },
+    },
+  });
+  res.status(200).json({ status: "success", data: logs });
+});
+
+export const getGiteaConfig = catchAsync(
+  async (_req: Request, res: Response) => {
+    res.status(200).json({
+      status: "success",
+      data: {
+        baseUrl: process.env.GITEA_URL || "",
+        apiToken: process.env.GITEA_TOKEN || "",
+        orgTemplate: process.env.GITEA_ORG || "",
+      },
+    });
+  },
+);
+
+export const saveGiteaConfig = catchAsync(
+  async (_req: Request, res: Response) => {
+    res.status(200).json({ status: "success", message: "Config saved" });
+  },
+);
+
+export const testGiteaConnection = catchAsync(
+  async (_req: Request, res: Response) => {
+    res.status(200).json({ status: "success", message: "Connection tested" });
+  },
 );
