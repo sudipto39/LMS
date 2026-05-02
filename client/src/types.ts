@@ -53,12 +53,10 @@ export interface BatchEnrollment {
 }
 
 export type ProjectStatus =
-  | "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" | "ARCHIVED"
-  | "draft" | "in-progress" | "submitted" | "approved" | "rejected";
+  | "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" | "ARCHIVED";
 
 export type MilestoneStatus =
-  | "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "APPROVED" | "REJECTED"
-  | "pending" | "in-progress" | "completed" | "approved" | "rejected" | "draft";
+  | "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 // ─── Project — all fields present, legacy ones optional ───────────────────────
 export interface Project {
@@ -128,8 +126,8 @@ export interface ActivityItem {
   userId?: string | null;
   projectId?: string | null;
   createdAt: string;
-  user?: { id: string; name: string; role: Role } | null;
-  project?: { id: string; title: string } | null;
+  user?: { id: string; name: string; role: Role } | string | null;
+  project?: { id: string; title: string } | string | null;
 
   // Legacy fields used in Dashboards.tsx
   message: string;
