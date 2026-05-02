@@ -2524,16 +2524,22 @@ export function AdminUsers() {
   });
 
   useEffect(() => {
-    const fetchUsers = async () => {
+  const fetchUsers = async () => {
+    try {
       const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/users/getAllUsers`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setUsers(await res.json());
+      const data = await res.json();
+      setUsers(data.data || []);     // ← Extract the array
       setLoading(false);
-    };
-    fetchUsers();
-  }, []);
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
+      setLoading(false);
+    }
+  };
+  fetchUsers();
+}, []);
 
   if (loading) return <LoadingSpinner text="Loading users..." />;
 
