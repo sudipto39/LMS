@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { prisma } from "../config/db.js";
 import { redis } from "../config/redis.js";
 import { emailService } from "./sendVerificationEmail.js";
+import { giteaService } from "./giteaService.js"; // ← ADD THIS
 import {
   ConflictError,
   UnauthorizedError,
@@ -77,10 +78,19 @@ export const authService = {
       }
     }
 
-    // 3. Hash password
+    // 3. Generate Gitea username from email BEFORE hashing password
+    // e.g. "soham@example.com" → "soham"
+    const giteaUsername = data.email
+      .split("@")[0]!
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    // 4. Hash password
     const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
 
-    // 4. Create user — with optional batch enrollment in one transaction
+    // 5. Create user in DB
     const user = await prisma.user.create({
       data: {
         name: data.name,
@@ -90,9 +100,8 @@ export const authService = {
         phoneNumber: data.phoneNumber,
         department: data.department,
         role: data.role,
-        // Auto-verify when email verification is disabled
         isEmailVerified: !env.EMAIL_VERIFICATION,
-        // Create batch enrollment if batchId provided
+        giteaUsername, // ← save immediately
         ...(data.batchId && {
           enrollments: {
             create: { batchId: data.batchId },
@@ -132,7 +141,25 @@ export const authService = {
       },
     });
 
-    // 5. Send OTP only if email verification is enabled
+    // 6. Auto-create Gitea account (non-fatal — works only if Gitea is running)
+    if (user.role === "STUDENT" || user.role === "SUPERVISOR") {
+      try {
+        await giteaService.createGiteaUser(
+          giteaUsername,
+          data.email,
+          data.password // plain password — needed before hashing
+        );
+        console.log(`✅ Gitea user created: ${giteaUsername}`);
+      } catch {
+        // Non-fatal — user can still login, giteaUsername saved in DB
+        // Admin can manually create Gitea account later
+        console.warn(
+          `⚠️ Gitea user creation failed for ${giteaUsername} — Gitea may be offline`
+        );
+      }
+    }
+
+    // 7. Send OTP only if email verification is enabled
     if (env.EMAIL_VERIFICATION) {
       const otp = generateOTP();
       await storeOTP(`otp:${user.email}`, otp);
@@ -147,7 +174,6 @@ export const authService = {
   },
 
   async verifyEmail(email: string, code: string) {
-    // 1. Get OTP from Redis
     const storedOTP = await getOTP(`otp:${email}`);
     if (!storedOTP) {
       throw new BadRequestError(
@@ -158,7 +184,6 @@ export const authService = {
       throw new BadRequestError("Invalid verification code");
     }
 
-    // 2. Mark user as verified
     const user = await prisma.user.update({
       where: { email },
       data: { isEmailVerified: true },
@@ -176,13 +201,11 @@ export const authService = {
       },
     });
 
-    // 3. Delete OTP
     await deleteOTP(`otp:${email}`);
     return user;
   },
 
   async loginUser(data: SignInInput) {
-    // 1. Find user with password
     const user = await prisma.user.findUnique({
       where: { email: data.email },
       select: {
@@ -200,23 +223,19 @@ export const authService = {
       },
     });
 
-    // Same error for both cases — prevents user enumeration
     if (!user) throw new UnauthorizedError("Invalid email or password");
 
-    // 2. Compare password
     const isPasswordValid = await bcrypt.compare(data.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedError("Invalid email or password");
     }
 
-    // 3. Check email verification
     if (env.EMAIL_VERIFICATION && !user.isEmailVerified) {
       throw new UnauthorizedError(
         "Please verify your email address before logging in"
       );
     }
 
-    // 4. Return user without password
     const { password: _, ...safeUser } = user;
     return safeUser;
   },
@@ -227,11 +246,8 @@ export const authService = {
       select: { id: true, name: true, email: true },
     });
 
-    // Always return same message — prevents email enumeration
     if (!user) {
-      return {
-        message: "If that email exists, a reset code has been sent",
-      };
+      return { message: "If that email exists, a reset code has been sent" };
     }
 
     const otp = generateOTP();
@@ -247,7 +263,6 @@ export const authService = {
   },
 
   async resetPassword(email: string, code: string, newPassword: string) {
-    // 1. Verify reset OTP
     const storedOTP = await getOTP(`reset:${email}`);
     if (!storedOTP) {
       throw new BadRequestError(
@@ -258,16 +273,13 @@ export const authService = {
       throw new BadRequestError("Invalid reset code");
     }
 
-    // 2. Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
-    // 3. Update password
     await prisma.user.update({
       where: { email },
       data: { password: hashedPassword },
     });
 
-    // 4. Clean up OTP
     await deleteOTP(`reset:${email}`);
 
     return { message: "Password reset successfully. Please log in." };
