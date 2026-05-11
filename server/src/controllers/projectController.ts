@@ -21,6 +21,7 @@ const projectInclude = {
 
 export const createProject = catchAsync(
   async (req: Request, res: Response) => {
+    console.log("📋 Received body:", JSON.stringify(req.body, null, 2));
     const userId = req.user!.id;
     const { title, description, batchId, repoName } = req.body as {
       title: string;
@@ -116,16 +117,39 @@ export const getSupervisedProjects = catchAsync(
 
 export const getProjectById = catchAsync(
   async (req: Request, res: Response) => {
-    const id = requireParam(req.params["id"], "id");
+    const projectId = requireParam(req.params["id"], "id");
 
+    // const project = await prisma.project.findUnique({
+    //   where: { id },
+    //   include: {
+    //     ...projectInclude,
+    //     milestones: { orderBy: { createdAt: "asc" } },
+    //     activities: { orderBy: { createdAt: "desc" }, take: 10 },
+    //   },
+    // });
     const project = await prisma.project.findUnique({
-      where: { id },
-      include: {
-        ...projectInclude,
-        milestones: { orderBy: { createdAt: "asc" } },
-        activities: { orderBy: { createdAt: "desc" }, take: 10 },
+  where: { id: projectId },
+  include: {
+    owner: {
+      select: { id: true, name: true, email: true, giteaUsername: true },
+    },
+    supervisor: {
+      select: { id: true, name: true, email: true },
+    },
+    batch: {
+      select: {
+        id: true,
+        name: true,
+        startYear: true,
+        endYear: true,
+        course: {
+          select: { id: true, title: true },
+        },
       },
-    });
+    },
+    _count: { select: { milestones: true } },
+  },
+});
 
     if (!project) throw new NotFoundError("Project");
 
