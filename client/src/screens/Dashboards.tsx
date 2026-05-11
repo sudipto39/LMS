@@ -213,7 +213,7 @@ export function StudentDashboard({
           for (const project of projects) {
             try {
               const milestonesRes = await fetch(
-                `${API_URL}/v1/projects/${project._id}/milestones`,
+                `${API_URL}/v1/projects/${project.id ?? project._id}/milestones`,
                 {
                   headers: getAuthHeaders(),
                 },
@@ -476,7 +476,7 @@ export function StudentProjects({
             key={p._id}
             className={cn(cardHover, "p-5 cursor-pointer")}
             onClick={() => {
-              localStorage.setItem("activeProjectId", p._id);
+              localStorage.setItem("activeProjectId", p.id ?? p._id);
               onNavigate("student-project-detail");
             }}
           >
@@ -553,9 +553,14 @@ export function CreateProject({
   const [supervisors, setSupervisors] = useState<
     { _id: string; name: string }[]
   >([]);
-  const [courses, setCourses] = useState<
-    { _id: string; name: string; batch: string }[]
+  // const [courses, setCourses] = useState<
+  //   { _id: string; name: string; batch: string }[]
+  // >([]);
+  const [courses, setCourses] = useState<{ _id: string; name: string }[]>([]);
+  const [batches, setBatches] = useState<
+    { _id: string; name: string; startYear: number; endYear: number }[]
   >([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
   const [repoName, setRepoName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
 
@@ -593,6 +598,45 @@ export function CreateProject({
   //   fetchInitialData();
   // }, []);
 
+  // useEffect(() => {
+  //   const fetchInitialData = async () => {
+  //     try {
+  //       const [supRes, courseRes] = await Promise.all([
+  //         fetch(`${API_URL}/v1/supervisors/allsupervisors`, {
+  //           headers: getAuthHeaders(),
+  //         }),
+  //         fetch(`${API_URL}/v1/batches/courses`, {
+  //           headers: getAuthHeaders(),
+  //         }),
+  //       ]);
+
+  //       if (supRes.ok) {
+  //         const supData = await supRes.json();
+  //         setSupervisors(
+  //           (supData.data ?? []).map((s: { id: string; name: string }) => ({
+  //             _id: s.id,
+  //             name: s.name,
+  //           })),
+  //         );
+  //       }
+
+  //       if (courseRes.ok) {
+  //         const courseData = await courseRes.json();
+  //         setCourses(
+  //           (courseData.data ?? []).map((c: { id: string; title: string }) => ({
+  //             _id: c.id,
+  //             name: c.title,
+  //             batch: "",
+  //           })),
+  //         );
+  //       }
+  //     } catch (err) {
+  //       console.error("Failed to fetch create project data:", err);
+  //     }
+  //   };
+
+  //   fetchInitialData();
+  // }, []);
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
@@ -621,7 +665,6 @@ export function CreateProject({
             (courseData.data ?? []).map((c: { id: string; title: string }) => ({
               _id: c.id,
               name: c.title,
-              batch: "",
             })),
           );
         }
@@ -632,6 +675,39 @@ export function CreateProject({
 
     fetchInitialData();
   }, []);
+
+  // Load batches when course changes
+  useEffect(() => {
+    if (!formData.courseId) {
+      setBatches([]);
+      setFormData((f) => ({ ...f, batch: "" }));
+      return;
+    }
+    setLoadingBatches(true);
+    fetch(`${API_URL}/v1/batches/courses/${formData.courseId}/batches`, {
+      headers: getAuthHeaders(),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        setBatches(
+          (data.data ?? []).map(
+            (b: {
+              id: string;
+              name: string;
+              startYear: number;
+              endYear: number;
+            }) => ({
+              _id: b.id,
+              name: b.name,
+              startYear: b.startYear,
+              endYear: b.endYear,
+            }),
+          ),
+        );
+      })
+      .catch(() => setBatches([]))
+      .finally(() => setLoadingBatches(false));
+  }, [formData.courseId]);
 
   const toggleTech = (tech: string) => {
     setFormData((f) => ({
@@ -645,7 +721,8 @@ export function CreateProject({
   const handleCreateProject = useCallback(async () => {
     setIsCreating(true);
     try {
-      await dataService.createProject({
+      // 1. Create project
+      const project = await dataService.createProject({
         title: formData.title,
         description: formData.description,
         courseId: formData.courseId,
@@ -657,6 +734,32 @@ export function CreateProject({
         repoName: repoOption === "create" ? repoName : undefined,
         existingRepoUrl: repoOption === "link" ? repoUrl : undefined,
       });
+      const projectId = project?.id ?? project?._id;
+    if (!projectId) throw new Error("Project created but no ID returned");
+
+    localStorage.setItem("activeProjectId", projectId);
+
+    // 2. Create default milestones
+    const defaultMilestones = [
+      { title: "Project Setup & Database Design", order: 1 },
+      { title: "Core Features Implementation",   order: 2 },
+      { title: "Testing & Documentation",        order: 3 },
+      { title: "Final Submission",               order: 4 },
+    ];
+
+    await Promise.all(
+      defaultMilestones.map((m) =>
+        fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            title: m.title,
+            order: m.order,
+          }),
+        })
+      )
+    );
+
       setShowSuccess(true);
       setTimeout(() => onNavigate("student-project-detail"), 1500);
     } finally {
@@ -755,7 +858,7 @@ export function CreateProject({
                 className={inputClass}
               />
             </div>
-            <div className="grid sm:grid-cols-2 gap-4">
+            {/* <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label
                   className={cn("block text-sm font-medium mb-1.5", heading)}
@@ -784,6 +887,84 @@ export function CreateProject({
                   ))}
                 </select>
               </div>
+              <div>
+                <label
+                  className={cn("block text-sm font-medium mb-1.5", heading)}
+                >
+                  Supervisor
+                </label>
+                <select
+                  className={selectClass}
+                  value={formData.supervisorId}
+                  onChange={(e) =>
+                    setFormData((f) => ({ ...f, supervisorId: e.target.value }))
+                  }
+                >
+                  <option value="">Select Supervisor</option>
+                  {supervisors.map((s) => (
+                    <option key={s._id} value={s._id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div> */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label
+                  className={cn("block text-sm font-medium mb-1.5", heading)}
+                >
+                  Course *
+                </label>
+                <select
+                  className={selectClass}
+                  value={formData.courseId}
+                  onChange={(e) => {
+                    setFormData((f) => ({
+                      ...f,
+                      courseId: e.target.value,
+                      batch: "", // reset batch when course changes
+                    }));
+                  }}
+                >
+                  <option value="">Select Course</option>
+                  {courses.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  className={cn("block text-sm font-medium mb-1.5", heading)}
+                >
+                  Batch *
+                </label>
+                <select
+                  className={selectClass}
+                  value={formData.batch}
+                  onChange={(e) =>
+                    setFormData((f) => ({ ...f, batch: e.target.value }))
+                  }
+                  disabled={!formData.courseId || loadingBatches}
+                >
+                  <option value="">
+                    {!formData.courseId
+                      ? "Select a course first"
+                      : loadingBatches
+                        ? "Loading batches..."
+                        : "Select Batch"}
+                  </option>
+                  {batches.map((b) => (
+                    <option key={b._id} value={b._id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label
                   className={cn("block text-sm font-medium mb-1.5", heading)}
@@ -1456,10 +1637,10 @@ export function StudentProjectDetail({
       )}
 
       {tab === "feedback" && (
-        <div className={card}>
-          <FeedbackThread projectId={project._id} />
-        </div>
-      )}
+  <div className={card}>
+    <FeedbackThread projectId={project.id ?? project._id} />
+  </div>
+)}
     </div>
   );
 }
@@ -1694,7 +1875,7 @@ export function SupervisorDashboard({
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            localStorage.setItem("activeProjectId", p._id);
+                            localStorage.setItem("activeProjectId", p.id ?? p._id);
                             onNavigate("supervisor-project-detail");
                           }}
                         >
@@ -2532,50 +2713,50 @@ export function AdminUsers() {
     department: "",
   });
   const [submitting, setSubmitting] = useState(false);
-const [error, setError] = useState("");
+  const [error, setError] = useState("");
 
-const handleCreateUser = async () => {
-  if (!form.name || !form.email) {
-    setError("Name and email are required");
-    return;
-  }
-  try {
-    setSubmitting(true);
-    setError("");
-    const token = tokenStore.get();
-    const res = await fetch(`${API_URL}/v1/auth/register`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        name: form.name,
-        email: form.email,
-        password: "Welcome@123", // default password
-        role: form.role.toUpperCase(),
-        department: form.department,
-      }),
-    });
-    const data = await res.json();
-    if (data.status === "success" || data.status === "ok") {
-      // Refresh users list
-      const usersRes = await fetch(`${API_URL}/v1/users/getAllUsers`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const usersData = await usersRes.json();
-      setUsers(usersData.data || []);
-      setShowModal(false);
-      setForm({ name: "", email: "", role: "student", department: "" });
-    } else {
-      setError(data.message || "Failed to create user");
+  const handleCreateUser = async () => {
+    if (!form.name || !form.email) {
+      setError("Name and email are required");
+      return;
     }
-  } catch (err) {
-    setError("Something went wrong");
-  } finally {
-    setSubmitting(false);
-  }
-};
+    try {
+      setSubmitting(true);
+      setError("");
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          password: "Welcome@123", // default password
+          role: form.role.toUpperCase(),
+          department: form.department,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === "success" || data.status === "ok") {
+        // Refresh users list
+        const usersRes = await fetch(`${API_URL}/v1/users/getAllUsers`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const usersData = await usersRes.json();
+        setUsers(usersData.data || []);
+        setShowModal(false);
+        setForm({ name: "", email: "", role: "student", department: "" });
+      } else {
+        setError(data.message || "Failed to create user");
+      }
+    } catch (err) {
+      setError("Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -2676,9 +2857,9 @@ const handleCreateUser = async () => {
               </Button>
               {/* <Button onClick={() => setShowModal(false)}>Create User</Button> */}
               {error && <p className="text-red-500 text-sm">{error}</p>}
-<Button onClick={handleCreateUser} disabled={submitting}>
-  {submitting ? "Creating..." : "Create User"}
-</Button>
+              <Button onClick={handleCreateUser} disabled={submitting}>
+                {submitting ? "Creating..." : "Create User"}
+              </Button>
             </div>
           </div>
         </Modal>

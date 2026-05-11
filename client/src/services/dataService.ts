@@ -672,7 +672,7 @@ const dataService = {
       repoName: data.repoName,
       technologies: data.techStack ?? [],
     });
-    return res.data;
+    return res.data?.data ?? res.data;
   },
 
   approveProject: async (
