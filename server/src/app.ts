@@ -20,6 +20,7 @@ import activityRouter from "./routes/activityRoutes.js";
 import supervisorRouter from "./routes/supervisorRoutes.js";
 import giteaRouter from "./routes/giteaRoutes.js";
 import webhookRouter from "./routes/webhookRoutes.js";
+import uploadRouter from "./routes/uploadRoutes.js";
 
 export const app = express();
 
@@ -114,6 +115,7 @@ app.use("/api/v1", milestoneRouter);
 app.use("/api/v1/activities", activityRouter);
 app.use("/api/v1/supervisors", supervisorRouter);
 app.use("/api/v1/gitea", giteaRouter);
+app.use("/api/v1/uploads", uploadRouter);
 
 // ─── Health checks ────────────────────────────────────────────────────────────
 app.get("/", (_req, res) => {
