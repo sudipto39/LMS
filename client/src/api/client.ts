@@ -66,6 +66,8 @@ const SKIP_SANITIZE = [
   "/auth/register",
   "/auth/reset-password",
   "/auth/forgot-password",
+  "/auth/verify-email",
+  "/auth/refresh-token",
 ];
 
 // ─── Request interceptor ──────────────────────────────────────────────────────
@@ -84,10 +86,13 @@ client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   }
 
   // 3. Sanitize body — skip auth endpoints and FormData
-  const shouldSkip = SKIP_SANITIZE.some((path) => config.url?.includes(path));
-  if (config.data && !(config.data instanceof FormData) && !shouldSkip) {
-    config.data = sanitizeData(config.data);
-  }
+  const shouldSkip = SKIP_SANITIZE.some((path) =>
+  config.url?.includes(path)
+);
+
+if (config.data && !(config.data instanceof FormData) && !shouldSkip) {
+  config.data = sanitizeData(config.data);
+}
 
   // 4. Request timestamp
   if (config.headers) {
