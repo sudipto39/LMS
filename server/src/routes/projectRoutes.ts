@@ -6,6 +6,7 @@ import {
   getProjectById,
   getSupervisedProjects,
   updateProject,
+  getProjectFiles,
 } from "../controllers/projectController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
@@ -23,5 +24,6 @@ router.get(
 router.get("/:id", protect, getProjectById);
 router.patch("/:id", protect, restrictTo("STUDENT"), updateProject);
 router.get("/supervised", protect, restrictTo("SUPERVISOR"), getSupervisedProjects);
+router.get("/:id/files", protect, getProjectFiles);
 
 export default router;

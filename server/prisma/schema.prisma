@@ -5,7 +5,7 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../dist/generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -138,6 +138,7 @@ model Milestone {
   reviewedById       String?
   feedback           String?
   studentNotes       String?
+  attachments   Json?   
   submittedAt        DateTime?
   reviewedAt         DateTime?
   isActive           Boolean         @default(true)

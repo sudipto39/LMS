@@ -11,6 +11,9 @@ import { giteaService } from "../services/giteaService.js";
 import { logActivity } from "../services/activityService.js";
 import { requireParam } from "../utils/requireParam.js";
 import { env } from "../config/env.js";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { s3, BUCKET } from "../middlewares/fileUploadMiddleware.js";
 
 const projectInclude = {
   owner: { select: { id: true, name: true, email: true } },
@@ -188,5 +191,76 @@ export const updateProject = catchAsync(
     });
 
     res.status(200).json({ status: "success", data: project });
+  }
+);
+
+export const getProjectFiles = catchAsync(
+  async (req: Request, res: Response) => {
+    const projectId = requireParam(req.params["id"], "id");
+
+    // Verify access
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerId: true, supervisorId: true },
+    });
+
+    if (!project) throw new NotFoundError("Project");
+
+    const isOwner = project.ownerId === req.user!.id;
+    const isSupervisor = project.supervisorId === req.user!.id;
+    const isAdmin = req.user!.role === "ADMIN";
+    if (!isOwner && !isSupervisor && !isAdmin) throw new ForbiddenError();
+
+    // Get all milestones with attachments
+    const milestones = await prisma.milestone.findMany({
+      where: {
+        projectId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        title: true,
+        attachments: true,
+        submittedAt: true,
+        status: true,
+      },
+      orderBy: { submittedAt: "desc" },
+    });
+
+    // Generate presigned URLs (valid 1 hour)
+    const files = await Promise.all(
+      milestones.flatMap((m) => {
+        const atts = m.attachments as Array<{
+          name: string;
+          url: string;
+          key: string;
+          size: number;
+          mimetype: string;
+        }> | null;
+
+        return (atts ?? []).map(async (f) => {
+          const signedUrl = await getSignedUrl(
+            s3,
+            new GetObjectCommand({ Bucket: BUCKET, Key: f.key }),
+            { expiresIn: 3600 }
+          );
+          return {
+            name: f.name,
+            url: signedUrl,
+            size: f.size,
+            mimetype: f.mimetype,
+            milestoneId: m.id,
+            milestoneTitle: m.title,
+            submittedAt: m.submittedAt,
+          };
+        });
+      })
+    );
+
+    res.status(200).json({
+      status: "success",
+      count: files.length,
+      data: files,
+    });
   }
 );
