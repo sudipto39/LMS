@@ -370,7 +370,10 @@ export function StudentDashboard({
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          localStorage.setItem("activeProjectId", p._id);
+                          localStorage.setItem(
+                            "activeProjectId",
+                            p.id ?? p._id,
+                          );
                           onNavigate("student-project-detail");
                         }}
                       >
@@ -735,30 +738,30 @@ export function CreateProject({
         existingRepoUrl: repoOption === "link" ? repoUrl : undefined,
       });
       const projectId = project?.id ?? project?._id;
-    if (!projectId) throw new Error("Project created but no ID returned");
+      if (!projectId) throw new Error("Project created but no ID returned");
 
-    localStorage.setItem("activeProjectId", projectId);
+      localStorage.setItem("activeProjectId", projectId);
 
-    // 2. Create default milestones
-    const defaultMilestones = [
-      { title: "Project Setup & Database Design", order: 1 },
-      { title: "Core Features Implementation",   order: 2 },
-      { title: "Testing & Documentation",        order: 3 },
-      { title: "Final Submission",               order: 4 },
-    ];
+      // 2. Create default milestones
+      const defaultMilestones = [
+        { title: "Project Setup & Database Design", order: 1 },
+        { title: "Core Features Implementation", order: 2 },
+        { title: "Testing & Documentation", order: 3 },
+        { title: "Final Submission", order: 4 },
+      ];
 
-    await Promise.all(
-      defaultMilestones.map((m) =>
-        fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            title: m.title,
-            order: m.order,
+      await Promise.all(
+        defaultMilestones.map((m) =>
+          fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              title: m.title,
+              order: m.order,
+            }),
           }),
-        })
-      )
-    );
+        ),
+      );
 
       setShowSuccess(true);
       setTimeout(() => onNavigate("student-project-detail"), 1500);
@@ -1244,6 +1247,7 @@ export function StudentProjectDetail({
   const [milestones, setMilestones] = useState<any[]>([]);
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
 
   const projectId = localStorage.getItem("activeProjectId");
 
@@ -1596,7 +1600,7 @@ export function StudentProjectDetail({
         </div>
       )}
 
-      {tab === "files" && (
+      {/* {tab === "files" && (
         <div className={card}>
           <div
             className={cn(
@@ -1634,13 +1638,129 @@ export function StudentProjectDetail({
             )}
           </div>
         </div>
+      )} */}
+      {tab === "files" && (
+        <div className={card}>
+          <div
+            className={cn(
+              "p-5 flex items-center justify-between",
+              sectionBorder,
+            )}
+          >
+            <h3 className={cn("font-semibold", heading)}>Uploaded Documents</h3>
+            <div className="flex items-center gap-2">
+              {uploading && (
+                <span className={cn("text-xs", subtext)}>Uploading...</span>
+              )}
+              <Button
+                size="sm"
+                disabled={uploading}
+                onClick={() =>
+                  document.getElementById("file-upload-input")?.click()
+                }
+              >
+                <Upload className="h-4 w-4" />
+                {uploading ? "Uploading..." : "Upload File"}
+              </Button>
+              <input
+                id="file-upload-input"
+                type="file"
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png,.zip"
+                multiple
+                onChange={async (e) => {
+                  const selected = e.target.files;
+                  if (!selected || selected.length === 0) return;
+
+                  const firstMilestone = milestones[0];
+                  if (!firstMilestone) {
+                    alert(
+                      "No milestones found. Please create a milestone first.",
+                    );
+                    return;
+                  }
+
+                  setUploading(true);
+                  try {
+                    const formData = new FormData();
+                    Array.from(selected).forEach((file) =>
+                      formData.append("files", file),
+                    );
+
+                    const token = tokenStore.get();
+                    const milestoneId = firstMilestone.id ?? firstMilestone._id;
+                    const res = await fetch(
+                      `${API_URL}/v1/milestones/${milestoneId}/submit`,
+                      {
+                        method: "PATCH",
+                        headers: { Authorization: `Bearer ${token}` },
+                        body: formData,
+                      },
+                    );
+
+                    if (res.ok) {
+                      // Refresh files list
+                      const filesRes = await fetch(
+                        `${API_URL}/v1/projects/${projectId}/files`,
+                        { headers: getAuthHeaders() },
+                      );
+                      const filesData = await filesRes.json();
+                      setFiles(
+                        Array.isArray(filesData.data) ? filesData.data : [],
+                      );
+                    } else {
+                      alert("Upload failed. Please try again.");
+                    }
+                  } catch {
+                    alert("Upload failed. Please try again.");
+                  } finally {
+                    setUploading(false);
+                    // Reset input so same file can be uploaded again
+                    e.target.value = "";
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <div className="divide-y divide-neutral-100 dark:divide-[#21262d]">
+            {files.map((f: any) => (
+              <div
+                key={f.url ?? f.name}
+                className="flex items-center gap-4 p-4 hover:bg-neutral-50 dark:hover:bg-[#21262d]/50"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <p className={cn("text-sm font-medium", heading)}>{f.name}</p>
+                  <p className={cn("text-xs", mutedText)}>
+                    {f.milestoneTitle && <span>{f.milestoneTitle} • </span>}
+                    {f.size ? `${Math.round(f.size / 1024)} KB` : ""}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => window.open(f.url, "_blank")}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            {files.length === 0 && (
+              <div className="p-6 text-center text-sm text-neutral-500">
+                No files uploaded yet
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {tab === "feedback" && (
-  <div className={card}>
-    <FeedbackThread projectId={project.id ?? project._id} />
-  </div>
-)}
+        <div className={card}>
+          <FeedbackThread projectId={project.id ?? project._id} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1875,7 +1995,10 @@ export function SupervisorDashboard({
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            localStorage.setItem("activeProjectId", p.id ?? p._id);
+                            localStorage.setItem(
+                              "activeProjectId",
+                              p.id ?? p._id,
+                            );
                             onNavigate("supervisor-project-detail");
                           }}
                         >
@@ -2209,7 +2332,7 @@ export function SupervisorProjectDetail({
             </Button>
           </div>
           <div className="divide-y divide-neutral-100 dark:divide-[#21262d]">
-            {files.map((f) => (
+            {/* {files.map((f) => (
               <div
                 key={f._id}
                 className="flex items-center gap-4 p-4 hover:bg-neutral-50 dark:hover:bg-[#21262d]/50"
@@ -2220,6 +2343,28 @@ export function SupervisorProjectDetail({
                   <p className={cn("text-xs", mutedText)}>{f.size}</p>
                 </div>
                 <Button variant="ghost" size="sm">
+                  <Download className="h-4 w-4" />
+                </Button>
+              </div>
+            ))} */}
+            {files.map((f: any) => (
+              <div
+                key={f.url ?? f.name}
+                className="flex items-center gap-4 p-4 hover:bg-neutral-50 dark:hover:bg-[#21262d]/50"
+              >
+                <FileText className="h-5 w-5 text-red-500 dark:text-red-400" />
+                <div className="flex-1">
+                  <p className={cn("text-sm font-medium", heading)}>{f.name}</p>
+                  <p className={cn("text-xs", mutedText)}>
+                    {f.milestoneTitle && <span>{f.milestoneTitle} • </span>}
+                    {f.size ? `${Math.round(f.size / 1024)} KB` : ""}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => window.open(f.url, "_blank")}
+                >
                   <Download className="h-4 w-4" />
                 </Button>
               </div>

@@ -1,28 +1,27 @@
-// src/routes/uploadRoutes.ts
 import { Router } from "express";
 import { protect } from "../middlewares/authMiddleware.js";
-import { uploadToS3 } from "../middlewares/uploadMiddleware.js";
-import {
-  uploadFile,
-  uploadMultipleFiles,
-  getPresignedUrl,
-  deleteFile,
-} from "../controllers/uploadController.js";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { s3, BUCKET } from "../middlewares/fileUploadMiddleware.js";
 
 const router = Router();
 
-router.use(protect);
+// Generate presigned download URL for any S3 key
+router.get("/presigned/*key", protect, async (req, res) => {
+  const key = (req.params as Record<string, string>)["key"];
+  
+  if (!key) {
+    res.status(400).json({ status: "fail", message: "Key required" });
+    return;
+  }
 
-// Single file upload
-router.post("/single", uploadToS3.single("file"), uploadFile);
+  const signedUrl = await getSignedUrl(
+    s3,
+    new GetObjectCommand({ Bucket: BUCKET, Key: key }),
+    { expiresIn: 3600 }
+  );
 
-// Multiple files upload
-router.post("/multiple", uploadToS3.array("files", 10), uploadMultipleFiles);
-
-// Get presigned URL for private file
-router.get("/presigned/:key(*)", getPresignedUrl);
-
-// Delete file
-router.delete("/:key(*)", deleteFile);
+  res.status(200).json({ status: "success", data: { url: signedUrl } });
+});
 
 export default router;

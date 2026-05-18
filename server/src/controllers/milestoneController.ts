@@ -65,6 +65,43 @@ export const getProjectMilestones = catchAsync(
   }
 );
 
+// export const submitMilestone = catchAsync(
+//   async (req: Request, res: Response) => {
+//     const id = requireParam(req.params["id"], "id");
+//     const { studentNotes } = req.body as { studentNotes?: string };
+
+//     const milestone = await prisma.milestone.findUnique({
+//       where: { id },
+//       include: { project: { select: { ownerId: true } } },
+//     });
+
+//     if (!milestone) throw new NotFoundError("Milestone");
+//     if (milestone.project.ownerId !== req.user!.id) throw new ForbiddenError();
+//     if (milestone.status === "APPROVED") {
+//       throw new BadRequestError("Milestone already approved");
+//     }
+
+//     const updated = await prisma.milestone.update({
+//       where: { id },
+//       data: {
+//         status: "SUBMITTED",
+//         submittedAt: new Date(),
+//         submittedById: req.user!.id,
+//         ...(studentNotes !== undefined && { studentNotes }),
+//       },
+//     });
+
+//     await logActivity({
+//       type: "MILESTONE_SUBMITTED",
+//       payload: { milestoneTitle: milestone.title },
+//       userId: req.user!.id,
+//       projectId: milestone.projectId,
+//     });
+
+//     res.status(200).json({ status: "success", data: updated });
+//   }
+// );
+
 export const submitMilestone = catchAsync(
   async (req: Request, res: Response) => {
     const id = requireParam(req.params["id"], "id");
@@ -72,7 +109,7 @@ export const submitMilestone = catchAsync(
 
     const milestone = await prisma.milestone.findUnique({
       where: { id },
-      include: { project: { select: { ownerId: true } } },
+      include: { project: { select: { ownerId: true, id: true } } },
     });
 
     if (!milestone) throw new NotFoundError("Milestone");
@@ -81,6 +118,16 @@ export const submitMilestone = catchAsync(
       throw new BadRequestError("Milestone already approved");
     }
 
+    // ── S3 uploaded files ──────────────────────────────────────────────────
+    const uploadedFiles = (req.files as Express.MulterS3.File[]) ?? [];
+    const attachments = uploadedFiles.map((f) => ({
+      name: f.originalname,
+      url: f.location,
+      key: f.key,
+      size: f.size,
+      mimetype: f.mimetype,
+    }));
+
     const updated = await prisma.milestone.update({
       where: { id },
       data: {
@@ -88,12 +135,19 @@ export const submitMilestone = catchAsync(
         submittedAt: new Date(),
         submittedById: req.user!.id,
         ...(studentNotes !== undefined && { studentNotes }),
+        ...(attachments.length > 0 && {
+          attachments: attachments as unknown as import("../generated/prisma/index.js").Prisma.InputJsonValue,
+        }),
       },
     });
 
     await logActivity({
       type: "MILESTONE_SUBMITTED",
-      payload: { milestoneTitle: milestone.title },
+      payload: {
+        milestoneTitle: milestone.title,
+        fileCount: attachments.length,
+        files: attachments.map((f) => f.name),
+      },
       userId: req.user!.id,
       projectId: milestone.projectId,
     });
