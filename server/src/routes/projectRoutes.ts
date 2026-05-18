@@ -20,10 +20,13 @@ router.get(
   restrictTo("SUPERVISOR", "ADMIN"),
   getSupervisedProjects
 );
+
+// ── specific /:id sub-routes BEFORE /:id ──────────────────────────────────────
+router.get("/:id/files", protect, getProjectFiles);
+
 // /:id must be AFTER named routes
 router.get("/:id", protect, getProjectById);
 router.patch("/:id", protect, restrictTo("STUDENT"), updateProject);
 router.get("/supervised", protect, restrictTo("SUPERVISOR"), getSupervisedProjects);
-router.get("/:id/files", protect, getProjectFiles);
 
 export default router;
