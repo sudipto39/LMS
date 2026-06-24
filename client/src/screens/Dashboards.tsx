@@ -227,7 +227,7 @@ export function StudentDashboard({
               allMilestones.push(...projectMilestones);
             } catch (err) {
               console.error(
-                `Failed to fetch milestones for project ${project._id}`,
+                `Failed to fetch milestones for project ${project.id ?? project._id}`,
                 err,
               );
             }
@@ -345,7 +345,7 @@ export function StudentDashboard({
               </thead>
               <tbody>
                 {studentProjects.map((p: any) => (
-                  <tr key={p._id} className={tableRow}>
+                  <tr key={p.id ?? p._id} className={tableRow}>
                     <td className="py-3 px-5">
                       <p className={cn("font-medium", heading)}>{p.title}</p>
                       <p className={cn("text-xs", mutedText)}>
@@ -476,7 +476,7 @@ export function StudentProjects({
       <div className="grid gap-4">
         {projects.map((p) => (
           <div
-            key={p._id}
+            key={p.id ?? p._id}
             className={cn(cardHover, "p-5 cursor-pointer")}
             onClick={() => {
               localStorage.setItem("activeProjectId", p.id ?? p._id);
@@ -1521,7 +1521,7 @@ export function StudentProjectDetail({
           <div className="divide-y divide-neutral-100 dark:divide-[#21262d]">
             {milestones.map((m, i) => (
               <div
-                key={m._id}
+                key={m.id ?? m._idm._id}
                 className="flex items-start gap-4 p-5 hover:bg-neutral-50 dark:hover:bg-[#21262d]/50 transition"
               >
                 <div
@@ -2275,7 +2275,7 @@ export function SupervisorProjectDetail({
           )}
         >
           {milestones.map((m, i) => (
-            <div key={m._id} className="p-5">
+            <div key={m.id ?? m._id} className="p-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 dark:bg-[#21262d] text-xs font-bold text-neutral-500 dark:text-[#8b949e]">
@@ -2420,7 +2420,7 @@ export function SupervisorProjectDetail({
                 onClick={async () => {
                   try {
                     await dataService.approveProject(
-                      project._id,
+                      project.id ?? project._id,
                       "85",
                       "Good work",
                     );
@@ -2511,7 +2511,7 @@ export function SupervisorReviews({
       >
         {reviews.map((r) => (
           <div
-            key={r._id}
+            key={r.id ?? r._id}
             className="flex items-center gap-4 p-5 hover:bg-neutral-50 dark:hover:bg-[#21262d]/50 transition cursor-pointer"
             onClick={() => {
               localStorage.setItem("activeProjectId", r.projectId);
@@ -2600,7 +2600,7 @@ export function SupervisorGrades({
           </thead>
           <tbody>
             {grades.map((g) => (
-              <tr key={g._id} className={tableRow}>
+              <tr key={g.id ?? g._id} className={tableRow}>
                 <td className={cn("py-3 px-5 font-medium", heading)}>
                   {g.studentName}
                 </td>
@@ -4522,7 +4522,7 @@ function ChatView({
         ...prev,
         [selectedChat]: list.map(
           (m: any): ChatMessage => ({
-            id: m._id,
+            id: m.id ?? m._id,
             sender: m.sender === "self" ? "me" : "other",
             senderName: m.senderUser?.fullName || "Unknown",
             text: m.type === "text" ? m.content : "",
