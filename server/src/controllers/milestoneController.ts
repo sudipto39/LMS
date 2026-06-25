@@ -252,3 +252,34 @@ export const getMySubmissions = catchAsync(
     });
   }
 );
+
+export const startMilestone = catchAsync(
+  async (req: Request, res: Response) => {
+    const id = requireParam(req.params["id"], "id");
+
+    const milestone = await prisma.milestone.findUnique({
+      where: { id },
+      include: { project: { select: { ownerId: true } } },
+    });
+
+    if (!milestone) throw new NotFoundError("Milestone");
+    if (milestone.project.ownerId !== req.user!.id) throw new ForbiddenError();
+    if (milestone.status !== "PENDING") {
+      throw new BadRequestError("Only pending milestones can be started");
+    }
+
+    const updated = await prisma.milestone.update({
+      where: { id },
+      data: { status: "IN_PROGRESS" },
+    });
+
+    await logActivity({
+      type: "MILESTONE_STARTED",
+      payload: { milestoneTitle: milestone.title },
+      userId: req.user!.id,
+      projectId: milestone.projectId,
+    });
+
+    res.status(200).json({ status: "success", data: updated });
+  }
+);
