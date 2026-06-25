@@ -37,15 +37,37 @@ export const getProjectActivity = catchAsync(
   }
 );
 
+// export const getSupervisorActivity = catchAsync(
+//   async (req: Request, res: Response) => {
+//     const activities = await prisma.activity.findMany({
+//       where: { project: { supervisorId: req.user!.id } },
+//       include: activityInclude,
+//       orderBy: { createdAt: "desc" },
+//       take: 30,
+//     });
+//     res.status(200).json({ status: "success", data: activities });
+//   }
+// );
+
 export const getSupervisorActivity = catchAsync(
   async (req: Request, res: Response) => {
     const activities = await prisma.activity.findMany({
-      where: { project: { supervisorId: req.user!.id } },
-      include: activityInclude,
+      where: {
+        project: { supervisorId: req.user!.id },
+      },
+      include: {
+        user: { select: { id: true, name: true, role: true } },
+        project: { select: { id: true, title: true } },
+      },
       orderBy: { createdAt: "desc" },
-      take: 30,
+      take: 20,
     });
-    res.status(200).json({ status: "success", data: activities });
+
+    res.status(200).json({
+      status: "success",
+      count: activities.length,
+      data: activities,
+    });
   }
 );
 

@@ -7,6 +7,7 @@ import {
   approveMilestone,
   rejectMilestone,
   getMySubmissions,
+  startMilestone,
 } from "../controllers/milestoneController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 import { upload } from "../middlewares/fileUploadMiddleware.js";
@@ -53,6 +54,13 @@ router.get(
   protect,
   restrictTo("STUDENT"),
   getMySubmissions
+);
+
+router.patch(
+  "/milestones/:id/start",
+  protect,
+  restrictTo("STUDENT"),
+  startMilestone
 );
 
 export default router;

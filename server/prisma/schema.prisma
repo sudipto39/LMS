@@ -113,6 +113,7 @@ model Project {
   batchId      String
   startDate    DateTime?
   endDate      DateTime?
+  feedback     String?    // JSON: rubric scores + supervisor feedback
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
