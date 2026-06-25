@@ -370,6 +370,7 @@ export interface CreateProjectPayload {
   batchId: string;
   repoName?: string;
   technologies?: string[];
+  supervisorId?: string;
 }
 
 export interface UpdateProjectPayload {

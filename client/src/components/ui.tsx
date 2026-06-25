@@ -291,12 +291,30 @@ export function ActivityTimeline({
               )}
             </p>
             <p className="text-sm text-neutral-600 dark:text-[#8b949e] mt-0.5">
-              {a.message}
+              {/* {a.message}
+               */}
+               {getActivityMessage(a)}
+              {/* {(a.payload as any)?.message ||
+                (a.payload as any)?.projectTitle ||
+                a.type?.replace(/_/g, " ").toLowerCase()} */}
+                
             </p>
             <div className="flex items-center gap-3 mt-1">
               <span className="text-xs text-neutral-400 dark:text-[#484f58] flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {a.timestamp}
+                {(() => {
+                  const raw = a.timestamp || a.createdAt;
+                  if (!raw) return null;
+                  const diff = Date.now() - new Date(raw).getTime();
+                  const mins = Math.floor(diff / 60000);
+                  const hours = Math.floor(diff / 3600000);
+                  const days = Math.floor(diff / 86400000);
+                  if (mins < 1) return "Just now";
+                  if (mins < 60) return `${mins}m ago`;
+                  if (hours < 24) return `${hours}h ago`;
+                  if (days < 7) return `${days}d ago`;
+                  return new Date(raw).toLocaleDateString();
+                })()}
               </span>
               {a.branch && (
                 <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
@@ -316,6 +334,27 @@ export function ActivityTimeline({
     </div>
   );
 }
+
+const getActivityMessage = (a: any): string => {
+  const payload = a.payload ?? {};
+  switch (a.type) {
+    case "PROJECT_CREATED":
+      return `Created project "${payload.projectTitle ?? a.project?.title ?? ""}"`;
+    case "MILESTONE_SUBMITTED":
+      return `Submitted milestone "${payload.milestoneTitle ?? ""}"`;
+    case "MILESTONE_APPROVED":
+      return `Milestone "${payload.milestoneTitle ?? ""}" approved`;
+    case "MILESTONE_REJECTED":
+      return `Milestone "${payload.milestoneTitle ?? ""}" rejected`;
+    case "MILESTONE_STARTED":
+      return `Started milestone "${payload.milestoneTitle ?? ""}"`;
+    case "PUSH":
+      return `Pushed ${payload.commitCount ?? ((payload.added ?? 0) + (payload.modified ?? 0))} changes`;
+      // return `Pushed ${payload.commitCount ?? 0} commits`;
+    default:
+      return a.type?.replace(/_/g, " ").toLowerCase() ?? "activity";
+  }
+};
 
 /* ── Tag ── */
 export function TechTag({ label }: { label: string }) {

@@ -9,6 +9,7 @@ import {
   getSupervisorActivityFeed,
   getSuperviorGrades,
 } from "../controllers/supervisorController.js";
+import { gradeProject } from "../controllers/projectController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
 const router = Router();
@@ -25,5 +26,6 @@ router.get("/milestones/pending", getPendingMilestones);
 router.patch("/milestones/:id/review", reviewMilestone);
 router.get("/activity", getSupervisorActivityFeed);
 router.get("/grades", getSuperviorGrades);
+router.patch("/projects/:id/grade", gradeProject);
 
 export default router;

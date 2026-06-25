@@ -49,3 +49,11 @@ export const listBranches = catchAsync(
     res.status(200).json({ status: "success", data });
   }
 );
+
+export const getRepoCommits = catchAsync(
+  async (req: Request, res: Response) => {
+    const { owner, repo } = req.params as { owner: string; repo: string };
+    const commits = await giteaService.getCommits(owner, repo);
+    res.status(200).json({ status: "success", data: commits });
+  }
+);

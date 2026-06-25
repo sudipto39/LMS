@@ -71,11 +71,38 @@ export const getAssignedProjects = catchAsync(
   }
 );
 
+// export const getPendingMilestones = catchAsync(
+//   async (req: Request, res: Response) => {
+//     const milestones = await prisma.milestone.findMany({
+//       where: {
+//         status: "SUBMITTED",
+//         project: { supervisorId: req.user!.id },
+//       },
+//       include: {
+//         project: {
+//           select: {
+//             id: true,
+//             title: true,
+//             owner: { select: { id: true, name: true, email: true } },
+//           },
+//         },
+//       },
+//       orderBy: { submittedAt: "asc" },
+//     });
+//     res.status(200).json({
+//       status: "success",
+//       count: milestones.length,
+//       data: milestones,
+//     });
+//   }
+// );
+
 export const getPendingMilestones = catchAsync(
   async (req: Request, res: Response) => {
     const milestones = await prisma.milestone.findMany({
       where: {
         status: "SUBMITTED",
+        isActive: true,
         project: { supervisorId: req.user!.id },
       },
       include: {
@@ -83,16 +110,30 @@ export const getPendingMilestones = catchAsync(
           select: {
             id: true,
             title: true,
-            owner: { select: { id: true, name: true, email: true } },
+            owner: { select: { id: true, name: true } },
           },
         },
       },
-      orderBy: { submittedAt: "asc" },
+      orderBy: { submittedAt: "desc" },
     });
+
+    const formatted = milestones.map((m) => ({
+      _id: m.id,
+      id: m.id,
+      title: m.title,
+      status: m.status,
+      projectId: m.projectId,
+      projectTitle: m.project.title,
+      studentName: m.project.owner?.name ?? "Unknown",
+      type: "Milestone Submission",
+      createdAt: m.submittedAt ?? m.createdAt,
+      urgent: false,
+    }));
+
     res.status(200).json({
       status: "success",
-      count: milestones.length,
-      data: milestones,
+      count: formatted.length,
+      data: formatted,
     });
   }
 );

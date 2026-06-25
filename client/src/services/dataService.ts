@@ -671,6 +671,7 @@ const dataService = {
       batchId: data.batch ?? data.courseId ?? "",
       repoName: data.repoName,
       technologies: data.techStack ?? [],
+      supervisorId: data.supervisorId,
     });
     return res.data?.data ?? res.data;
   },

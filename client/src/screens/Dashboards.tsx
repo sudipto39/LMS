@@ -186,6 +186,9 @@ export function StudentDashboard({
   const [milestones, setMilestones] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Re-fetch whenever a supervisor approves/rejects a milestone (signals via localStorage)
+  const [projectsUpdatedAt] = useState(() => localStorage.getItem("projectsUpdatedAt"));
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
@@ -198,33 +201,35 @@ export function StudentDashboard({
           headers: getAuthHeaders(),
           cache: "no-store",
         });
+
+        if (!projectsRes.ok) throw new Error("Failed to fetch projects");
         const projectsData = await projectsRes.json();
         const projects = projectsData.data || [];
         setStudentProjects(projects);
 
-        if (activitiesRes.status !== 304) {
+        if (activitiesRes.ok && activitiesRes.status !== 304) {
           const activitiesData = await activitiesRes.json();
           setActivities(activitiesData.data || []);
         }
 
-        // Fetch milestones for all projects
+        // Collect all milestones for pending-review KPI
         if (projects.length > 0) {
           const allMilestones: any[] = [];
           for (const project of projects) {
             try {
               const milestonesRes = await fetch(
                 `${API_URL}/v1/projects/${project.id ?? project._id}/milestones`,
-                {
-                  headers: getAuthHeaders(),
-                },
+                { headers: getAuthHeaders() },
               );
-              const milestonesData = await milestonesRes.json();
-              const projectMilestones = Array.isArray(milestonesData.data)
-                ? milestonesData.data
-                : Array.isArray(milestonesData)
-                  ? milestonesData
-                  : [];
-              allMilestones.push(...projectMilestones);
+              if (milestonesRes.ok) {
+                const milestonesData = await milestonesRes.json();
+                const projectMilestones = Array.isArray(milestonesData.data)
+                  ? milestonesData.data
+                  : Array.isArray(milestonesData)
+                    ? milestonesData
+                    : [];
+                allMilestones.push(...projectMilestones);
+              }
             } catch (err) {
               console.error(
                 `Failed to fetch milestones for project ${project.id ?? project._id}`,
@@ -242,7 +247,9 @@ export function StudentDashboard({
     };
 
     fetchDashboardData();
-  }, []);
+  // projectsUpdatedAt changes when a supervisor approves/rejects, triggering a re-fetch
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectsUpdatedAt]);
 
   if (loading) return <LoadingSpinner text="Loading dashboard..." />;
 
@@ -277,9 +284,22 @@ export function StudentDashboard({
         />
         <KPICard
           title="Last Push"
+          // value={
+          //   activities[0]
+          //     ? new Date(activities[0].createdAt).toLocaleDateString()
+          //     : "—"
+          // }
           value={
             activities[0]
-              ? new Date(activities[0].createdAt).toLocaleDateString()
+              ? (() => {
+                  const diff =
+                    Date.now() - new Date(activities[0].createdAt).getTime();
+                  const hours = Math.floor(diff / 3600000);
+                  const days = Math.floor(diff / 86400000);
+                  if (hours < 1) return "Just now";
+                  if (hours < 24) return `${hours}h ago`;
+                  return `${days}d ago`;
+                })()
               : "—"
           }
           subtitle="recent update"
@@ -1235,6 +1255,115 @@ export function CreateProject({
 /* ═══════════════════════════════════════════════════
    PROJECT DETAIL (STUDENT VIEW)
    ═══════════════════════════════════════════════════ */
+function CommitActivityChart({
+  owner,
+  repo,
+}: {
+  owner: string;
+  repo: string;
+  token: string;
+}) {
+  const [weeklyData, setWeeklyData] = useState<number[]>(new Array(12).fill(0));
+
+  useEffect(() => {
+    if (!owner || !repo) return;
+    const fetchCommits = async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/v1/gitea/repos/${owner}/${repo}/commits`,
+          { headers: getAuthHeaders() },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const commits: Array<{ created: string }> = data.data ?? [];
+
+        // Group commits by week (last 12 weeks)
+        const now = new Date();
+        const weeks = new Array(12).fill(0);
+        commits.forEach((c) => {
+          const commitDate = new Date(c.created);
+          const diffMs = now.getTime() - commitDate.getTime();
+          const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
+          if (diffWeeks >= 0 && diffWeeks < 12) {
+            weeks[11 - diffWeeks]++;
+          }
+        });
+        setWeeklyData(weeks);
+      } catch {
+        // keep zeros
+      }
+    };
+    fetchCommits();
+  }, [owner, repo]);
+
+  const maxVal = Math.max(...weeklyData, 1);
+
+  return (
+    <div className="flex items-end gap-2 h-40">
+      {weeklyData.map((v, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+          <div
+            className="w-full bg-blue-500 rounded-t-sm transition-all hover:bg-blue-600"
+            style={{
+              height: `${(v / maxVal) * 100}%`,
+              minHeight: v > 0 ? "4px" : "0",
+            }}
+          />
+          <span className={cn("text-[9px]", mutedText)}>W{i + 1}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RecentCommits({ owner, repo }: { owner: string; repo: string }) {
+  const [commits, setCommits] = useState<
+    Array<{
+      sha: string;
+      commit: { message: string; author: { name: string; date: string } };
+    }>
+  >([]);
+
+  useEffect(() => {
+    if (!owner || !repo) return;
+    fetch(`${API_URL}/v1/gitea/repos/${owner}/${repo}/commits`, {
+      headers: getAuthHeaders(),
+    })
+      .then((r) => r.json())
+      .then((data) => setCommits((data.data ?? []).slice(0, 5)))
+      .catch(() => {});
+  }, [owner, repo]);
+
+  if (commits.length === 0) {
+    return (
+      <div className={cn("text-sm text-center py-8", subtext)}>
+        No commits yet — push code to see activity
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {commits.map((c) => (
+        <div key={c.sha} className={cn("p-3 rounded-md text-sm", infoBox)}>
+          <p className={cn("font-medium truncate", heading)}>
+            {c.commit.message}
+          </p>
+          <div
+            className={cn("flex items-center gap-2 mt-1 text-xs", mutedText)}
+          >
+            <span>{c.commit.author.name}</span>
+            <span>•</span>
+            <span>{new Date(c.commit.author.date).toLocaleDateString()}</span>
+            <span>•</span>
+            <code className="font-mono">{c.sha.substring(0, 7)}</code>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function StudentProjectDetail({
   onNavigate: _onNavigate,
 }: {
@@ -1439,9 +1568,11 @@ export function StudentProjectDetail({
           <div className="space-y-6">
             <div className={cn(card, "p-5")}>
               <h3 className={cn("font-semibold mb-3", heading)}>Progress</h3>
-              <div className="flex items-center justify-center mb-4">
-                <div className="relative">
-                  <svg className="h-28 w-28 -rotate-90">
+              <div className="flex flex-col items-center justify-center mb-4 gap-2">
+                {/* Wrapper keeps SVG and label in the same stacking context */}
+                <div className="relative h-28 w-28">
+                  {/* SVG is rotated -90° so the arc starts at the top */}
+                  <svg className="h-28 w-28 -rotate-90 absolute inset-0">
                     <circle
                       cx="56"
                       cy="56"
@@ -1462,6 +1593,7 @@ export function StudentProjectDetail({
                       strokeDasharray={`${(project.progress || 0) * 3.01} ${301 - (project.progress || 0) * 3.01}`}
                     />
                   </svg>
+                  {/* Percentage label — NOT inside the rotating SVG so it stays upright */}
                   <span
                     className={cn(
                       "absolute inset-0 flex items-center justify-center text-2xl font-bold",
@@ -1471,6 +1603,12 @@ export function StudentProjectDetail({
                     {project.progress || 0}%
                   </span>
                 </div>
+                {project.milestonesTotal > 0 && (
+                  <p className={cn("text-xs text-center", subtext)}>
+                    {project.milestonesCompleted} of {project.milestonesTotal}{" "}
+                    milestones completed
+                  </p>
+                )}
               </div>
             </div>
             <div className={cn(card, "p-5")}>
@@ -1555,18 +1693,94 @@ export function StudentProjectDetail({
                     )}
                   </div>
                 </div>
-                {m.status === "in-progress" && (
+                {/* {m.status === "in-progress" && (
                   <Button size="sm" variant="secondary">
                     Mark Complete
                   </Button>
-                )}
+                )} */}
+                <div className="flex gap-2 shrink-0">
+                  {m.status === "PENDING" && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        const token = tokenStore.get();
+                        await fetch(
+                          `${API_URL}/v1/milestones/${m.id ?? m._id}/start`,
+                          {
+                            method: "PATCH",
+                            headers: { Authorization: `Bearer ${token}` },
+                          },
+                        );
+                        // Refresh milestones
+                        const res = await fetch(
+                          `${API_URL}/v1/projects/${projectId}/milestones`,
+                          { headers: getAuthHeaders() },
+                        );
+                        const data = await res.json();
+                        setMilestones(
+                          Array.isArray(data.data) ? data.data : [],
+                        );
+                      }}
+                    >
+                      Start
+                    </Button>
+                  )}
+                  {m.status === "IN_PROGRESS" && (
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        const token = tokenStore.get();
+                        await fetch(
+                          `${API_URL}/v1/milestones/${m.id ?? m._id}/submit`,
+                          {
+                            method: "PATCH",
+                            headers: {
+                              Authorization: `Bearer ${token}`,
+                              "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({ studentNotes: "Completed" }),
+                          },
+                        );
+                        const res = await fetch(
+                          `${API_URL}/v1/projects/${projectId}/milestones`,
+                          { headers: getAuthHeaders() },
+                        );
+                        const data = await res.json();
+                        setMilestones(
+                          Array.isArray(data.data) ? data.data : [],
+                        );
+                      }}
+                    >
+                      <Send className="h-4 w-4" /> Submit
+                    </Button>
+                  )}
+                  {m.status === "SUBMITTED" && (
+                    <span
+                      className={cn(
+                        "text-xs px-2 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400",
+                      )}
+                    >
+                      Awaiting Review
+                    </span>
+                  )}
+                  {m.status === "APPROVED" && (
+                    <span
+                      className={cn(
+                        "text-xs px-2 py-1 rounded-full bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400",
+                      )}
+                    >
+                      ✓ Approved
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {tab === "progress" && (
+      {/* {tab === "progress" && (
         <div className={cn(twoColGrid)}>
           <div className={cn(card, "p-5")}>
             <h3 className={cn("font-semibold mb-4", heading)}>
@@ -1596,6 +1810,35 @@ export function StudentProjectDetail({
                 Commits synced via Gitea
               </div>
             </div>
+          </div>
+        </div>
+      )} */}
+      {tab === "progress" && (
+        <div className={cn(twoColGrid)}>
+          <div className={cn(card, "p-5")}>
+            <h3 className={cn("font-semibold mb-4", heading)}>
+              Weekly Commit Activity
+            </h3>
+            {project.repoUrl ? (
+              <CommitActivityChart
+                owner={project.owner?.giteaUsername ?? ""}
+                repo={project.repoName ?? ""}
+                token={tokenStore.get() ?? ""}
+              />
+            ) : (
+              <div className={cn("text-sm text-center py-8", subtext)}>
+                No repository linked
+              </div>
+            )}
+          </div>
+          <div className={cn(card, "p-5")}>
+            <h3 className={cn("font-semibold mb-4", heading)}>
+              Recent Commits
+            </h3>
+            <RecentCommits
+              owner={project.owner?.giteaUsername ?? ""}
+              repo={project.repoName ?? ""}
+            />
           </div>
         </div>
       )}
@@ -1863,8 +2106,28 @@ export function SupervisorDashboard({
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // useEffect(() => {
+  //   const fetchDashboard = async () => {
+  //     const token = tokenStore.get();
+  //     const [projectsRes, activitiesRes] = await Promise.all([
+  //       fetch(`${API_URL}/v1/projects/supervised`, {
+  //         headers: { Authorization: `Bearer ${token}` },
+  //       }),
+  //       fetch(`${API_URL}/v1/activities/supervisor`, {
+  //         headers: { Authorization: `Bearer ${token}` },
+  //       }),
+  //     ]);
+  //     const projectsData = await projectsRes.json();
+  //     setProjects(projectsData.data || []);
+  //     const activitiesData = await activitiesRes.json();
+  //     setActivities(activitiesData.data || []);
+  //     setLoading(false);
+  //   };
+  //   fetchDashboard();
+  // }, []);
   useEffect(() => {
-    const fetchDashboard = async () => {
+  const fetchDashboard = async () => {
+    try {
       const token = tokenStore.get();
       const [projectsRes, activitiesRes] = await Promise.all([
         fetch(`${API_URL}/v1/projects/supervised`, {
@@ -1874,14 +2137,27 @@ export function SupervisorDashboard({
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
+
       const projectsData = await projectsRes.json();
       setProjects(projectsData.data || []);
-      const activitiesData = await activitiesRes.json();
-      setActivities(activitiesData.data || []);
+
+      // Guard: only parse activities if request succeeded
+      if (activitiesRes.ok) {
+        const activitiesData = await activitiesRes.json();
+        setActivities(activitiesData.data || []);
+      } else {
+        setActivities([]);
+      }
+    } catch (err) {
+      console.error("Supervisor dashboard load failed:", err);
+      setProjects([]);
+      setActivities([]);
+    } finally {
       setLoading(false);
-    };
-    fetchDashboard();
-  }, []);
+    }
+  };
+  fetchDashboard();
+}, []);
 
   if (loading) return <LoadingSpinner text="Loading dashboard..." />;
 
@@ -1974,11 +2250,13 @@ export function SupervisorDashboard({
                 </thead>
                 <tbody>
                   {projects.map((p) => (
-                    <tr key={p._id} className={tableRow}>
+                    // <tr key={p.id ?? p._id} className={tableRow}>
+                    <tr key={p.id ?? p._id} className={tableRow}>
                       <td className="py-3 px-5">
                         <p className={cn("font-medium", heading)}>{p.title}</p>
                         <p className={cn("text-xs", mutedText)}>
-                          {p.student?.name} · {p.batch}
+                          {/* {p.owner?.name ?? p.student?.name} · {p.batch?.name} */}
+                          {p.owner?.name ?? p.student?.name} · {p.batch?.name}
                         </p>
                       </td>
                       <td className="py-3 px-3">
@@ -2055,41 +2333,84 @@ export function SupervisorProjectDetail({
   const [files, setFiles] = useState<any[]>([]);
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null); // milestoneId being actioned
+  // Grade form state
+  const RUBRIC = [
+    { key: "codeQuality", label: "Code Quality", max: 25 },
+    { key: "functionality", label: "Functionality", max: 30 },
+    { key: "documentation", label: "Documentation", max: 15 },
+    { key: "presentation", label: "Presentation", max: 10 },
+    { key: "innovation", label: "Innovation", max: 20 },
+  ] as const;
+  const [gradeScores, setGradeScores] = useState<Record<string, number>>({});
+  const [gradeFeedback, setGradeFeedback] = useState("");
+  const [gradeSubmitting, setGradeSubmitting] = useState(false);
+  const gradeTotal = RUBRIC.reduce((sum, r) => sum + (gradeScores[r.key] ?? 0), 0);
 
   const projectId = localStorage.getItem("activeProjectId");
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const token = tokenStore.get();
-      const [projectRes, milestoneRes, activityRes, filesRes, commentsRes] =
-        await Promise.all([
-          fetch(`${API_URL}/v1/projects/${projectId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/v1/projects/${projectId}/activities`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/v1/projects/${projectId}/files`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/v1/projects/${projectId}/comments`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
+  // Re-fetch project + milestones after approve/reject so progress updates immediately
+  const refreshProjectAndMilestones = useCallback(async () => {
+    const token = tokenStore.get();
+    const headers = { Authorization: `Bearer ${token}` };
+    const [projectRes, milestoneRes] = await Promise.all([
+      fetch(`${API_URL}/v1/projects/${projectId}`, { headers }),
+      fetch(`${API_URL}/v1/projects/${projectId}/milestones`, { headers }),
+    ]);
+    if (projectRes.ok) {
       const projectData = await projectRes.json();
       setProject(projectData.data || projectData);
+    }
+    if (milestoneRes.ok) {
       const milestoneData = await milestoneRes.json();
       setMilestones(milestoneData.data || []);
-      const activityData = await activityRes.json();
-      setActivities(activityData.data || []);
-      const filesData = await filesRes.json();
-      setFiles(filesData.data || []);
-      const commentsData = await commentsRes.json();
-      setComments(commentsData.data || []);
-      setLoading(false);
+    }
+    // Signal the student dashboard to re-fetch projects on next mount
+    localStorage.setItem("projectsUpdatedAt", Date.now().toString());
+  }, [projectId]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = tokenStore.get();
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [projectRes, milestoneRes, activityRes, filesRes] =
+          await Promise.all([
+            fetch(`${API_URL}/v1/projects/${projectId}`, { headers }),
+            // milestones route is mounted at /api/v1 with path /projects/:id/milestones
+            fetch(`${API_URL}/v1/projects/${projectId}/milestones`, { headers }),
+            // correct activities route: /api/v1/activities/project/:projectId
+            fetch(`${API_URL}/v1/activities/project/${projectId}`, { headers }),
+            fetch(`${API_URL}/v1/projects/${projectId}/files`, { headers }),
+          ]);
+
+        if (!projectRes.ok) throw new Error(`Project fetch failed: ${projectRes.status}`);
+        const projectData = await projectRes.json();
+        setProject(projectData.data || projectData);
+
+        if (milestoneRes.ok) {
+          const milestoneData = await milestoneRes.json();
+          setMilestones(milestoneData.data || []);
+        }
+
+        if (activityRes.ok) {
+          const activityData = await activityRes.json();
+          setActivities(activityData.data || []);
+        }
+
+        if (filesRes.ok) {
+          const filesData = await filesRes.json();
+          setFiles(filesData.data || []);
+        }
+
+        // No comments endpoint on server — skip
+        setComments([]);
+      } catch (err) {
+        console.error("SupervisorProjectDetail load failed:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchData();
   }, [projectId]);
@@ -2115,7 +2436,7 @@ export function SupervisorProjectDetail({
             <StatusPill status={project.status} />
           </div>
           <p className={cn("text-sm", subtext)}>
-            Student: {project.student?.name} · {project.batch}
+            Student: {project.owner?.name ?? project.student?.name} · {project.batch?.name}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2125,11 +2446,11 @@ export function SupervisorProjectDetail({
           <Button variant="secondary" size="sm">
             <Download className="h-4 w-4" /> Download ZIP
           </Button>
-          <Button variant="danger" size="sm">
+          <Button variant="danger" size="sm" onClick={() => setTab("milestones")}>
             <XCircle className="h-4 w-4" /> Request Changes
           </Button>
-          <Button variant="success" size="sm">
-            <CheckCircle2 className="h-4 w-4" /> Approve
+          <Button variant="success" size="sm" onClick={() => setTab("milestones")}>
+            <CheckCircle2 className="h-4 w-4" /> Approve Milestones
           </Button>
         </div>
       </div>
@@ -2167,34 +2488,41 @@ export function SupervisorProjectDetail({
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Student</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {project.student?.name}
+                    {project.owner?.name ?? project.student?.name}
                   </dd>
                 </div>
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Batch</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {project.batch}
+                    {project.batch?.name}
                   </dd>
                 </div>
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Deadline</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {project.deadline}
+                    {project.endDate
+                      ? new Date(project.endDate).toLocaleDateString()
+                      : "—"}
                   </dd>
                 </div>
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Last Updated</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {new Date(project.updatedAt).toLocaleDateString()}
+                    {project.updatedAt
+                      ? new Date(project.updatedAt).toLocaleDateString()
+                      : "—"}
                   </dd>
                 </div>
               </dl>
               <div className="mt-4">
                 <dt className={cn("text-sm mb-1", mutedText)}>Tech Stack</dt>
                 <div className="flex flex-wrap gap-1.5">
-                  {project.techStack?.map((t: string) => (
+                  {(project.technologies || project.techStack || []).map((t: string) => (
                     <TechTag key={t} label={t} />
                   ))}
+                  {!(project.technologies?.length || project.techStack?.length) && (
+                    <span className={cn("text-xs", mutedText)}>No technologies listed</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -2219,9 +2547,9 @@ export function SupervisorProjectDetail({
           <div>
             <div className={cn(card, "p-5")}>
               <h3 className={cn("font-semibold mb-3", heading)}>Progress</h3>
-              <div className="flex items-center justify-center mb-4">
-                <div className="relative">
-                  <svg className="h-28 w-28 -rotate-90">
+              <div className="flex flex-col items-center justify-center mb-4 gap-2">
+                <div className="relative h-28 w-28">
+                  <svg className="h-28 w-28 -rotate-90 absolute inset-0">
                     <circle
                       cx="56"
                       cy="56"
@@ -2251,6 +2579,11 @@ export function SupervisorProjectDetail({
                     {project.progress || 0}%
                   </span>
                 </div>
+                {project.milestonesTotal > 0 && (
+                  <p className={cn("text-xs text-center", subtext)}>
+                    {project.milestonesCompleted} of {project.milestonesTotal} milestones approved
+                  </p>
+                )}
               </div>
               <InactivityBadge lastPush={project.lastPush} />
             </div>
@@ -2302,7 +2635,7 @@ export function SupervisorProjectDetail({
                     )}
                   </div>
                 </div>
-                {(m.status === "completed" || m.status === "in-progress") && (
+                {/* {(m.status === "completed" || m.status === "in-progress") && (
                   <div className="flex gap-2">
                     <Button variant="success" size="sm">
                       <CheckCircle2 className="h-4 w-4" /> Approve
@@ -2311,7 +2644,74 @@ export function SupervisorProjectDetail({
                       <XCircle className="h-4 w-4" /> Reject
                     </Button>
                   </div>
-                )}
+                )} */}
+                {m.status === "SUBMITTED" && (
+  <div className="flex gap-2">
+    <Button
+      variant="success"
+      size="sm"
+      disabled={actionLoading === (m.id ?? m._id)}
+      onClick={async () => {
+        const milestoneId = m.id ?? m._id;
+        setActionLoading(milestoneId);
+        try {
+          const token = tokenStore.get();
+          const res = await fetch(`${API_URL}/v1/milestones/${milestoneId}/approve`, {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ feedback: "Approved" }),
+          });
+          if (!res.ok) { alert("Failed to approve milestone"); return; }
+          // Refresh milestones + project progress
+          await refreshProjectAndMilestones();
+        } catch (err) {
+          console.error("Approve failed:", err);
+          alert("An error occurred while approving");
+        } finally {
+          setActionLoading(null);
+        }
+      }}
+    >
+      <CheckCircle2 className="h-4 w-4" />
+      {actionLoading === (m.id ?? m._id) ? "Approving..." : "Approve"}
+    </Button>
+    <Button
+      variant="danger"
+      size="sm"
+      disabled={actionLoading === (m.id ?? m._id)}
+      onClick={async () => {
+        const feedback = prompt("Reason for rejection (required):");
+        if (!feedback?.trim()) return;
+        const milestoneId = m.id ?? m._id;
+        setActionLoading(milestoneId);
+        try {
+          const token = tokenStore.get();
+          const res = await fetch(`${API_URL}/v1/milestones/${milestoneId}/reject`, {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ feedback: feedback.trim() }),
+          });
+          if (!res.ok) { alert("Failed to reject milestone"); return; }
+          await refreshProjectAndMilestones();
+        } catch (err) {
+          console.error("Reject failed:", err);
+          alert("An error occurred while rejecting");
+        } finally {
+          setActionLoading(null);
+        }
+      }}
+    >
+      <XCircle className="h-4 w-4" />
+      {actionLoading === (m.id ?? m._id) ? "Rejecting..." : "Reject"}
+    </Button>
+  </div>
+)}
               </div>
             </div>
           ))}
@@ -2385,52 +2785,79 @@ export function SupervisorProjectDetail({
               Rubric Scoring
             </h3>
             <div className="space-y-4">
-              {[
-                { criterion: "Code Quality", max: 25 },
-                { criterion: "Functionality", max: 30 },
-                { criterion: "Documentation", max: 15 },
-                { criterion: "Presentation", max: 10 },
-                { criterion: "Innovation", max: 20 },
-              ].map((r) => (
-                <div key={r.criterion} className="flex items-center gap-4">
-                  <label className={cn("text-sm w-32", bodyText)}>
-                    {r.criterion}
+              {RUBRIC.map((r) => (
+                <div key={r.key} className="flex items-center gap-4">
+                  <label className={cn("text-sm w-36", bodyText)}>
+                    {r.label}
                   </label>
                   <input
                     type="number"
+                    min={0}
                     max={r.max}
-                    placeholder={`/ ${r.max}`}
+                    value={gradeScores[r.key] ?? ""}
+                    onChange={(e) => {
+                      const val = Math.min(r.max, Math.max(0, Number(e.target.value)));
+                      setGradeScores((prev) => ({ ...prev, [r.key]: val }));
+                    }}
+                    placeholder="0"
                     className={cn(inputClass, "!w-20 text-center")}
                   />
                   <span className={cn("text-xs", mutedText)}>/ {r.max}</span>
                 </div>
               ))}
               <div className="flex items-center gap-4 pt-3 border-t border-neutral-200 dark:border-[#30363d]">
-                <label className={cn("text-sm font-bold w-32", heading)}>
-                  Total
-                </label>
-                <span className={cn("text-lg font-bold", heading)}>
-                  — / 100
+                <label className={cn("text-sm font-bold w-36", heading)}>Total</label>
+                <span className={cn(
+                  "text-lg font-bold",
+                  gradeTotal === 100 ? "text-green-500" :
+                  gradeTotal >= 75 ? "text-blue-500" :
+                  gradeTotal >= 50 ? "text-yellow-500" : heading
+                )}>
+                  {gradeTotal} / 100
                 </span>
               </div>
             </div>
             <div className="mt-4 flex gap-2">
               <Button
                 variant="success"
+                disabled={gradeSubmitting || gradeTotal === 0}
                 onClick={async () => {
+                  setGradeSubmitting(true);
                   try {
-                    await dataService.approveProject(
-                      project.id ?? project._id,
-                      "85",
-                      "Good work",
-                    );
-                    alert("Grade submitted!");
-                  } catch {
-                    /* handled */
+                    const token = tokenStore.get();
+                    // Store grade rubric as JSON in project feedback field
+                    const res = await fetch(`${API_URL}/v1/projects/${projectId}`, {
+                      method: "PATCH",
+                      headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        feedback: JSON.stringify({
+                          rubric: gradeScores,
+                          total: gradeTotal,
+                          supervisorFeedback: gradeFeedback,
+                          gradedAt: new Date().toISOString(),
+                          gradedBy: "supervisor",
+                        }),
+                      }),
+                    });
+                    if (res.ok) {
+                      alert(`Grade submitted: ${gradeTotal}/100`);
+                    } else {
+                      const err = await res.json().catch(() => ({}));
+                      alert(`Failed to submit grade: ${err.message || res.status}`);
+                    }
+                  } catch (err) {
+                    console.error("Grade submit failed:", err);
+                    alert("An error occurred while submitting the grade");
+                  } finally {
+                    setGradeSubmitting(false);
                   }
                 }}
               >
-                <Award className="h-4 w-4" /> Submit Grade
+                <Award className="h-4 w-4" />
+                {gradeSubmitting ? "Submitting..." : "Submit Grade"}
               </Button>
             </div>
           </div>
@@ -2461,9 +2888,11 @@ export function SupervisorProjectDetail({
               <input
                 type="text"
                 placeholder="Add feedback..."
+                value={gradeFeedback}
+                onChange={(e) => setGradeFeedback(e.target.value)}
                 className={inputClass}
               />
-              <Button>
+              <Button onClick={() => { /* feedback send — same PATCH */ }}>
                 <Send className="h-4 w-4" />
               </Button>
             </div>
