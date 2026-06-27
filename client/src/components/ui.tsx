@@ -350,7 +350,10 @@ const getActivityMessage = (a: any): string => {
       return `Started milestone "${payload.milestoneTitle ?? ""}"`;
     case "PUSH":
       return `Pushed ${payload.commitCount ?? ((payload.added ?? 0) + (payload.modified ?? 0))} changes`;
-      // return `Pushed ${payload.commitCount ?? 0} commits`;
+    case "SUPERVISOR_FEEDBACK":
+      return `Feedback: "${payload.message ?? ""}"`;
+    case "PROJECT_GRADED":
+      return `Graded project — ${payload.total ?? 0}/100`;
     default:
       return a.type?.replace(/_/g, " ").toLowerCase() ?? "activity";
   }
@@ -366,16 +369,26 @@ export function TechTag({ label }: { label: string }) {
 }
 
 /* ── Inactivity Badge ── */
-export function InactivityBadge({ lastPush }: { lastPush: string }) {
-  if (!lastPush)
-    return (
-      <span className="flex items-center gap-1 text-xs text-neutral-400 dark:text-[#484f58]">
-        <Clock className="h-3 w-3" />—
-      </span>
-    );
-  const daysMatch = lastPush.match(/(\d+)\s*day/);
-  const days = daysMatch ? parseInt(daysMatch[1]) : 0;
-  if (lastPush === "Never")
+export function InactivityBadge({
+  lastPush,
+  days: daysProp,
+}: {
+  lastPush?: string;
+  days?: number;
+}) {
+  // Prefer numeric days prop over string parsing
+  const days: number = daysProp !== undefined
+    ? daysProp
+    : (() => {
+        if (!lastPush || lastPush === "Never") return 9999;
+        const m = lastPush.match(/(\d+)\s*day/);
+        return m ? parseInt(m[1]) : 0;
+      })();
+
+  const neverPushed = (daysProp === undefined && (!lastPush || lastPush === "Never")) ||
+                      (daysProp !== undefined && daysProp >= 365);
+
+  if (neverPushed)
     return (
       <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400 font-medium">
         <AlertTriangle className="h-3 w-3" />
@@ -389,10 +402,17 @@ export function InactivityBadge({ lastPush }: { lastPush: string }) {
         Inactive {days}d
       </span>
     );
+  if (days === 0)
+    return (
+      <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+        <Clock className="h-3 w-3" />
+        Active today
+      </span>
+    );
   return (
     <span className="flex items-center gap-1 text-xs text-neutral-400 dark:text-[#484f58]">
       <Clock className="h-3 w-3" />
-      {lastPush}
+      {days}d ago
     </span>
   );
 }

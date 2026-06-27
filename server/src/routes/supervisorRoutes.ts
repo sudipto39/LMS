@@ -8,6 +8,7 @@ import {
   reviewMilestone,
   getSupervisorActivityFeed,
   getSuperviorGrades,
+  postProjectFeedback,
 } from "../controllers/supervisorController.js";
 import { gradeProject } from "../controllers/projectController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
@@ -27,5 +28,6 @@ router.patch("/milestones/:id/review", reviewMilestone);
 router.get("/activity", getSupervisorActivityFeed);
 router.get("/grades", getSuperviorGrades);
 router.patch("/projects/:id/grade", gradeProject);
+router.post("/projects/:id/feedback", postProjectFeedback);
 
 export default router;

@@ -127,18 +127,54 @@ export const getSupervisedProjects = catchAsync(
       orderBy: { createdAt: "desc" },
     });
 
-    // Compute progress for each project
+    const now = new Date();
+    const twoWeeksFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    // Compute all per-project metrics in parallel
     const projectsWithProgress = await Promise.all(
       projects.map(async (project) => {
-        const [total, approved] = await Promise.all([
+        const [
+          total,
+          approved,
+          pendingReviewCount,
+          lastPushActivity,
+        ] = await Promise.all([
           prisma.milestone.count({ where: { projectId: project.id, isActive: true } }),
           prisma.milestone.count({ where: { projectId: project.id, isActive: true, status: "APPROVED" } }),
+          // Count milestones awaiting supervisor review (student has submitted, supervisor hasn't reviewed)
+          prisma.milestone.count({ where: { projectId: project.id, isActive: true, status: "SUBMITTED" } }),
+          // Find the most recent git push for this project
+          prisma.activity.findFirst({
+            where: { projectId: project.id, type: "PUSH" },
+            orderBy: { createdAt: "desc" },
+            select: { createdAt: true },
+          }),
         ]);
+
+        const progress = total > 0 ? Math.round((approved / total) * 100) : 0;
+        const needsReview = pendingReviewCount > 0;
+
+        // inactiveDays: days since last push; if never pushed, use days since project created
+        const lastActiveDate = lastPushActivity?.createdAt ?? project.createdAt;
+        const inactiveDays = Math.floor(
+          (now.getTime() - new Date(lastActiveDate).getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        // upcomingDeadline: endDate exists and is within the next 14 days
+        const upcomingDeadline =
+          project.endDate !== null &&
+          project.endDate > now &&
+          project.endDate <= twoWeeksFromNow;
+
         return {
           ...project,
-          progress: total > 0 ? Math.round((approved / total) * 100) : 0,
+          progress,
           milestonesTotal: total,
           milestonesCompleted: approved,
+          needsReview,
+          inactiveDays,
+          upcomingDeadline,
+          lastPushAt: lastPushActivity?.createdAt ?? null,
         };
       })
     );
@@ -262,6 +298,80 @@ export const gradeProject = catchAsync(async (req: Request, res: Response) => {
   });
 
   res.status(200).json({ status: "success", data: updated });
+});
+
+// GET /api/v1/projects/:id/feedback — returns the feedback thread (activity log entries)
+export const getProjectFeedback = catchAsync(async (req: Request, res: Response) => {
+  const projectId = requireParam(req.params["id"], "id");
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { ownerId: true, supervisorId: true },
+  });
+  if (!project) throw new NotFoundError("Project");
+
+  const isOwner = project.ownerId === req.user!.id;
+  const isSupervisor = project.supervisorId === req.user!.id;
+  const isAdmin = req.user!.role === "ADMIN";
+  if (!isOwner && !isSupervisor && !isAdmin) throw new ForbiddenError();
+
+  const feedbackActivities = await prisma.activity.findMany({
+    where: {
+      projectId,
+      type: { in: ["SUPERVISOR_FEEDBACK", "STUDENT_FEEDBACK"] },
+    },
+    include: {
+      user: { select: { id: true, name: true, role: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const comments = feedbackActivities.map((a) => ({
+    id: a.id,
+    user: a.user,
+    message: (a.payload as any)?.message ?? "",
+    type: a.type,
+    createdAt: a.createdAt,
+  }));
+
+  res.status(200).json({ status: "success", count: comments.length, data: comments });
+});
+
+// POST /api/v1/projects/:id/feedback — any project member can post a feedback message
+export const postProjectFeedback = catchAsync(async (req: Request, res: Response) => {
+  const projectId = requireParam(req.params["id"], "id");
+  const { content } = req.body as { content: string };
+
+  if (!content?.trim()) throw new BadRequestError("Feedback content is required");
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { ownerId: true, supervisorId: true },
+  });
+  if (!project) throw new NotFoundError("Project");
+
+  const isOwner = project.ownerId === req.user!.id;
+  const isSupervisor = project.supervisorId === req.user!.id;
+  const isAdmin = req.user!.role === "ADMIN";
+  if (!isOwner && !isSupervisor && !isAdmin) throw new ForbiddenError();
+
+  const activityType = isOwner ? "STUDENT_FEEDBACK" : "SUPERVISOR_FEEDBACK";
+
+  await logActivity({
+    type: activityType,
+    payload: { message: content.trim() },
+    userId: req.user!.id,
+    projectId,
+  });
+
+  res.status(201).json({
+    status: "success",
+    data: {
+      message: content.trim(),
+      type: activityType,
+      createdAt: new Date().toISOString(),
+    },
+  });
 });
 
 export const updateProject = catchAsync(async (req: Request, res: Response) => {
