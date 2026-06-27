@@ -2266,7 +2266,7 @@ export function SupervisorDashboard({
                         <ProgressBar value={p.progress} size="sm" />
                       </td>
                       <td className="py-3 px-3 hidden sm:table-cell">
-                        <InactivityBadge lastPush={p.lastPush} />
+                        <InactivityBadge days={p.inactiveDays} />
                       </td>
                       <td className="py-3 px-3">
                         <Button
@@ -2345,6 +2345,7 @@ export function SupervisorProjectDetail({
   const [gradeScores, setGradeScores] = useState<Record<string, number>>({});
   const [gradeFeedback, setGradeFeedback] = useState("");
   const [gradeSubmitting, setGradeSubmitting] = useState(false);
+  const [feedbackSending, setFeedbackSending] = useState(false);
   const gradeTotal = RUBRIC.reduce((sum, r) => sum + (gradeScores[r.key] ?? 0), 0);
 
   const projectId = localStorage.getItem("activeProjectId");
@@ -2825,21 +2826,17 @@ export function SupervisorProjectDetail({
                   setGradeSubmitting(true);
                   try {
                     const token = tokenStore.get();
-                    // Store grade rubric as JSON in project feedback field
-                    const res = await fetch(`${API_URL}/v1/projects/${projectId}`, {
+                    // Use dedicated supervisor grade endpoint
+                    const res = await fetch(`${API_URL}/v1/supervisors/projects/${projectId}/grade`, {
                       method: "PATCH",
                       headers: {
                         Authorization: `Bearer ${token}`,
                         "Content-Type": "application/json",
                       },
                       body: JSON.stringify({
-                        feedback: JSON.stringify({
-                          rubric: gradeScores,
-                          total: gradeTotal,
-                          supervisorFeedback: gradeFeedback,
-                          gradedAt: new Date().toISOString(),
-                          gradedBy: "supervisor",
-                        }),
+                        rubric: gradeScores,
+                        total: gradeTotal,
+                        supervisorFeedback: gradeFeedback,
                       }),
                     });
                     if (res.ok) {
@@ -2890,9 +2887,51 @@ export function SupervisorProjectDetail({
                 placeholder="Add feedback..."
                 value={gradeFeedback}
                 onChange={(e) => setGradeFeedback(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
                 className={inputClass}
               />
-              <Button onClick={() => { /* feedback send — same PATCH */ }}>
+              <Button
+                disabled={feedbackSending || !gradeFeedback.trim()}
+                onClick={async () => {
+                  if (!gradeFeedback.trim()) return;
+                  setFeedbackSending(true);
+                  try {
+                    const token = tokenStore.get();
+                    const res = await fetch(
+                      `${API_URL}/v1/supervisors/projects/${projectId}/feedback`,
+                      {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ message: gradeFeedback.trim() }),
+                      }
+                    );
+                    if (res.ok) {
+                      setGradeFeedback("");
+                      // Re-fetch activities to show new feedback in timeline
+                      const actRes = await fetch(
+                        `${API_URL}/v1/activities/project/${projectId}`,
+                        { headers: { Authorization: `Bearer ${token}` } }
+                      );
+                      if (actRes.ok) {
+                        const actData = await actRes.json();
+                        setActivities(actData.data || []);
+                      }
+                    } else {
+                      alert("Failed to send feedback");
+                    }
+                  } catch (err) {
+                    console.error("Feedback send error:", err);
+                    alert("Error sending feedback");
+                  } finally {
+                    setFeedbackSending(false);
+                  }
+                }}
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </div>
@@ -3024,7 +3063,8 @@ export function SupervisorGrades({
               <th className={cn("text-left py-3 px-3", thCell)}>Project</th>
               <th className={cn("text-left py-3 px-3", thCell)}>Score</th>
               <th className={cn("text-left py-3 px-3", thCell)}>Grade</th>
-              <th className={cn("text-left py-3 px-3", thCell)}>Status</th>
+              <th className={cn("text-left py-3 px-3", thCell)}>Rubric</th>
+              <th className={cn("text-left py-3 px-3", thCell)}>Graded On</th>
             </tr>
           </thead>
           <tbody>
@@ -3039,7 +3079,16 @@ export function SupervisorGrades({
                 </td>
                 <td className="py-3 px-3">
                   {g.grade ? (
-                    <span className="rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2.5 py-0.5 text-xs font-bold">
+                    <span className={cn(
+                      "rounded-full px-2.5 py-0.5 text-xs font-bold",
+                      g.score >= 80
+                        ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                        : g.score >= 60
+                        ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                        : g.score >= 50
+                        ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+                        : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                    )}>
                       {g.grade}
                     </span>
                   ) : (
@@ -3047,17 +3096,33 @@ export function SupervisorGrades({
                   )}
                 </td>
                 <td className="py-3 px-3">
-                  <StatusPill status={g.status} />
+                  {g.rubricDetail && Object.keys(g.rubricDetail).length > 0 ? (
+                    <div className="text-xs space-y-0.5">
+                      {Object.entries(g.rubricDetail as Record<string, number>).map(([k, v]) => (
+                        <div key={k} className="flex gap-2">
+                          <span className={cn("capitalize", mutedText)}>
+                            {k.replace(/([A-Z])/g, " $1")}
+                          </span>
+                          <span className={cn("font-medium", bodyText)}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className={mutedText}>—</span>
+                  )}
+                </td>
+                <td className={cn("py-3 px-3 text-xs", mutedText)}>
+                  {g.gradedAt ? new Date(g.gradedAt).toLocaleDateString() : "—"}
                 </td>
               </tr>
             ))}
             {grades.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
-                  className="py-6 text-center text-sm text-neutral-500"
+                  colSpan={6}
+                  className="py-10 text-center text-sm text-neutral-500"
                 >
-                  No grades available
+                  No grades submitted yet. Go to a project's Grade &amp; Feedback tab to submit scores.
                 </td>
               </tr>
             )}
@@ -4738,46 +4803,28 @@ function FeedbackThread({ projectId }: { projectId: string }) {
         },
         body: JSON.stringify({ content: newComment.trim() }),
       });
-      const saved = await res.json();
-      setComments((prev) => [...prev, saved]);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || `Failed to send: ${res.status}`);
+      }
+      const { data: saved } = await res.json();
+      // Optimistically add the comment
+      setComments((prev) => [
+        ...prev,
+        {
+          id: saved?.id ?? Date.now().toString(),
+          message: newComment.trim(),
+          type: saved?.type ?? "STUDENT_FEEDBACK",
+          createdAt: saved?.createdAt ?? new Date().toISOString(),
+          user: { name: "You", role: "STUDENT" },
+        },
+      ]);
       setNewComment("");
-    } catch {
-      /* handled */
+    } catch (err: any) {
+      alert(err.message || "Failed to send feedback");
     }
     setSending(false);
   };
-  //changed on 25/03/26 for feedback not loading
-  // return (
-  //   <>
-  //     <div className={cn("p-5", sectionBorder)}>
-  //       <h3 className={cn("font-semibold", heading)}>Feedback Thread</h3>
-  //     </div>
-
-  //     {loading && (
-  //       <div className="p-5">
-  //         <LoadingSpinner text="Loading feedback..." />
-  //       </div>
-  //     )}
-
-  //     {error && !loading && (
-  //       <div className="p-5">
-  //         <ErrorDisplay message={error} onRetry={() => window.location.reload()} />
-  //       </div>
-  //     )}
-
-  //     {!loading && !error && comments.length === 0 && (
-  //       <div className="p-5">
-  //         <EmptyState
-  //           title="No feedback yet"
-  //           description="Start the conversation by adding your first comment below."
-  //           action={null}
-  //         />
-  //       </div>
-  //     )}
-
-  //     {!loading && !error && comments.length > 0 && (
-  //       <div className="p-5 space-y-4">
-  //         {comments.map((c) => (
 
   return (
     <>
@@ -4812,48 +4859,47 @@ function FeedbackThread({ projectId }: { projectId: string }) {
 
       {!loading && !error && comments.length > 0 && (
         <div className="p-5 space-y-4">
-          {comments.map((c) => (
-            <div
-              key={c._id}
-              className={cn(
-                "flex gap-3",
-                c.author?.role === "student" ? "flex-row-reverse" : "",
-              )}
-            >
+          {comments.map((c, i) => {
+            const isSupervisor = c.type === "SUPERVISOR_FEEDBACK";
+            const name: string = typeof c.user === "object" ? (c.user?.name ?? "Unknown") : (c.user ?? "Unknown");
+            const initials = name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+            return (
               <div
+                key={c.id ?? i}
                 className={cn(
-                  "h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white",
-                  c.author?.role === "supervisor"
-                    ? "bg-purple-500"
-                    : "bg-blue-500",
+                  "flex gap-3",
+                  !isSupervisor ? "flex-row-reverse" : "",
                 )}
               >
-                {c.author?.fullName
-                  ?.split(" ")
-                  .map((n: string) => n[0])
-                  .join("")
-                  .slice(0, 2)}
-              </div>
-              <div
-                className={cn(
-                  "max-w-lg rounded-lg p-3 text-sm",
-                  c.author?.role === "supervisor"
-                    ? "bg-neutral-100 dark:bg-[#21262d] text-neutral-800 dark:text-[#c9d1d9]"
-                    : "bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-300",
-                )}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={cn("font-semibold text-xs", heading)}>
-                    {c.author?.fullName}
-                  </span>
-                  <span className={cn("text-xs", mutedText)}>
-                    {new Date(c.createdAt).toLocaleString()}
-                  </span>
+                <div
+                  className={cn(
+                    "h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white",
+                    isSupervisor ? "bg-purple-500" : "bg-blue-500",
+                  )}
+                >
+                  {initials}
                 </div>
-                <p>{c.content}</p>
+                <div
+                  className={cn(
+                    "max-w-lg rounded-lg p-3 text-sm",
+                    isSupervisor
+                      ? "bg-neutral-100 dark:bg-[#21262d] text-neutral-800 dark:text-[#c9d1d9]"
+                      : "bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-300",
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={cn("font-semibold text-xs", heading)}>
+                      {name}
+                    </span>
+                    <span className={cn("text-xs", mutedText)}>
+                      {new Date(c.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <p>{c.message}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -204,16 +204,86 @@ export const getSupervisorActivityFeed = catchAsync(
   }
 );
 
-export const getSuperviorGrades = catchAsync(async (req, res) => {
-  const milestones = await prisma.milestone.findMany({
+// Helper: convert numeric score to letter grade
+function scoreToGrade(total: number): string {
+  if (total >= 90) return "A+";
+  if (total >= 80) return "A";
+  if (total >= 70) return "B";
+  if (total >= 60) return "C";
+  if (total >= 50) return "D";
+  return "F";
+}
+
+export const getSuperviorGrades = catchAsync(async (req: Request, res: Response) => {
+  // Fetch supervised projects that have been graded (feedback JSON set)
+  const projects = await prisma.project.findMany({
     where: {
-      reviewedById: req.user!.id,
-      status: { in: ["APPROVED", "REJECTED"] }
+      supervisorId: req.user!.id,
+      feedback: { not: null },
     },
     include: {
-      project: { select: { title: true } },
-      submittedBy: { select: { name: true } }
-    }
+      owner: { select: { id: true, name: true } },
+    },
+    orderBy: { updatedAt: "desc" },
   });
-  res.status(200).json({ status: "success", data: milestones });
+
+  const grades = projects.map((p) => {
+    let rubric: Record<string, number> = {};
+    let total = 0;
+    let supervisorFeedback = "";
+    let gradedAt: string | null = null;
+
+    try {
+      const parsed = JSON.parse(p.feedback ?? "");
+      rubric = parsed.rubric ?? {};
+      total = parsed.total ?? 0;
+      supervisorFeedback = parsed.supervisorFeedback ?? "";
+      gradedAt = parsed.gradedAt ?? null;
+    } catch {
+      /* feedback is not JSON — skip */
+    }
+
+    return {
+      id: p.id,
+      projectId: p.id,
+      projectTitle: p.title,
+      studentName: p.owner?.name ?? "Unknown",
+      score: total,
+      grade: scoreToGrade(total),
+      status: p.status,
+      rubricDetail: rubric,
+      supervisorFeedback,
+      gradedAt,
+    };
+  });
+
+  res.status(200).json({ status: "success", count: grades.length, data: grades });
+});
+
+// Post text feedback from supervisor on a project
+export const postProjectFeedback = catchAsync(async (req: Request, res: Response) => {
+  const id = requireParam(req.params["id"], "id");
+  const { message } = req.body as { message: string };
+
+  if (!message?.trim()) throw new BadRequestError("Feedback message is required");
+
+  const project = await prisma.project.findUnique({
+    where: { id },
+    select: { supervisorId: true, ownerId: true },
+  });
+
+  if (!project) throw new NotFoundError("Project");
+
+  const isSupervisor = project.supervisorId === req.user!.id;
+  const isAdmin = req.user!.role === "ADMIN";
+  if (!isSupervisor && !isAdmin) throw new ForbiddenError();
+
+  await logActivity({
+    type: "SUPERVISOR_FEEDBACK",
+    payload: { message: message.trim() },
+    userId: req.user!.id,
+    projectId: id,
+  });
+
+  res.status(201).json({ status: "success", message: "Feedback posted" });
 });
