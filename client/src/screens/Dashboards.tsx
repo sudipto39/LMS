@@ -45,7 +45,7 @@ import {
   ListChecks,
   MessageSquare,
 } from "@/components/Icons";
-import { User as UserIcon } from "lucide-react";
+import { User as UserIcon, Trash2 } from "lucide-react";
 import { cn } from "@/utils/cn";
 
 const GITEA_URL = getGiteaURL() || "https://gitea.example.com";
@@ -185,9 +185,18 @@ export function StudentDashboard({
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [milestones, setMilestones] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nextMilestoneDue, setNextMilestoneDue] = useState<string | null>(null);
+  const [nextMilestoneDaysLeft, setNextMilestoneDaysLeft] = useState<
+    number | null
+  >(null);
+  const [nextMilestoneTitle, setNextMilestoneTitle] = useState<string | null>(
+    null,
+  );
 
   // Re-fetch whenever a supervisor approves/rejects a milestone (signals via localStorage)
-  const [projectsUpdatedAt] = useState(() => localStorage.getItem("projectsUpdatedAt"));
+  const [projectsUpdatedAt] = useState(() =>
+    localStorage.getItem("projectsUpdatedAt"),
+  );
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -206,6 +215,10 @@ export function StudentDashboard({
         const projectsData = await projectsRes.json();
         const projects = projectsData.data || [];
         setStudentProjects(projects);
+        // Store next milestone deadline from the API (computed server-side)
+        setNextMilestoneDue(projectsData.nextMilestoneDue ?? null);
+        setNextMilestoneDaysLeft(projectsData.nextMilestoneDaysLeft ?? null);
+        setNextMilestoneTitle(projectsData.nextMilestoneTitle ?? null);
 
         if (activitiesRes.ok && activitiesRes.status !== 304) {
           const activitiesData = await activitiesRes.json();
@@ -247,8 +260,8 @@ export function StudentDashboard({
     };
 
     fetchDashboardData();
-  // projectsUpdatedAt changes when a supervisor approves/rejects, triggering a re-fetch
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // projectsUpdatedAt changes when a supervisor approves/rejects, triggering a re-fetch
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectsUpdatedAt]);
 
   if (loading) return <LoadingSpinner text="Loading dashboard..." />;
@@ -271,14 +284,21 @@ export function StudentDashboard({
         <KPICard
           title="Active Projects"
           value={studentProjects.length}
-          subtitle={`${studentProjects.filter((p) => p.status === "SUBMITTED").length} in progress`}
+          subtitle={`${studentProjects.filter((p: any) => p.status !== "COMPLETED" && p.status !== "REJECTED").length} active`}
           icon={<FolderGit2 className="h-5 w-5" />}
           color="blue"
         />
         <KPICard
           title="Upcoming Deadline"
-          value={studentProjects[0]?.deadline || "None"}
-          subtitle={studentProjects[0]?.title || "No active projects"}
+          value={(() => {
+            if (!nextMilestoneDue) return "None";
+            const days = nextMilestoneDaysLeft ?? 0;
+            if (days < 0) return "Overdue";
+            if (days === 0) return "Today";
+            if (days <= 30) return `${days}d left`;
+            return new Date(nextMilestoneDue).toLocaleDateString();
+          })()}
+          subtitle={nextMilestoneTitle ?? "No milestone due date set"}
           icon={<Calendar className="h-5 w-5" />}
           color="yellow"
         />
@@ -308,11 +328,7 @@ export function StudentDashboard({
         />
         <KPICard
           title="Pending Review"
-          value={
-            milestones.filter(
-              (m) => m.status === "submitted" || m.status === "completed",
-            ).length
-          }
+          value={milestones.filter((m) => m.status === "SUBMITTED").length}
           subtitle="Milestones awaiting approval"
           icon={<Eye className="h-5 w-5" />}
           color="purple"
@@ -442,29 +458,16 @@ export function StudentProjects({
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // useEffect(() => {
-  //   const fetchProjects = async () => {
-  //     try {
-  //       const res = await fetch(`${API_URL}/v1/projects/me`, {
-  //         headers: getAuthHeaders(),
-  //       });
-  //       setProjects(await res.json());
-  //     } catch (err) {
-  //       console.error("Failed to load projects", err);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
-  //   fetchProjects();
-  // }, []);
   useEffect(() => {
     const fetchProjects = async () => {
       try {
         const res = await fetch(`${API_URL}/v1/projects/me`, {
           headers: getAuthHeaders(),
         });
-
         const data = await res.json();
         setProjects(data.data || []);
       } catch (err) {
@@ -473,14 +476,79 @@ export function StudentProjects({
         setLoading(false);
       }
     };
-
     fetchProjects();
   }, []);
+
+  const handleDelete = useCallback(async () => {
+    if (!confirmDeleteId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await fetch(`${API_URL}/v1/projects/${confirmDeleteId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      // Optimistically remove from list
+      setProjects((prev) => prev.filter((p) => (p.id ?? p._id) !== confirmDeleteId));
+      setConfirmDeleteId(null);
+    } catch (err: unknown) {
+      const msg = err && typeof err === "object" && "message" in err
+        ? (err as { message: string }).message
+        : "Failed to delete project";
+      setDeleteError(msg);
+    } finally {
+      setDeleting(false);
+    }
+  }, [confirmDeleteId]);
+
+  const projectToDelete = projects.find(
+    (p) => (p.id ?? p._id) === confirmDeleteId,
+  );
 
   if (loading) return <LoadingSpinner text="Loading projects..." />;
 
   return (
     <div className="space-y-6">
+      {/* ── Delete confirmation modal ── */}
+      {confirmDeleteId && (
+        <Modal
+          open
+          onClose={() => { setConfirmDeleteId(null); setDeleteError(null); }}
+          title="Delete Project"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-700 dark:text-neutral-300">
+              Are you sure you want to delete{" "}
+              <span className="font-semibold">{projectToDelete?.title}</span>?
+            </p>
+            <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+              ⚠️ This will permanently delete the project, all its milestones,
+              activity history, <strong>and the linked Gitea repository</strong>.
+              This action cannot be undone.
+            </div>
+            {deleteError && (
+              <p className="text-sm text-red-600 dark:text-red-400">{deleteError}</p>
+            )}
+            <div className="flex justify-end gap-3 pt-1">
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition"
+                onClick={() => { setConfirmDeleteId(null); setDeleteError(null); }}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-700 text-white transition disabled:opacity-60"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete Project"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className={cn("text-2xl font-bold", heading)}>My Projects</h1>
@@ -494,63 +562,79 @@ export function StudentProjects({
       </div>
 
       <div className="grid gap-4">
-        {projects.map((p) => (
-          <div
-            key={p.id ?? p._id}
-            className={cn(cardHover, "p-5 cursor-pointer")}
-            onClick={() => {
-              localStorage.setItem("activeProjectId", p.id ?? p._id);
-              onNavigate("student-project-detail");
-            }}
-          >
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className={cn("text-base font-semibold", heading)}>
-                    {p.title}
-                  </h3>
-                  <StatusPill status={p.status} />
-                </div>
-                <p className={cn("text-sm mb-3", subtext)}>{p.description}</p>
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {((p as any).technologies || p.techStack || []).map(
-                    (t: string) => (
-                      <TechTag key={t} label={t} />
-                    ),
-                  )}
-                </div>
-                <div
-                  className={cn(
-                    "flex flex-wrap items-center gap-4 text-xs",
-                    mutedText,
-                  )}
-                >
-                  <span className="flex items-center gap-1">
-                    <UserIcon className="h-3.5 w-3.5" />{" "}
-                    {typeof p.supervisor === "object" && p.supervisor !== null
-                      ? (p.supervisor as any).name
-                      : p.supervisor}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" /> Due:{" "}
-                    {(p as any).endDate
-                      ? new Date((p as any).endDate).toLocaleDateString()
-                      : p.deadline || "—"}
-                  </span>
-                  <InactivityBadge lastPush={p.lastPush} />
-                  {(p as any).repoUrl && (
-                    <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                      <GitBranch className="h-3.5 w-3.5" /> Repo linked
+        {projects.map((p) => {
+          const pid = p.id ?? p._id;
+          return (
+            <div
+              key={pid}
+              className={cn(cardHover, "p-5 cursor-pointer")}
+              onClick={() => {
+                localStorage.setItem("activeProjectId", pid);
+                onNavigate("student-project-detail");
+              }}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className={cn("text-base font-semibold", heading)}>
+                      {p.title}
+                    </h3>
+                    <StatusPill status={p.status} />
+                  </div>
+                  <p className={cn("text-sm mb-3", subtext)}>{p.description}</p>
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {((p as any).technologies || p.techStack || []).map(
+                      (t: string) => (
+                        <TechTag key={t} label={t} />
+                      ),
+                    )}
+                  </div>
+                  <div
+                    className={cn(
+                      "flex flex-wrap items-center gap-4 text-xs",
+                      mutedText,
+                    )}
+                  >
+                    <span className="flex items-center gap-1">
+                      <UserIcon className="h-3.5 w-3.5" />{" "}
+                      {typeof p.supervisor === "object" && p.supervisor !== null
+                        ? (p.supervisor as any).name
+                        : p.supervisor}
                     </span>
-                  )}
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5" /> Due:{" "}
+                      {(p as any).endDate
+                        ? new Date((p as any).endDate).toLocaleDateString()
+                        : p.deadline || "—"}
+                    </span>
+                    <InactivityBadge lastPush={p.lastPush} />
+                    {(p as any).repoUrl && (
+                      <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                        <GitBranch className="h-3.5 w-3.5" /> Repo linked
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="w-full sm:w-48">
-                <ProgressBar value={p.progress} />
+                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
+                  <div className="w-full sm:w-40">
+                    <ProgressBar value={p.progress} />
+                  </div>
+                  {/* Delete button — stops card click propagation */}
+                  <button
+                    title="Delete project"
+                    className="flex-shrink-0 p-1.5 rounded-lg text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeleteId(pid);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {projects.length === 0 && (
           <div className="text-center py-10 text-muted-foreground">
             No projects yet. Create your first one
@@ -573,6 +657,7 @@ export function CreateProject({
   const [repoOption, setRepoOption] = useState<"create" | "link">("create");
   const [showSuccess, setShowSuccess] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [supervisors, setSupervisors] = useState<
     { _id: string; name: string }[]
   >([]);
@@ -743,6 +828,7 @@ export function CreateProject({
 
   const handleCreateProject = useCallback(async () => {
     setIsCreating(true);
+    setCreateError(null);
     try {
       // 1. Create project
       const project = await dataService.createProject({
@@ -785,6 +871,23 @@ export function CreateProject({
 
       setShowSuccess(true);
       setTimeout(() => onNavigate("student-project-detail"), 1500);
+    } catch (err: unknown) {
+      // Extract a human-readable message and surface it to the user.
+      // Gitea config errors now return 502 from the server so they will
+      // never trigger the axios 401-refresh-logout cycle.
+      let message = "Failed to create project. Please try again.";
+      if (err && typeof err === "object") {
+        const axiosErr = err as { response?: { data?: { message?: string }; status?: number }; message?: string };
+        if (axiosErr.response?.status === 502) {
+          message = "Could not connect to the repository service. Please contact an administrator.";
+        } else if (axiosErr.response?.data?.message) {
+          message = axiosErr.response.data.message;
+        } else if (axiosErr.message) {
+          message = axiosErr.message;
+        }
+      }
+      console.error("❌ createProject error:", err);
+      setCreateError(message);
     } finally {
       setIsCreating(false);
     }
@@ -797,6 +900,22 @@ export function CreateProject({
           message="Project created successfully! Repository initialized."
           onClose={() => setShowSuccess(false)}
         />
+      )}
+      {createError && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400"
+        >
+          <span className="mt-0.5 shrink-0">⚠️</span>
+          <span>{createError}</span>
+          <button
+            className="ml-auto text-red-500 hover:text-red-700"
+            onClick={() => setCreateError(null)}
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       <div>
@@ -2105,6 +2224,13 @@ export function SupervisorDashboard({
   const [projects, setProjects] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nextMilestoneDue, setNextMilestoneDue] = useState<string | null>(null);
+  const [nextMilestoneDaysLeft, setNextMilestoneDaysLeft] = useState<
+    number | null
+  >(null);
+  const [nextMilestoneTitle, setNextMilestoneTitle] = useState<string | null>(
+    null,
+  );
 
   // useEffect(() => {
   //   const fetchDashboard = async () => {
@@ -2126,38 +2252,41 @@ export function SupervisorDashboard({
   //   fetchDashboard();
   // }, []);
   useEffect(() => {
-  const fetchDashboard = async () => {
-    try {
-      const token = tokenStore.get();
-      const [projectsRes, activitiesRes] = await Promise.all([
-        fetch(`${API_URL}/v1/projects/supervised`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_URL}/v1/activities/supervisor`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
+    const fetchDashboard = async () => {
+      try {
+        const token = tokenStore.get();
+        const [projectsRes, activitiesRes] = await Promise.all([
+          fetch(`${API_URL}/v1/projects/supervised`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_URL}/v1/activities/supervisor`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
 
-      const projectsData = await projectsRes.json();
-      setProjects(projectsData.data || []);
+        const projectsData = await projectsRes.json();
+        setProjects(projectsData.data || []);
+        setNextMilestoneDue(projectsData.nextMilestoneDue ?? null);
+        setNextMilestoneDaysLeft(projectsData.nextMilestoneDaysLeft ?? null);
+        setNextMilestoneTitle(projectsData.nextMilestoneTitle ?? null);
 
-      // Guard: only parse activities if request succeeded
-      if (activitiesRes.ok) {
-        const activitiesData = await activitiesRes.json();
-        setActivities(activitiesData.data || []);
-      } else {
+        // Guard: only parse activities if request succeeded
+        if (activitiesRes.ok) {
+          const activitiesData = await activitiesRes.json();
+          setActivities(activitiesData.data || []);
+        } else {
+          setActivities([]);
+        }
+      } catch (err) {
+        console.error("Supervisor dashboard load failed:", err);
+        setProjects([]);
         setActivities([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Supervisor dashboard load failed:", err);
-      setProjects([]);
-      setActivities([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchDashboard();
-}, []);
+    };
+    fetchDashboard();
+  }, []);
 
   if (loading) return <LoadingSpinner text="Loading dashboard..." />;
 
@@ -2180,22 +2309,32 @@ export function SupervisorDashboard({
         />
         <KPICard
           title="Needs Review"
-          value={projects.filter((p) => p.needsReview).length}
+          value={projects.reduce(
+            (sum, p) => sum + (p.pendingReviewCount || (p.needsReview ? 1 : 0)),
+            0,
+          )}
           subtitle="Pending submissions"
           icon={<Eye className="h-5 w-5" />}
           color="yellow"
         />
         <KPICard
           title="Inactive > 7 days"
-          value={projects.filter((p) => p.inactiveDays > 7).length}
+          value={projects.filter((p) => (p.inactiveDays ?? 0) > 7).length}
           subtitle="No recent commits"
           icon={<AlertTriangle className="h-5 w-5" />}
           color="red"
         />
         <KPICard
           title="Upcoming Deadlines"
-          value={projects.filter((p) => p.upcomingDeadline).length}
-          subtitle="Next 2 weeks"
+          value={(() => {
+            if (!nextMilestoneDue) return 0;
+            const days = nextMilestoneDaysLeft ?? 0;
+            if (days < 0) return "Overdue";
+            if (days === 0) return "Today";
+            if (days <= 30) return `${days}d`;
+            return new Date(nextMilestoneDue).toLocaleDateString();
+          })()}
+          subtitle={nextMilestoneTitle ?? "No milestone due dates set"}
           icon={<Calendar className="h-5 w-5" />}
           color="purple"
         />
@@ -2346,7 +2485,10 @@ export function SupervisorProjectDetail({
   const [gradeFeedback, setGradeFeedback] = useState("");
   const [gradeSubmitting, setGradeSubmitting] = useState(false);
   const [feedbackSending, setFeedbackSending] = useState(false);
-  const gradeTotal = RUBRIC.reduce((sum, r) => sum + (gradeScores[r.key] ?? 0), 0);
+  const gradeTotal = RUBRIC.reduce(
+    (sum, r) => sum + (gradeScores[r.key] ?? 0),
+    0,
+  );
 
   const projectId = localStorage.getItem("activeProjectId");
 
@@ -2380,13 +2522,16 @@ export function SupervisorProjectDetail({
           await Promise.all([
             fetch(`${API_URL}/v1/projects/${projectId}`, { headers }),
             // milestones route is mounted at /api/v1 with path /projects/:id/milestones
-            fetch(`${API_URL}/v1/projects/${projectId}/milestones`, { headers }),
+            fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
+              headers,
+            }),
             // correct activities route: /api/v1/activities/project/:projectId
             fetch(`${API_URL}/v1/activities/project/${projectId}`, { headers }),
             fetch(`${API_URL}/v1/projects/${projectId}/files`, { headers }),
           ]);
 
-        if (!projectRes.ok) throw new Error(`Project fetch failed: ${projectRes.status}`);
+        if (!projectRes.ok)
+          throw new Error(`Project fetch failed: ${projectRes.status}`);
         const projectData = await projectRes.json();
         setProject(projectData.data || projectData);
 
@@ -2437,7 +2582,8 @@ export function SupervisorProjectDetail({
             <StatusPill status={project.status} />
           </div>
           <p className={cn("text-sm", subtext)}>
-            Student: {project.owner?.name ?? project.student?.name} · {project.batch?.name}
+            Student: {project.owner?.name ?? project.student?.name} ·{" "}
+            {project.batch?.name}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2447,10 +2593,18 @@ export function SupervisorProjectDetail({
           <Button variant="secondary" size="sm">
             <Download className="h-4 w-4" /> Download ZIP
           </Button>
-          <Button variant="danger" size="sm" onClick={() => setTab("milestones")}>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setTab("milestones")}
+          >
             <XCircle className="h-4 w-4" /> Request Changes
           </Button>
-          <Button variant="success" size="sm" onClick={() => setTab("milestones")}>
+          <Button
+            variant="success"
+            size="sm"
+            onClick={() => setTab("milestones")}
+          >
             <CheckCircle2 className="h-4 w-4" /> Approve Milestones
           </Button>
         </div>
@@ -2518,11 +2672,17 @@ export function SupervisorProjectDetail({
               <div className="mt-4">
                 <dt className={cn("text-sm mb-1", mutedText)}>Tech Stack</dt>
                 <div className="flex flex-wrap gap-1.5">
-                  {(project.technologies || project.techStack || []).map((t: string) => (
-                    <TechTag key={t} label={t} />
-                  ))}
-                  {!(project.technologies?.length || project.techStack?.length) && (
-                    <span className={cn("text-xs", mutedText)}>No technologies listed</span>
+                  {(project.technologies || project.techStack || []).map(
+                    (t: string) => (
+                      <TechTag key={t} label={t} />
+                    ),
+                  )}
+                  {!(
+                    project.technologies?.length || project.techStack?.length
+                  ) && (
+                    <span className={cn("text-xs", mutedText)}>
+                      No technologies listed
+                    </span>
                   )}
                 </div>
               </div>
@@ -2582,7 +2742,8 @@ export function SupervisorProjectDetail({
                 </div>
                 {project.milestonesTotal > 0 && (
                   <p className={cn("text-xs text-center", subtext)}>
-                    {project.milestonesCompleted} of {project.milestonesTotal} milestones approved
+                    {project.milestonesCompleted} of {project.milestonesTotal}{" "}
+                    milestones approved
                   </p>
                 )}
               </div>
@@ -2647,72 +2808,92 @@ export function SupervisorProjectDetail({
                   </div>
                 )} */}
                 {m.status === "SUBMITTED" && (
-  <div className="flex gap-2">
-    <Button
-      variant="success"
-      size="sm"
-      disabled={actionLoading === (m.id ?? m._id)}
-      onClick={async () => {
-        const milestoneId = m.id ?? m._id;
-        setActionLoading(milestoneId);
-        try {
-          const token = tokenStore.get();
-          const res = await fetch(`${API_URL}/v1/milestones/${milestoneId}/approve`, {
-            method: "PATCH",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ feedback: "Approved" }),
-          });
-          if (!res.ok) { alert("Failed to approve milestone"); return; }
-          // Refresh milestones + project progress
-          await refreshProjectAndMilestones();
-        } catch (err) {
-          console.error("Approve failed:", err);
-          alert("An error occurred while approving");
-        } finally {
-          setActionLoading(null);
-        }
-      }}
-    >
-      <CheckCircle2 className="h-4 w-4" />
-      {actionLoading === (m.id ?? m._id) ? "Approving..." : "Approve"}
-    </Button>
-    <Button
-      variant="danger"
-      size="sm"
-      disabled={actionLoading === (m.id ?? m._id)}
-      onClick={async () => {
-        const feedback = prompt("Reason for rejection (required):");
-        if (!feedback?.trim()) return;
-        const milestoneId = m.id ?? m._id;
-        setActionLoading(milestoneId);
-        try {
-          const token = tokenStore.get();
-          const res = await fetch(`${API_URL}/v1/milestones/${milestoneId}/reject`, {
-            method: "PATCH",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ feedback: feedback.trim() }),
-          });
-          if (!res.ok) { alert("Failed to reject milestone"); return; }
-          await refreshProjectAndMilestones();
-        } catch (err) {
-          console.error("Reject failed:", err);
-          alert("An error occurred while rejecting");
-        } finally {
-          setActionLoading(null);
-        }
-      }}
-    >
-      <XCircle className="h-4 w-4" />
-      {actionLoading === (m.id ?? m._id) ? "Rejecting..." : "Reject"}
-    </Button>
-  </div>
-)}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="success"
+                      size="sm"
+                      disabled={actionLoading === (m.id ?? m._id)}
+                      onClick={async () => {
+                        const milestoneId = m.id ?? m._id;
+                        setActionLoading(milestoneId);
+                        try {
+                          const token = tokenStore.get();
+                          const res = await fetch(
+                            `${API_URL}/v1/milestones/${milestoneId}/approve`,
+                            {
+                              method: "PATCH",
+                              headers: {
+                                Authorization: `Bearer ${token}`,
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({ feedback: "Approved" }),
+                            },
+                          );
+                          if (!res.ok) {
+                            alert("Failed to approve milestone");
+                            return;
+                          }
+                          // Refresh milestones + project progress
+                          await refreshProjectAndMilestones();
+                        } catch (err) {
+                          console.error("Approve failed:", err);
+                          alert("An error occurred while approving");
+                        } finally {
+                          setActionLoading(null);
+                        }
+                      }}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {actionLoading === (m.id ?? m._id)
+                        ? "Approving..."
+                        : "Approve"}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={actionLoading === (m.id ?? m._id)}
+                      onClick={async () => {
+                        const feedback = prompt(
+                          "Reason for rejection (required):",
+                        );
+                        if (!feedback?.trim()) return;
+                        const milestoneId = m.id ?? m._id;
+                        setActionLoading(milestoneId);
+                        try {
+                          const token = tokenStore.get();
+                          const res = await fetch(
+                            `${API_URL}/v1/milestones/${milestoneId}/reject`,
+                            {
+                              method: "PATCH",
+                              headers: {
+                                Authorization: `Bearer ${token}`,
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                feedback: feedback.trim(),
+                              }),
+                            },
+                          );
+                          if (!res.ok) {
+                            alert("Failed to reject milestone");
+                            return;
+                          }
+                          await refreshProjectAndMilestones();
+                        } catch (err) {
+                          console.error("Reject failed:", err);
+                          alert("An error occurred while rejecting");
+                        } finally {
+                          setActionLoading(null);
+                        }
+                      }}
+                    >
+                      <XCircle className="h-4 w-4" />
+                      {actionLoading === (m.id ?? m._id)
+                        ? "Rejecting..."
+                        : "Reject"}
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -2797,7 +2978,10 @@ export function SupervisorProjectDetail({
                     max={r.max}
                     value={gradeScores[r.key] ?? ""}
                     onChange={(e) => {
-                      const val = Math.min(r.max, Math.max(0, Number(e.target.value)));
+                      const val = Math.min(
+                        r.max,
+                        Math.max(0, Number(e.target.value)),
+                      );
                       setGradeScores((prev) => ({ ...prev, [r.key]: val }));
                     }}
                     placeholder="0"
@@ -2807,13 +2991,21 @@ export function SupervisorProjectDetail({
                 </div>
               ))}
               <div className="flex items-center gap-4 pt-3 border-t border-neutral-200 dark:border-[#30363d]">
-                <label className={cn("text-sm font-bold w-36", heading)}>Total</label>
-                <span className={cn(
-                  "text-lg font-bold",
-                  gradeTotal === 100 ? "text-green-500" :
-                  gradeTotal >= 75 ? "text-blue-500" :
-                  gradeTotal >= 50 ? "text-yellow-500" : heading
-                )}>
+                <label className={cn("text-sm font-bold w-36", heading)}>
+                  Total
+                </label>
+                <span
+                  className={cn(
+                    "text-lg font-bold",
+                    gradeTotal === 100
+                      ? "text-green-500"
+                      : gradeTotal >= 75
+                        ? "text-blue-500"
+                        : gradeTotal >= 50
+                          ? "text-yellow-500"
+                          : heading,
+                  )}
+                >
                   {gradeTotal} / 100
                 </span>
               </div>
@@ -2827,23 +3019,28 @@ export function SupervisorProjectDetail({
                   try {
                     const token = tokenStore.get();
                     // Use dedicated supervisor grade endpoint
-                    const res = await fetch(`${API_URL}/v1/supervisors/projects/${projectId}/grade`, {
-                      method: "PATCH",
-                      headers: {
-                        Authorization: `Bearer ${token}`,
-                        "Content-Type": "application/json",
+                    const res = await fetch(
+                      `${API_URL}/v1/supervisors/projects/${projectId}/grade`,
+                      {
+                        method: "PATCH",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          rubric: gradeScores,
+                          total: gradeTotal,
+                          supervisorFeedback: gradeFeedback,
+                        }),
                       },
-                      body: JSON.stringify({
-                        rubric: gradeScores,
-                        total: gradeTotal,
-                        supervisorFeedback: gradeFeedback,
-                      }),
-                    });
+                    );
                     if (res.ok) {
                       alert(`Grade submitted: ${gradeTotal}/100`);
                     } else {
                       const err = await res.json().catch(() => ({}));
-                      alert(`Failed to submit grade: ${err.message || res.status}`);
+                      alert(
+                        `Failed to submit grade: ${err.message || res.status}`,
+                      );
                     }
                   } catch (err) {
                     console.error("Grade submit failed:", err);
@@ -2908,14 +3105,14 @@ export function SupervisorProjectDetail({
                           "Content-Type": "application/json",
                         },
                         body: JSON.stringify({ message: gradeFeedback.trim() }),
-                      }
+                      },
                     );
                     if (res.ok) {
                       setGradeFeedback("");
                       // Re-fetch activities to show new feedback in timeline
                       const actRes = await fetch(
                         `${API_URL}/v1/activities/project/${projectId}`,
-                        { headers: { Authorization: `Bearer ${token}` } }
+                        { headers: { Authorization: `Bearer ${token}` } },
                       );
                       if (actRes.ok) {
                         const actData = await actRes.json();
@@ -3079,16 +3276,18 @@ export function SupervisorGrades({
                 </td>
                 <td className="py-3 px-3">
                   {g.grade ? (
-                    <span className={cn(
-                      "rounded-full px-2.5 py-0.5 text-xs font-bold",
-                      g.score >= 80
-                        ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                        : g.score >= 60
-                        ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                        : g.score >= 50
-                        ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
-                        : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                    )}>
+                    <span
+                      className={cn(
+                        "rounded-full px-2.5 py-0.5 text-xs font-bold",
+                        g.score >= 80
+                          ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                          : g.score >= 60
+                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                            : g.score >= 50
+                              ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+                              : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400",
+                      )}
+                    >
                       {g.grade}
                     </span>
                   ) : (
@@ -3098,12 +3297,16 @@ export function SupervisorGrades({
                 <td className="py-3 px-3">
                   {g.rubricDetail && Object.keys(g.rubricDetail).length > 0 ? (
                     <div className="text-xs space-y-0.5">
-                      {Object.entries(g.rubricDetail as Record<string, number>).map(([k, v]) => (
+                      {Object.entries(
+                        g.rubricDetail as Record<string, number>,
+                      ).map(([k, v]) => (
                         <div key={k} className="flex gap-2">
                           <span className={cn("capitalize", mutedText)}>
                             {k.replace(/([A-Z])/g, " $1")}
                           </span>
-                          <span className={cn("font-medium", bodyText)}>{v}</span>
+                          <span className={cn("font-medium", bodyText)}>
+                            {v}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -3122,7 +3325,8 @@ export function SupervisorGrades({
                   colSpan={6}
                   className="py-10 text-center text-sm text-neutral-500"
                 >
-                  No grades submitted yet. Go to a project's Grade &amp; Feedback tab to submit scores.
+                  No grades submitted yet. Go to a project's Grade &amp;
+                  Feedback tab to submit scores.
                 </td>
               </tr>
             )}
@@ -4861,8 +5065,16 @@ function FeedbackThread({ projectId }: { projectId: string }) {
         <div className="p-5 space-y-4">
           {comments.map((c, i) => {
             const isSupervisor = c.type === "SUPERVISOR_FEEDBACK";
-            const name: string = typeof c.user === "object" ? (c.user?.name ?? "Unknown") : (c.user ?? "Unknown");
-            const initials = name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+            const name: string =
+              typeof c.user === "object"
+                ? (c.user?.name ?? "Unknown")
+                : (c.user ?? "Unknown");
+            const initials = name
+              .split(" ")
+              .map((n: string) => n[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase();
             return (
               <div
                 key={c.id ?? i}

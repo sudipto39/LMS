@@ -18,11 +18,18 @@ const gitea = axios.create({
 
 const handleGiteaError = (error: unknown, context: string): never => {
   if (error instanceof AxiosError) {
-    const status = error.response?.status ?? 500;
+    const giteaStatus = error.response?.status ?? 500;
     const message =
       error.response?.data?.message ?? error.message ?? "Gitea API error";
     console.error(`❌ Gitea [${context}]:`, message);
-    throw new AppError(`Gitea error: ${message}`, status);
+
+    // Remap Gitea's own 401/403 (bad admin token / insufficient permissions)
+    // to 502 Bad Gateway so the client never treats it as a user session error
+    // and triggers an unintended logout.
+    const clientStatus =
+      giteaStatus === 401 || giteaStatus === 403 ? 502 : giteaStatus;
+
+    throw new AppError(`Gitea error: ${message}`, clientStatus);
   }
   throw new AppError(`Gitea error in ${context}`, 500);
 };
@@ -125,6 +132,19 @@ export const giteaService = {
       return res.data;
     } catch (error) {
       return handleGiteaError(error, "createGiteaUser");
+    }
+  },
+  async deleteRepo(owner: string, repo: string) {
+    try {
+      await gitea.delete(`/repos/${owner}/${repo}`);
+      console.log(`🗑️  Gitea: Repo "${repo}" deleted for ${owner}`);
+    } catch (error) {
+      // If the repo doesn't exist (404), treat as already deleted — not an error
+      if (error instanceof AxiosError && error.response?.status === 404) {
+        console.warn(`⚠️  Gitea: Repo "${repo}" not found — skipping delete`);
+        return;
+      }
+      return handleGiteaError(error, "deleteRepo");
     }
   },
 };
