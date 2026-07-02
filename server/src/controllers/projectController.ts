@@ -18,7 +18,7 @@ import { s3, BUCKET } from "../middlewares/fileUploadMiddleware.js";
 const projectInclude = {
   owner: { select: { id: true, name: true, email: true } },
   supervisor: { select: { id: true, name: true, email: true } },
-  batch: { select: { id: true, name: true } },
+  batch: { select: { id: true, name: true, endYear: true } },
   _count: { select: { milestones: true } },
 } as const;
 
@@ -89,6 +89,44 @@ export const createProject = catchAsync(async (req: Request, res: Response) => {
   res.status(201).json({ status: "success", data: project });
 });
 
+export const deleteProject = catchAsync(async (req: Request, res: Response) => {
+  const id = requireParam(req.params["id"], "id");
+
+  const project = await prisma.project.findUnique({
+    where: { id },
+    select: {
+      ownerId: true,
+      repoName: true,
+      owner: { select: { giteaUsername: true } },
+    },
+  });
+
+  if (!project) throw new NotFoundError("Project");
+
+  // Only the owner or an admin may delete
+  const isOwner = project.ownerId === req.user!.id;
+  const isAdmin = req.user!.role === "ADMIN";
+  if (!isOwner && !isAdmin) throw new ForbiddenError();
+
+  // 1. Delete the Gitea repo (best-effort — don't fail if Gitea is down)
+  if (project.owner.giteaUsername && project.repoName) {
+    try {
+      await giteaService.deleteRepo(project.owner.giteaUsername, project.repoName);
+    } catch (err) {
+      console.warn("⚠️  Could not delete Gitea repo during project delete:", err);
+    }
+  }
+
+  // 2. Delete all child records then the project (cascade via Prisma)
+  await prisma.$transaction([
+    prisma.activity.deleteMany({ where: { projectId: id } }),
+    prisma.milestone.deleteMany({ where: { projectId: id } }),
+    prisma.project.delete({ where: { id } }),
+  ]);
+
+  res.status(204).send();
+});
+
 export const getMyProjects = catchAsync(async (req: Request, res: Response) => {
   const projects = await prisma.project.findMany({
     where: { ownerId: req.user!.id },
@@ -96,18 +134,51 @@ export const getMyProjects = catchAsync(async (req: Request, res: Response) => {
     orderBy: { createdAt: "desc" },
   });
 
-  // Compute progress for each project (approved milestones / total active milestones)
+  const now = new Date();
+  const projectIds = projects.map((p) => p.id);
+
+  // Find the single closest upcoming milestone dueDate across ALL student projects
+  const nextMilestone = projectIds.length > 0
+    ? await prisma.milestone.findFirst({
+        where: {
+          projectId: { in: projectIds },
+          isActive: true,
+          dueDate: { gt: now },
+          status: { notIn: ["APPROVED", "REJECTED"] },
+        },
+        orderBy: { dueDate: "asc" },
+        select: { dueDate: true, title: true, projectId: true },
+      })
+    : null;
+
+  const nextMilestoneDue = nextMilestone?.dueDate?.toISOString() ?? null;
+  const nextMilestoneDaysLeft = nextMilestone?.dueDate
+    ? Math.ceil((nextMilestone.dueDate.getTime() - now.getTime()) / 86400000)
+    : null;
+  const nextMilestoneTitle = nextMilestone?.title ?? null;
+
   const projectsWithProgress = await Promise.all(
     projects.map(async (project) => {
       const [total, approved] = await Promise.all([
         prisma.milestone.count({ where: { projectId: project.id, isActive: true } }),
         prisma.milestone.count({ where: { projectId: project.id, isActive: true, status: "APPROVED" } }),
       ]);
+
+      // effectiveDeadline: explicit endDate or June 30 of batch endYear
+      const batchEndYear = (project.batch as any)?.endYear;
+      const effectiveDeadline: Date | null =
+        project.endDate ??
+        (batchEndYear ? new Date(batchEndYear, 5, 30) : null);
+
       return {
         ...project,
         progress: total > 0 ? Math.round((approved / total) * 100) : 0,
         milestonesTotal: total,
         milestonesCompleted: approved,
+        effectiveDeadline: effectiveDeadline?.toISOString() ?? null,
+        daysUntilDeadline: effectiveDeadline
+          ? Math.ceil((effectiveDeadline.getTime() - now.getTime()) / 86400000)
+          : null,
       };
     })
   );
@@ -116,6 +187,10 @@ export const getMyProjects = catchAsync(async (req: Request, res: Response) => {
     status: "success",
     count: projectsWithProgress.length,
     data: projectsWithProgress,
+    // Global deadline KPI fields
+    nextMilestoneDue,
+    nextMilestoneDaysLeft,
+    nextMilestoneTitle,
   });
 });
 
@@ -128,7 +203,27 @@ export const getSupervisedProjects = catchAsync(
     });
 
     const now = new Date();
-    const twoWeeksFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const projectIds = projects.map((p) => p.id);
+
+    // Find the closest upcoming milestone dueDate across ALL supervised projects
+    const nextMilestone = projectIds.length > 0
+      ? await prisma.milestone.findFirst({
+          where: {
+            projectId: { in: projectIds },
+            isActive: true,
+            dueDate: { gt: now },
+            status: { notIn: ["APPROVED", "REJECTED"] },
+          },
+          orderBy: { dueDate: "asc" },
+          select: { dueDate: true, title: true, projectId: true },
+        })
+      : null;
+
+    const nextMilestoneDue = nextMilestone?.dueDate?.toISOString() ?? null;
+    const nextMilestoneDaysLeft = nextMilestone?.dueDate
+      ? Math.ceil((nextMilestone.dueDate.getTime() - now.getTime()) / 86400000)
+      : null;
+    const nextMilestoneTitle = nextMilestone?.title ?? null;
 
     // Compute all per-project metrics in parallel
     const projectsWithProgress = await Promise.all(
@@ -160,11 +255,18 @@ export const getSupervisedProjects = catchAsync(
           (now.getTime() - new Date(lastActiveDate).getTime()) / (1000 * 60 * 60 * 24)
         );
 
-        // upcomingDeadline: endDate exists and is within the next 14 days
+        // effectiveDeadline: use explicit endDate first, then derive from batch endYear (June 30)
+        const batchEndYear = (project.batch as any)?.endYear;
+        const effectiveDeadline: Date | null =
+          project.endDate ??
+          (batchEndYear ? new Date(batchEndYear, 5, 30) : null); // June 30 of endYear
+
+        // upcomingDeadline: within the next 180 days (6 months) — practical for academic projects
+        const sixMonthsFromNow = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
         const upcomingDeadline =
-          project.endDate !== null &&
-          project.endDate > now &&
-          project.endDate <= twoWeeksFromNow;
+          effectiveDeadline !== null &&
+          effectiveDeadline > now &&
+          effectiveDeadline <= sixMonthsFromNow;
 
         return {
           ...project,
@@ -172,8 +274,10 @@ export const getSupervisedProjects = catchAsync(
           milestonesTotal: total,
           milestonesCompleted: approved,
           needsReview,
+          pendingReviewCount,
           inactiveDays,
           upcomingDeadline,
+          effectiveDeadline: effectiveDeadline?.toISOString() ?? null,
           lastPushAt: lastPushActivity?.createdAt ?? null,
         };
       })
@@ -183,6 +287,9 @@ export const getSupervisedProjects = catchAsync(
       status: "success",
       count: projectsWithProgress.length,
       data: projectsWithProgress,
+      nextMilestoneDue,
+      nextMilestoneDaysLeft,
+      nextMilestoneTitle,
     });
   },
 );

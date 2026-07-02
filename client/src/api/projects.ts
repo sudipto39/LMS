@@ -395,6 +395,9 @@ const projectsAPI = {
 
   update: (id: string, payload: UpdateProjectPayload) =>
     client.patch<{ status: string; data: Project }>(`${BASE}/${id}`, payload),
+
+  remove: (id: string) =>
+    client.delete(`${BASE}/${id}`),
 };
 
 export default projectsAPI;
