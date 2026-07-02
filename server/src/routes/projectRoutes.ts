@@ -2,6 +2,7 @@
 import { Router } from "express";
 import {
   createProject,
+  deleteProject,
   getMyProjects,
   getProjectById,
   getSupervisedProjects,
@@ -32,6 +33,7 @@ router.post("/:id/feedback", protect, postProjectFeedback);
 // /:id must be AFTER named routes
 router.get("/:id", protect, getProjectById);
 router.patch("/:id", protect, restrictTo("STUDENT"), updateProject);
+router.delete("/:id", protect, restrictTo("STUDENT", "ADMIN"), deleteProject);
 router.get("/supervised", protect, restrictTo("SUPERVISOR"), getSupervisedProjects);
 
 export default router;
