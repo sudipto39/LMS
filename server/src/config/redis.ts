@@ -4,7 +4,7 @@ import { env } from "./env.js";
 export const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 1,
   lazyConnect: true,
-  retryStrategy: (times) => {
+  retryStrategy: (times: number) => {
     if (times > 3) {
       console.warn("⚠️ Redis unavailable — refresh tokens disabled");
       return null; // stop retrying

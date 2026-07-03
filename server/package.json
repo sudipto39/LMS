@@ -42,7 +42,7 @@
     "@types/swagger-ui-express": "^4.1.8",
     "dotenv": "^17.4.1",
     "nodemon": "^3.1.11",
-    "prisma": "^7.8.0",
+    "prisma": "^7.7.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
@@ -51,7 +51,7 @@
     "@aws-sdk/client-s3": "^3.1045.0",
     "@aws-sdk/s3-request-presigner": "^3.1045.0",
     "@prisma/adapter-pg": "^7.7.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/client": "^7.7.0",
     "axios": "^1.13.6",
     "bcrypt": "^5.1.1",
     "compression": "^1.8.1",
