@@ -13,11 +13,19 @@ export const createRepository = catchAsync(
     };
     if (!name) throw new BadRequestError("Repository name is required");
 
-    const repo = await giteaService.createRepo(
-      req.user!.id,
-      name,
-      description
-    );
+    // const repo = await giteaService.createRepo(
+    //   req.user!.id,
+    //   name,
+    //   description
+    // );
+    if (!req.user!.giteaUsername) {
+  throw new BadRequestError("Gitea account not linked. Please contact admin.");
+}
+const repo = await giteaService.createRepo(
+  req.user!.giteaUsername,  // ← This is the Gitea username!
+  name,
+  description
+);
     res.status(201).json({ status: "success", data: repo });
   }
 );
