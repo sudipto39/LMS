@@ -34,6 +34,7 @@ export const protect: RequestHandler = catchAsync(
         id: true,
         role: true,
         isEmailVerified: true,
+        giteaUsername: true,
       },
     });
 
