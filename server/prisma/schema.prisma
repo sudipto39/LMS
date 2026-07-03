@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -12,63 +7,39 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role {
-  STUDENT
-  SUPERVISOR
-  ADMIN
-}
-
-enum MilestoneStatus {
-  PENDING
-  IN_PROGRESS
-  SUBMITTED
-  APPROVED
-  REJECTED
-}
-
-enum ProjectStatus {
-  DRAFT
-  SUBMITTED
-  APPROVED
-  REJECTED
-  ARCHIVED
-}
-
 model User {
-  id               String    @id @default(cuid())
-  name             String
-  universityId     String?   @unique
-  email            String    @unique
-  password         String
-  phoneNumber      String?
-  department       String?
-  role             Role      @default(STUDENT)
-  isEmailVerified  Boolean   @default(false)
-  giteaUsername    String?   @unique
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  supervisedProjects Project[]         @relation("ProjectSupervisor")
-  ownedProjects      Project[]         @relation("ProjectOwner")
-  activities         Activity[]
-  enrollments        BatchEnrollment[]
-  submittedMilestones Milestone[]      @relation("MilestoneSubmitter")
-  reviewedMilestones  Milestone[]      @relation("MilestoneReviewer")
+  id                  String            @id @default(cuid())
+  name                String
+  email               String            @unique
+  password            String
+  role                Role              @default(STUDENT)
+  isEmailVerified     Boolean           @default(false)
+  giteaUsername       String?           @unique
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  department          String?
+  phoneNumber         String?
+  universityId        String?           @unique
+  activities          Activity[]
+  enrollments         BatchEnrollment[]
+  reviewedMilestones  Milestone[]       @relation("MilestoneReviewer")
+  submittedMilestones Milestone[]       @relation("MilestoneSubmitter")
+  ownedProjects       Project[]         @relation("ProjectOwner")
+  supervisedProjects  Project[]         @relation("ProjectSupervisor")
 
   @@map("users")
 }
 
 model Batch {
-  id          String   @id @default(cuid())
-  name        String   @unique
+  id          String            @id @default(cuid())
+  name        String            @unique
   courseId    String
-  startYear   Int
+  createdAt   DateTime          @default(now())
   endYear     Int
-  isActive    Boolean  @default(true)
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-
+  isActive    Boolean           @default(true)
+  startYear   Int
   enrollments BatchEnrollment[]
+  course      Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
   projects    Project[]
 
   @@map("batches")
@@ -77,8 +48,8 @@ model Batch {
 model BatchEnrollment {
   userId  String
   batchId String
-  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   batch   Batch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, batchId])
   @@map("batch_enrollments")
@@ -87,15 +58,14 @@ model BatchEnrollment {
 model Course {
   id            String   @id @default(cuid())
   title         String
-  code          String?  @unique
-  school        String?
-  durationYears Int      @default(4)
   description   String?
-  isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
-  batches Batch[]
+  code          String?  @unique
+  durationYears Int      @default(4)
+  isActive      Boolean  @default(true)
+  school        String?
+  batches       Batch[]
 
   @@map("courses")
 }
@@ -104,51 +74,49 @@ model Project {
   id           String        @id @default(cuid())
   title        String
   description  String?
-  status       ProjectStatus @default(DRAFT)
   repoName     String?       @unique
   repoUrl      String?       @unique
-  technologies String[]
   ownerId      String
   supervisorId String?
   batchId      String
-  startDate    DateTime?
-  endDate      DateTime?
-  feedback     String?    // JSON: rubric scores + supervisor feedback
-  isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-
-  owner      User       @relation("ProjectOwner", fields: [ownerId], references: [id])
-  supervisor User?      @relation("ProjectSupervisor", fields: [supervisorId], references: [id])
-  batch      Batch      @relation(fields: [batchId], references: [id])
-  milestones Milestone[]
-  activities Activity[]
+  endDate      DateTime?
+  feedback     String?
+  isActive     Boolean       @default(true)
+  startDate    DateTime?
+  status       ProjectStatus @default(DRAFT)
+  technologies String[]
+  activities   Activity[]
+  milestones   Milestone[]
+  batch        Batch         @relation(fields: [batchId], references: [id])
+  owner        User          @relation("ProjectOwner", fields: [ownerId], references: [id])
+  supervisor   User?         @relation("ProjectSupervisor", fields: [supervisorId], references: [id])
 
   @@map("projects")
 }
 
 model Milestone {
-  id                 String          @id @default(cuid())
-  title              String
-  description        String?
-  order              Int             @default(0)
-  dueDate            DateTime?
-  status             MilestoneStatus @default(PENDING)
-  projectId          String
-  submittedById      String?
-  reviewedById       String?
-  feedback           String?
-  studentNotes       String?
-  attachments   Json?   
-  submittedAt        DateTime?
-  reviewedAt         DateTime?
-  isActive           Boolean         @default(true)
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-
-  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  submittedBy User?   @relation("MilestoneSubmitter", fields: [submittedById], references: [id])
-  reviewedBy  User?   @relation("MilestoneReviewer", fields: [reviewedById], references: [id])
+  id            String          @id @default(cuid())
+  title         String
+  description   String?
+  dueDate       DateTime?
+  status        MilestoneStatus @default(PENDING)
+  projectId     String
+  feedback      String?
+  attachments   Json?
+  submittedAt   DateTime?
+  reviewedAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  isActive      Boolean         @default(true)
+  order         Int             @default(0)
+  reviewedById  String?
+  studentNotes  String?
+  submittedById String?
+  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reviewedBy    User?           @relation("MilestoneReviewer", fields: [reviewedById], references: [id])
+  submittedBy   User?           @relation("MilestoneSubmitter", fields: [submittedById], references: [id])
 
   @@index([projectId, order])
   @@index([projectId, status])
@@ -162,11 +130,32 @@ model Activity {
   userId    String?
   projectId String?
   createdAt DateTime @default(now())
-
-  user    User?    @relation(fields: [userId], references: [id])
-  project Project? @relation(fields: [projectId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@index([projectId])
   @@index([userId])
   @@map("activities")
+}
+
+enum Role {
+  STUDENT
+  SUPERVISOR
+  ADMIN
+}
+
+enum MilestoneStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  IN_PROGRESS
+}
+
+enum ProjectStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ARCHIVED
 }
