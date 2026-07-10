@@ -1383,9 +1383,11 @@ function CommitActivityChart({
   token: string;
 }) {
   const [weeklyData, setWeeklyData] = useState<number[]>(new Array(12).fill(0));
+  const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!owner || !repo) return;
+    if (!owner || !repo) { setLoading(false); return; }
     const fetchCommits = async () => {
       try {
         const res = await fetch(
@@ -1395,42 +1397,89 @@ function CommitActivityChart({
         if (!res.ok) return;
         const data = await res.json();
         const commits: Array<{ created: string }> = data.data ?? [];
-
-        // Group commits by week (last 12 weeks)
         const now = new Date();
         const weeks = new Array(12).fill(0);
         commits.forEach((c) => {
           const commitDate = new Date(c.created);
           const diffMs = now.getTime() - commitDate.getTime();
           const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
-          if (diffWeeks >= 0 && diffWeeks < 12) {
-            weeks[11 - diffWeeks]++;
-          }
+          if (diffWeeks >= 0 && diffWeeks < 12) weeks[11 - diffWeeks]++;
         });
         setWeeklyData(weeks);
       } catch {
         // keep zeros
+      } finally {
+        setLoading(false);
       }
     };
     fetchCommits();
   }, [owner, repo]);
 
   const maxVal = Math.max(...weeklyData, 1);
+  const hasAnyCommit = weeklyData.some((v) => v > 0);
+  const gridLines = [0.25, 0.5, 0.75, 1];
+
+  if (loading) return <div className="flex items-center justify-center h-40"><div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-300 border-t-blue-500" /></div>;
+
+  if (!hasAnyCommit) {
+    return (
+      <div className="flex flex-col items-center justify-center h-40 gap-3">
+        <div className="h-12 w-12 rounded-full bg-neutral-100 dark:bg-[#21262d] flex items-center justify-center">
+          <GitBranch className="h-6 w-6 text-neutral-400 dark:text-[#484f58]" />
+        </div>
+        <div className="text-center">
+          <p className={cn("text-sm font-medium", heading)}>No commits yet</p>
+          <p className={cn("text-xs mt-0.5", subtext)}>Push code to see weekly activity here</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-end gap-2 h-40">
-      {weeklyData.map((v, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+    <div className="relative">
+      {/* Grid lines */}
+      <div className="absolute inset-x-0 top-0 h-40 pointer-events-none">
+        {gridLines.map((pct) => (
           <div
-            className="w-full bg-blue-500 rounded-t-sm transition-all hover:bg-blue-600"
-            style={{
-              height: `${(v / maxVal) * 100}%`,
-              minHeight: v > 0 ? "4px" : "0",
-            }}
+            key={pct}
+            className="absolute w-full border-t border-dashed border-neutral-200 dark:border-[#30363d]"
+            style={{ top: `${(1 - pct) * 100}%` }}
           />
-          <span className={cn("text-[9px]", mutedText)}>W{i + 1}</span>
-        </div>
-      ))}
+        ))}
+      </div>
+      <div className="flex items-end gap-1.5 h-40 relative">
+        {weeklyData.map((v, i) => {
+          const heightPct = (v / maxVal) * 100;
+          const intensity = v / maxVal;
+          const barColor = intensity > 0.75
+            ? "bg-blue-600 dark:bg-blue-500"
+            : intensity > 0.4
+            ? "bg-blue-400 dark:bg-blue-400"
+            : v > 0
+            ? "bg-blue-300 dark:bg-blue-700"
+            : "bg-neutral-100 dark:bg-[#21262d]";
+          return (
+            <div
+              key={i}
+              className="flex-1 flex flex-col items-center gap-1 group relative"
+              onMouseEnter={() => setHoveredWeek(i)}
+              onMouseLeave={() => setHoveredWeek(null)}
+            >
+              {/* Tooltip */}
+              {hoveredWeek === i && (
+                <div className="absolute -top-9 left-1/2 -translate-x-1/2 bg-neutral-900 dark:bg-[#f0f6fc] text-white dark:text-[#0d1117] text-xs font-medium px-2 py-1 rounded whitespace-nowrap z-10 shadow-lg">
+                  {v} commit{v !== 1 ? "s" : ""}
+                </div>
+              )}
+              <div
+                className={cn("w-full rounded-t transition-all duration-200 cursor-pointer", barColor, v > 0 ? "hover:opacity-80" : "")}
+                style={{ height: `${Math.max(heightPct, v > 0 ? 6 : 0)}%`, minHeight: v > 0 ? "4px" : "2px" }}
+              />
+              <span className={cn("text-[9px]", mutedText)}>W{i + 1}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1455,8 +1504,14 @@ function RecentCommits({ owner, repo }: { owner: string; repo: string }) {
 
   if (commits.length === 0) {
     return (
-      <div className={cn("text-sm text-center py-8", subtext)}>
-        No commits yet — push code to see activity
+      <div className="flex flex-col items-center justify-center py-8 gap-3">
+        <div className="h-12 w-12 rounded-full bg-neutral-100 dark:bg-[#21262d] flex items-center justify-center">
+          <GitBranch className="h-6 w-6 text-neutral-400 dark:text-[#484f58]" />
+        </div>
+        <div className="text-center">
+          <p className={cn("text-sm font-medium", heading)}>No commits yet</p>
+          <p className={cn("text-xs mt-0.5", subtext)}>Push code to your Gitea repo to see commits here</p>
+        </div>
       </div>
     );
   }
@@ -2464,7 +2519,7 @@ export function SupervisorProjectDetail({
   onNavigate: (page: Page) => void;
 }) {
   const [tab, setTab] = useState<
-    "summary" | "activity" | "milestones" | "files" | "grade"
+    "summary" | "activity" | "milestones" | "files" | "grade" | "feedback"
   >("summary");
   const [project, setProject] = useState<any>(null);
   const [milestones, setMilestones] = useState<any[]>([]);
@@ -2518,7 +2573,7 @@ export function SupervisorProjectDetail({
         const token = tokenStore.get();
         const headers = { Authorization: `Bearer ${token}` };
 
-        const [projectRes, milestoneRes, activityRes, filesRes] =
+        const [projectRes, milestoneRes, activityRes, filesRes, feedbackRes] =
           await Promise.all([
             fetch(`${API_URL}/v1/projects/${projectId}`, { headers }),
             // milestones route is mounted at /api/v1 with path /projects/:id/milestones
@@ -2528,6 +2583,8 @@ export function SupervisorProjectDetail({
             // correct activities route: /api/v1/activities/project/:projectId
             fetch(`${API_URL}/v1/activities/project/${projectId}`, { headers }),
             fetch(`${API_URL}/v1/projects/${projectId}/files`, { headers }),
+            // Feedback thread — loads messages from both student and supervisor
+            fetch(`${API_URL}/v1/projects/${projectId}/feedback`, { headers }),
           ]);
 
         if (!projectRes.ok)
@@ -2550,8 +2607,13 @@ export function SupervisorProjectDetail({
           setFiles(filesData.data || []);
         }
 
-        // No comments endpoint on server — skip
-        setComments([]);
+        // Load the shared feedback thread (SUPERVISOR_FEEDBACK + STUDENT_FEEDBACK)
+        if (feedbackRes.ok) {
+          const feedbackData = await feedbackRes.json();
+          setComments(feedbackData.data || []);
+        } else {
+          setComments([]);
+        }
       } catch (err) {
         console.error("SupervisorProjectDetail load failed:", err);
       } finally {
@@ -2568,7 +2630,8 @@ export function SupervisorProjectDetail({
     { id: "activity" as const, label: "Activity" },
     { id: "milestones" as const, label: "Milestones Review" },
     { id: "files" as const, label: "Files" },
-    { id: "grade" as const, label: "Grade & Feedback" },
+    { id: "grade" as const, label: "Grade" },
+    { id: "feedback" as const, label: "Feedback" },
   ];
 
   return (
@@ -2961,180 +3024,189 @@ export function SupervisorProjectDetail({
       )}
 
       {tab === "grade" && (
-        <div className={cn(twoColGrid)}>
-          <div className={cn(card, "p-5")}>
-            <h3 className={cn("font-semibold mb-4", heading)}>
-              Rubric Scoring
-            </h3>
-            <div className="space-y-4">
-              {RUBRIC.map((r) => (
-                <div key={r.key} className="flex items-center gap-4">
-                  <label className={cn("text-sm w-36", bodyText)}>
-                    {r.label}
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={r.max}
-                    value={gradeScores[r.key] ?? ""}
-                    onChange={(e) => {
-                      const val = Math.min(
-                        r.max,
-                        Math.max(0, Number(e.target.value)),
-                      );
-                      setGradeScores((prev) => ({ ...prev, [r.key]: val }));
-                    }}
-                    placeholder="0"
-                    className={cn(inputClass, "!w-20 text-center")}
-                  />
-                  <span className={cn("text-xs", mutedText)}>/ {r.max}</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-4 pt-3 border-t border-neutral-200 dark:border-[#30363d]">
-                <label className={cn("text-sm font-bold w-36", heading)}>
-                  Total
-                </label>
-                <span
-                  className={cn(
-                    "text-lg font-bold",
-                    gradeTotal === 100
-                      ? "text-green-500"
-                      : gradeTotal >= 75
-                        ? "text-blue-500"
-                        : gradeTotal >= 50
-                          ? "text-yellow-500"
-                          : heading,
-                  )}
-                >
-                  {gradeTotal} / 100
+        <div className={cn(card, "overflow-hidden")}>
+          <div className={cn("p-5 flex items-center justify-between", sectionBorder)}>
+            <div>
+              <h3 className={cn("font-semibold", heading)}>Rubric Scoring</h3>
+              <p className={cn("text-xs mt-0.5", subtext)}>Score each criterion, then submit the final grade</p>
+            </div>
+            <div className="relative h-20 w-20 shrink-0">
+              <svg className="h-20 w-20 -rotate-90 absolute inset-0" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="34" fill="none" stroke="currentColor"
+                  className="text-neutral-200 dark:text-[#30363d]" strokeWidth="7" />
+                <circle cx="40" cy="40" r="34" fill="none"
+                  stroke={gradeTotal >= 75 ? "#22c55e" : gradeTotal >= 50 ? "#3b82f6" : gradeTotal >= 25 ? "#f59e0b" : "#6b7280"}
+                  strokeWidth="7" strokeLinecap="round"
+                  strokeDasharray={`${(gradeTotal / 100) * 213.6} 213.6`}
+                  className="transition-all duration-500"
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className={cn("text-xl font-bold leading-none",
+                  gradeTotal >= 75 ? "text-green-500" : gradeTotal >= 50 ? "text-blue-500" : gradeTotal >= 25 ? "text-yellow-500" : heading)}>
+                  {gradeTotal}
                 </span>
+                <span className={cn("text-[10px]", mutedText)}>/100</span>
               </div>
             </div>
-            <div className="mt-4 flex gap-2">
-              <Button
-                variant="success"
-                disabled={gradeSubmitting || gradeTotal === 0}
-                onClick={async () => {
-                  setGradeSubmitting(true);
-                  try {
-                    const token = tokenStore.get();
-                    // Use dedicated supervisor grade endpoint
-                    const res = await fetch(
-                      `${API_URL}/v1/supervisors/projects/${projectId}/grade`,
-                      {
-                        method: "PATCH",
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          rubric: gradeScores,
-                          total: gradeTotal,
-                          supervisorFeedback: gradeFeedback,
-                        }),
-                      },
-                    );
-                    if (res.ok) {
-                      alert(`Grade submitted: ${gradeTotal}/100`);
-                    } else {
-                      const err = await res.json().catch(() => ({}));
-                      alert(
-                        `Failed to submit grade: ${err.message || res.status}`,
-                      );
-                    }
-                  } catch (err) {
-                    console.error("Grade submit failed:", err);
-                    alert("An error occurred while submitting the grade");
-                  } finally {
-                    setGradeSubmitting(false);
-                  }
-                }}
-              >
-                <Award className="h-4 w-4" />
-                {gradeSubmitting ? "Submitting..." : "Submit Grade"}
-              </Button>
-            </div>
           </div>
-          <div className={card}>
-            <div className={cn("p-5", sectionBorder)}>
-              <h3 className={cn("font-semibold", heading)}>Feedback</h3>
-            </div>
-            <div className="p-5 space-y-3 max-h-64 overflow-auto">
-              {comments.map((c) => (
-                <div key={c._id} className={cn("p-3 rounded-md", infoBox)}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={cn("text-xs font-semibold", heading)}>
-                      {c.user?.name || c.user}
-                    </span>
-                    <span className={cn("text-xs", mutedText)}>
-                      {new Date(c.createdAt || c.timestamp).toLocaleString()}
-                    </span>
+
+          <div className="p-5 space-y-4">
+            {RUBRIC.map((r) => {
+              const score = gradeScores[r.key] ?? 0;
+              const pct = (score / r.max) * 100;
+              return (
+                <div key={r.key} className="flex items-center gap-4">
+                  <label className={cn("text-sm w-36 shrink-0", bodyText)}>{r.label}</label>
+                  <div className="flex items-center gap-1">
+                    <button
+                      className="h-7 w-7 rounded-md border border-neutral-300 dark:border-[#30363d] flex items-center justify-center text-sm font-bold hover:bg-neutral-100 dark:hover:bg-[#21262d] transition disabled:opacity-40"
+                      onClick={() => setGradeScores((p) => ({ ...p, [r.key]: Math.max(0, (p[r.key] ?? 0) - 1) }))}
+                      disabled={score <= 0}
+                    >−</button>
+                    <span className={cn("w-10 text-center text-sm font-semibold tabular-nums", heading)}>{score}</span>
+                    <button
+                      className="h-7 w-7 rounded-md border border-neutral-300 dark:border-[#30363d] flex items-center justify-center text-sm font-bold hover:bg-neutral-100 dark:hover:bg-[#21262d] transition disabled:opacity-40"
+                      onClick={() => setGradeScores((p) => ({ ...p, [r.key]: Math.min(r.max, (p[r.key] ?? 0) + 1) }))}
+                      disabled={score >= r.max}
+                    >+</button>
                   </div>
-                  <p className={cn("text-sm", bodyText)}>{c.message}</p>
+                  <div className="flex-1 h-2 rounded-full bg-neutral-100 dark:bg-[#21262d] overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-300"
+                      style={{ width: `${pct}%`, background: pct >= 75 ? "#22c55e" : pct >= 40 ? "#3b82f6" : "#f59e0b" }} />
+                  </div>
+                  <span className={cn("text-xs w-12 text-right shrink-0", mutedText)}>{score}/{r.max}</span>
                 </div>
-              ))}
+              );
+            })}
+          </div>
+
+          <div className="p-5 flex items-center justify-between border-t border-neutral-100 dark:border-[#30363d]">
+            <div className="flex items-center gap-2">
+              <span className={cn("text-sm font-semibold", heading)}>Total Score:</span>
+              <span className={cn("text-lg font-bold",
+                gradeTotal >= 75 ? "text-green-500" : gradeTotal >= 50 ? "text-blue-500" : gradeTotal >= 25 ? "text-yellow-500" : heading)}>
+                {gradeTotal} / 100
+              </span>
             </div>
-            <div
-              className={cn(
-                "p-5 flex gap-2 border-t border-neutral-100 dark:border-[#30363d]",
-              )}
+            <Button variant="success" disabled={gradeSubmitting || gradeTotal === 0}
+              onClick={async () => {
+                setGradeSubmitting(true);
+                try {
+                  const token = tokenStore.get();
+                  const res = await fetch(`${API_URL}/v1/supervisors/projects/${projectId}/grade`, {
+                    method: "PATCH",
+                    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ rubric: gradeScores, total: gradeTotal, supervisorFeedback: gradeFeedback }),
+                  });
+                  if (res.ok) { alert(`Grade submitted: ${gradeTotal}/100`); }
+                  else { const err = await res.json().catch(() => ({})); alert(`Failed: ${(err as any).message || res.status}`); }
+                } catch (err) { console.error("Grade submit failed:", err); alert("An error occurred"); }
+                finally { setGradeSubmitting(false); }
+              }}
             >
-              <input
-                type="text"
-                placeholder="Add feedback..."
-                value={gradeFeedback}
-                onChange={(e) => setGradeFeedback(e.target.value)}
-                onKeyDown={async (e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                }}
-                className={inputClass}
-              />
-              <Button
-                disabled={feedbackSending || !gradeFeedback.trim()}
-                onClick={async () => {
-                  if (!gradeFeedback.trim()) return;
-                  setFeedbackSending(true);
-                  try {
-                    const token = tokenStore.get();
-                    const res = await fetch(
-                      `${API_URL}/v1/supervisors/projects/${projectId}/feedback`,
-                      {
-                        method: "POST",
-                        headers: {
-                          Authorization: `Bearer ${token}`,
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({ message: gradeFeedback.trim() }),
-                      },
-                    );
-                    if (res.ok) {
-                      setGradeFeedback("");
-                      // Re-fetch activities to show new feedback in timeline
-                      const actRes = await fetch(
-                        `${API_URL}/v1/activities/project/${projectId}`,
-                        { headers: { Authorization: `Bearer ${token}` } },
-                      );
-                      if (actRes.ok) {
-                        const actData = await actRes.json();
-                        setActivities(actData.data || []);
-                      }
-                    } else {
-                      alert("Failed to send feedback");
-                    }
-                  } catch (err) {
-                    console.error("Feedback send error:", err);
-                    alert("Error sending feedback");
-                  } finally {
-                    setFeedbackSending(false);
-                  }
-                }}
-              >
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
+              <Award className="h-4 w-4" />
+              {gradeSubmitting ? "Submitting..." : "Submit Grade"}
+            </Button>
           </div>
         </div>
       )}
+
+      {tab === "feedback" && (
+        <div className={cn(card, "flex flex-col")} style={{ minHeight: "520px" }}>
+          <div className={cn("p-5 flex items-center gap-3", sectionBorder)}>
+            <div className="h-9 w-9 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+              <MessageSquare className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <h3 className={cn("font-semibold", heading)}>Feedback Thread</h3>
+              <p className={cn("text-xs", subtext)}>Conversation with {project.owner?.name ?? "student"}</p>
+            </div>
+          </div>
+
+          <div className="flex-1 p-5 space-y-4 overflow-auto" style={{ maxHeight: "380px" }}>
+            {comments.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <div className="h-14 w-14 rounded-full bg-neutral-100 dark:bg-[#21262d] flex items-center justify-center">
+                  <MessageSquare className="h-7 w-7 text-neutral-400 dark:text-[#484f58]" />
+                </div>
+                <div className="text-center">
+                  <p className={cn("text-sm font-medium", heading)}>No messages yet</p>
+                  <p className={cn("text-xs mt-0.5", subtext)}>Start the conversation by sending a message below</p>
+                </div>
+              </div>
+            )}
+            {comments.map((c: any, i: number) => {
+              const isSupervisor = c.type === "SUPERVISOR_FEEDBACK";
+              const name: string = typeof c.user === "object" ? (c.user?.name ?? "Unknown") : (c.user ?? "Unknown");
+              const initials = name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+              return (
+                <div key={c.id ?? c._id ?? i} className={cn("flex gap-3", !isSupervisor ? "flex-row-reverse" : "")}>
+                  <div className={cn("h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white",
+                    isSupervisor ? "bg-purple-500" : "bg-blue-500")}>{initials}</div>
+                  <div className={cn("max-w-lg rounded-2xl px-4 py-2.5 text-sm",
+                    isSupervisor
+                      ? "bg-purple-100 dark:bg-purple-900/25 text-purple-900 dark:text-purple-200 rounded-tl-sm"
+                      : "bg-blue-100 dark:bg-blue-900/25 text-blue-900 dark:text-blue-200 rounded-tr-sm")}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-xs">{name}</span>
+                      <span className={cn("text-[10px]", mutedText)}>{new Date(c.createdAt).toLocaleString()}</span>
+                    </div>
+                    <p className="leading-relaxed">{c.message}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="p-4 flex gap-2 border-t border-neutral-100 dark:border-[#30363d]">
+            <input type="text" value={gradeFeedback}
+              onChange={(e) => setGradeFeedback(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && gradeFeedback.trim() && !feedbackSending) {
+                  e.preventDefault();
+                  document.getElementById("sup-feedback-send-btn")?.click();
+                }
+              }}
+              placeholder={`Message ${project.owner?.name ?? "student"}...`}
+              className={cn(inputClass, "flex-1")}
+            />
+            <Button id="sup-feedback-send-btn" disabled={feedbackSending || !gradeFeedback.trim()}
+              onClick={async () => {
+                if (!gradeFeedback.trim()) return;
+                setFeedbackSending(true);
+                try {
+                  const token = tokenStore.get();
+                  const res = await fetch(`${API_URL}/v1/projects/${projectId}/feedback`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: gradeFeedback.trim() }),
+                  });
+                  if (res.ok) {
+                    const { data: saved } = await res.json();
+                    const sentMessage = gradeFeedback.trim();
+                    setGradeFeedback("");
+                    setComments((prev: any[]) => [...prev, {
+                      id: saved?.id ?? Date.now().toString(),
+                      message: sentMessage,
+                      type: saved?.type ?? "SUPERVISOR_FEEDBACK",
+                      createdAt: saved?.createdAt ?? new Date().toISOString(),
+                      user: { name: "You", role: "SUPERVISOR" },
+                    }]);
+                  } else {
+                    const err = await res.json().catch(() => ({}));
+                    alert(`Failed to send: ${(err as any).message || res.status}`);
+                  }
+                } catch (err) { console.error("Feedback send error:", err); alert("Error sending message"); }
+                finally { setFeedbackSending(false); }
+              }}
+            >
+              {feedbackSending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
