@@ -20,6 +20,7 @@ model User {
   department          String?
   phoneNumber         String?
   universityId        String?           @unique
+  refreshToken        String?
   activities          Activity[]
   enrollments         BatchEnrollment[]
   reviewedMilestones  Milestone[]       @relation("MilestoneReviewer")
