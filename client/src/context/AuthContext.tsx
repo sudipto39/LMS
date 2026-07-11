@@ -40,29 +40,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
 
-  // On mount — try to restore session via refresh token cookie
+  // On mount — try to restore session (check localStorage first, fall back to refresh token cookie)
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        // Attempt silent refresh — cookie is sent automatically
-        const res = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL}/v1/auth/refresh-token`,
-          {
-            method: "POST",
-            credentials: "include",
+        let token = localStorage.getItem("giteaforge_token");
+
+        // If no token in localStorage, try cookie-based silent refresh
+        if (!token) {
+          const res = await fetch(
+            `${import.meta.env.VITE_API_BASE_URL}/v1/auth/refresh-token`,
+            {
+              method: "POST",
+              credentials: "include",
+            }
+          );
+          if (res.ok) {
+            const json = await res.json();
+            token = json.accessToken as string;
+            if (token) {
+              localStorage.setItem("giteaforge_token", token);
+            }
           }
-        );
+        }
 
-        if (!res.ok) throw new Error("No session");
+        if (!token) throw new Error("No session token found");
 
-        const json = await res.json();
-        const newToken = json.accessToken as string;
-
-        // Fetch user profile with the new token
+        // Fetch user profile with the token
         const userRes = await fetch(
           `${import.meta.env.VITE_API_BASE_URL}/v1/users/me`,
           {
-            headers: { Authorization: `Bearer ${newToken}` },
+            headers: { Authorization: `Bearer ${token}` },
             credentials: "include",
           }
         );
@@ -74,11 +82,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setState({
           user,
-          accessToken: newToken,
+          accessToken: token,
           isAuthenticated: true,
           isLoading: false,
         });
-      } catch {
+      } catch (err) {
+        localStorage.removeItem("giteaforge_token");
         // No valid session — start fresh
         setState({
           user: null,
@@ -98,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.accessToken]);
 
   const setAuth = useCallback((user: User, token: string) => {
+    localStorage.setItem("giteaforge_token", token);
     setState({
       user,
       accessToken: token,
@@ -107,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearAuth = useCallback(() => {
+    localStorage.removeItem("giteaforge_token");
     setState({
       user: null,
       accessToken: null,
@@ -116,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateToken = useCallback((token: string) => {
+    localStorage.setItem("giteaforge_token", token);
     setState((prev) => ({ ...prev, accessToken: token }));
   }, []);
 
