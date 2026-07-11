@@ -1,0 +1,202 @@
+# Technical Design: Proposed LMS Features
+
+This document outlines the detailed architecture, database updates, API design, and frontend considerations for implementing the following features in GiteaForge:
+1. **In-App Code Review** (Feature 3)
+2. **Project Analytics & Progress Charts** (Feature 4)
+3. **Meeting Scheduler & Discussion Boards** (Feature 5)
+
+---
+
+## 1. In-App Code Review
+
+This feature lets Supervisors review Git commits and pull requests (PRs) directly within the LMS client instead of browsing the external Gitea interface.
+
+### UI Mockups (Aligned with GiteaForge Project Detail Screen Layout)
+
+![GiteaForge Student View: PR Status & Inline Supervisor Comments](giteaforge_student_code_review_final_1783769765109.png)
+
+### Database Updates (`schema.prisma`)
+We can add new models to support line-level code comments and PR state mappings:
+
+```prisma
+model PullRequest {
+  id           String       @id @default(cuid())
+  giteaPrId    Int          // The index ID of the PR on Gitea
+  title        String
+  description  String?
+  status       String       // e.g., "OPEN", "MERGED", "CLOSED"
+  projectId    String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  comments     CodeComment[]
+
+  @@unique([projectId, giteaPrId])
+  @@map("pull_requests")
+}
+
+model CodeComment {
+  id            String       @id @default(cuid())
+  pullRequestId String?
+  commitHash    String?      // Inline comment can target a PR or a raw commit
+  filePath      String
+  lineNumber    Int
+  content       String
+  authorId      String
+  createdAt     DateTime     @default(now())
+  author        User         @relation(fields: [authorId], references: [id])
+  pullRequest   PullRequest? @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+
+  @@map("code_comments")
+}
+```
+
+### API Design
+* **`GET /api/v1/projects/:id/commits/:sha/diff`**: Fetches the diff content for a commit using Gitea's comparison endpoints and returns it formatted as JSON.
+* **`POST /api/v1/projects/:id/comments`**: Adds an inline code comment targeting a specific file and line number.
+* **`GET /api/v1/projects/:id/comments`**: Retrieves all code comments for the project to display them inline with the code code review.
+
+### Frontend Considerations
+* **Diff Viewer**: Render file changes side-by-side or unified (using line-by-line highlight styles matching Tailwind).
+* **Comment Triggers**: Add hover triggers next to diff line numbers allowing supervisors to toggle a text area and submit feedback.
+
+---
+
+## 2. Project Analytics & Progress Charts
+
+Aggregates Git history and milestone data to help Supervisors and Admins understand student engagement, velocity, and project health.
+
+### UI Mockup (Integrated Directly into Existing 'Progress' Tab)
+
+![GiteaForge Progress Tab: Minimalist Commit & Milestone Charts]
+![progress](image.png)
+
+### Database Updates
+No major database changes are required here, as we can build upon the existing models:
+* **`Activity`**: Filters by `type = 'PUSH'` and aggregates lines added/removed from the payload.
+* **`Milestone`**: Maps status transitions over time (e.g. `PENDING` $\rightarrow$ `SUBMITTED` $\rightarrow$ `APPROVED`).
+
+### API Design
+* **`GET /api/v1/projects/:id/analytics`**: Aggregates metrics:
+  * Total commits and pushes grouped by week/day.
+  * Line count modifications trend (cumulative additions vs. deletions).
+  * Burn-down data: milestone durations versus target due dates.
+
+### Frontend Considerations
+* **Layout Design**: Stack the cards vertically (one below the other) using a `flex flex-col gap-6` or `space-y-6` layout structure rather than a parallel two-column grid. This allows each chart to utilize the full width of the main project details container, providing better readability for weekly commit histograms and timeline graphs.
+* **Visualization Layer**: Integrate `recharts` or `chart.js` to render:
+  * **Top Card**: Weekly Commit Activity bar chart (synced from Gitea repository commits).
+  * **Bottom Card**: Milestone Timeline / Progress Velocity line chart (target milestones vs actual completion date comparisons).
+  * Metric stats summary row at the top or bottom of the dashboard.
+
+---
+
+## 3. Meeting Scheduler & Discussion Boards
+
+Provides a collaborative workspace where students and supervisors can schedule syncs, upload meeting summaries, and discuss general project details asynchronously.
+
+### UI Mockup (Aligned with GiteaForge Project Detail Screen Layout)
+
+![GiteaForge Meeting Scheduler & Discussion Boards: Calendar Workspace & Forums](giteaforge_meetings_final_1783769795132.png)
+
+![meeting](image-2.png)
+
+### Database Updates (`schema.prisma`)
+Create new models for tracking schedules and forum threads:
+
+```prisma
+model Meeting {
+  id            String    @id @default(cuid())
+  title         String
+  description   String?
+  scheduledTime DateTime
+  durationMins  Int       @default(30)
+  meetingLink   String?
+  minutesOfMeet String?   // Markdown summary logged post-meeting
+  projectId     String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("meetings")
+}
+
+model DiscussionThread {
+  id          String           @id @default(cuid())
+  title       String
+  projectId   String
+  authorId    String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author      User             @relation(fields: [authorId], references: [id])
+  posts       DiscussionPost[]
+
+  @@map("discussion_threads")
+}
+
+model DiscussionPost {
+  id        String           @id @default(cuid())
+  threadId  String
+  authorId  String
+  content   String
+  createdAt DateTime         @default(now())
+  thread    DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author    User             @relation(fields: [authorId], references: [id])
+
+  @@map("discussion_posts")
+}
+```
+
+### API Design
+* **`POST /api/v1/projects/:id/meetings`**: Schedule a meeting and email invite.
+* **`PATCH /api/v1/meetings/:id`**: Update agenda or log minutes of the meeting.
+* **`GET /api/v1/projects/:id/discussions`**: Fetch discussion board threads.
+* **`POST /api/v1/discussions/:threadId/posts`**: Reply to a thread.
+
+### Frontend Considerations
+* **Calendar Integration**: Provide a responsive calendar grid using clean CSS/Tailwind grid components.
+* **Thread Feed**: Render post threads similar to GitHub issues, supporting markdown previews for discussion contents.
+
+---
+
+## 4. In-App Interactive Sandbox (StackBlitz Integration)
+
+This feature allows supervisors to review and run code live in the browser by spinning up a sandboxed environment from the Gitea repository.
+
+### Technical Architecture
+There are two ways we can implement this:
+
+#### Option A: StackBlitz Embed SDK (Quick & Interactive IDE)
+Utilizes the `@stackblitz/sdk` library to embed a complete VS Code-like editor and browser preview in an iframe.
+1. **Fetch Project Files**: The client fetches the current project files from the backend (which reads them from the Gitea repository).
+2. **Payload Structure**: Format the files into a key-value object:
+   ```json
+   {
+     "files": {
+       "index.js": "console.log('Hello GiteaForge!');",
+       "package.json": "{ \"dependencies\": { \"lodash\": \"^4.17.21\" } }"
+     },
+     "title": "Project Preview",
+     "description": "Running student repo",
+     "template": "node"
+   }
+   ```
+3. **Embed Call**: Call `sdk.embedProject(elementId, projectPayload, { height: 600, openFile: 'index.js' })`. StackBlitz spins up the workspace inside the container element.
+
+#### Option B: WebContainers API (Custom/White-Label Preview)
+Runs Node.js directly inside GiteaForge's custom browser tabs (using WebAssembly), giving us complete control over the UI.
+1. **Booting**: Install `@webcontainer/api` and boot a WebContainer:
+   ```typescript
+   import { WebContainer } from '@webcontainer/api';
+   const webcontainerInstance = await WebContainer.boot();
+   ```
+2. **File Mounting**: Mount the Gitea repo files into the virtual filesystem:
+   ```typescript
+   await webcontainerInstance.mount(projectFiles);
+   ```
+3. **Execution & Port Map**: Run shell commands (e.g. `npm install`, `npm run start`) and capture the output streams to show in a custom UI terminal. The WebContainer triggers a `"server-ready"` event with a preview URL that we embed inside GiteaForge.
+
+
+
+![sandbox](image-1.png)
