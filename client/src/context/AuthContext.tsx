@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { User, Role } from "../types";
+import { tokenStore } from "../api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     restoreSession();
   }, []);
+
+  // Sync state.accessToken with tokenStore so Axios/Fetch API can authenticate requests
+  useEffect(() => {
+    tokenStore.set(state.accessToken);
+  }, [state.accessToken]);
 
   const setAuth = useCallback((user: User, token: string) => {
     setState({
