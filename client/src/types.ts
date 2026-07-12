@@ -10,7 +10,7 @@ export type Page =
   | "supervisor-project-detail" | "supervisor-reviews" | "supervisor-grades"
   | "supervisor-messages" | "supervisor-profile" | "admin-dashboard"
   | "admin-users" | "admin-batches" | "admin-gitea-settings"
-  | "admin-audit-logs" | "admin-profile" | "activity" | "settings";
+  | "admin-audit-logs" | "admin-projects" | "admin-profile" | "activity" | "settings";
 
 export interface User {
   id: string;

@@ -173,6 +173,7 @@ function getNavItems(role: Role): NavItem[] {
   // ADMIN
   return [
     { label: "Dashboard", icon: <LayoutDashboard className="h-5 w-5" />, page: "admin-dashboard" },
+    { label: "Projects", icon: <FolderGit2 className="h-5 w-5" />, page: "admin-projects" },
     { label: "Users", icon: <Users className="h-5 w-5" />, page: "admin-users" },
     { label: "Batches / Courses", icon: <BookOpen className="h-5 w-5" />, page: "admin-batches" },
     { label: "Gitea Settings", icon: <Server className="h-5 w-5" />, page: "admin-gitea-settings" },

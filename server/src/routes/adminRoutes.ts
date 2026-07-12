@@ -7,7 +7,9 @@ import {
   getAuditLogs,
   getGiteaConfig,
   saveGiteaConfig,
-  testGiteaConnection
+  testGiteaConnection,
+  deleteUser,
+  updateUser,
 } from "../controllers/adminController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
@@ -20,8 +22,11 @@ router.get("/projects", getAllProjectsForAdmin);
 router.patch("/projects/:id/assign-supervisor", assignSupervisorToProject);
 router.get("/audit-logs", getAuditLogs);
 
+router.delete("/users/:id", deleteUser);
+router.patch("/users/:id", updateUser);
+
 router.get("/gitea/config", getGiteaConfig);
 router.post("/gitea/config", saveGiteaConfig);
 router.post("/gitea/test", testGiteaConnection);
 
-export default router;
+export default router;
