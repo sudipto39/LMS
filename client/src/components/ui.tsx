@@ -425,6 +425,7 @@ export function Button({
   className,
   onClick,
   disabled,
+  id,
 }: {
   children: ReactNode;
   variant?: "primary" | "secondary" | "ghost" | "danger" | "success";
@@ -432,6 +433,7 @@ export function Button({
   className?: string;
   onClick?: () => void;
   disabled?: boolean;
+  id?: string;
 }) {
   const base =
     "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
@@ -454,6 +456,7 @@ export function Button({
   };
   return (
     <button
+      id={id}
       className={cn(base, variants[variant], sizes[size], className)}
       onClick={onClick}
       disabled={disabled}

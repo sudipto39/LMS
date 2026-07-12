@@ -796,6 +796,7 @@ import {
   AdminBatches,
   AdminGiteaSettings,
   AdminAuditLogs,
+  AdminProjects,
   ActivityPage,
   SettingsPage,
   ProfilePage,
@@ -838,6 +839,7 @@ const parentPages: Partial<Record<Page, Page>> = {
   "admin-batches": "admin-dashboard",
   "admin-gitea-settings": "admin-dashboard",
   "admin-audit-logs": "admin-dashboard",
+  "admin-projects": "admin-dashboard",
   "admin-profile": "admin-dashboard",
   activity: "student-dashboard",
   settings: "student-dashboard",
@@ -872,6 +874,7 @@ const pageTitles: Partial<Record<Page, string>> = {
   "admin-batches": "Batches",
   "admin-gitea-settings": "Gitea Settings",
   "admin-audit-logs": "Audit Logs",
+  "admin-projects": "Projects",
   "admin-profile": "Profile",
   activity: "Activity",
   settings: "Settings",
@@ -1129,6 +1132,8 @@ export function App() {
         return <AdminBatches />;
       case "admin-gitea-settings":
         return <AdminGiteaSettings />;
+      case "admin-projects":
+        return <AdminProjects />;
       case "admin-audit-logs":
         return <AdminAuditLogs />;
       case "admin-profile":

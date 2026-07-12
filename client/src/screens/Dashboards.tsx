@@ -3621,18 +3621,46 @@ export function AdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editUser, setEditUser] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
     role: "student",
     department: "",
+    universityId: "",
+    phoneNumber: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const resetForm = () =>
+    setForm({ name: "", email: "", role: "student", department: "", universityId: "", phoneNumber: "" });
+
+  const fetchUsers = async () => {
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/users/getAllUsers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setUsers(data.data || []);
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
+
   const handleCreateUser = async () => {
-    if (!form.name || !form.email) {
-      setError("Name and email are required");
+    if (!form.name || !form.email || !form.universityId || !form.phoneNumber || !form.department) {
+      setError("Name, email, university ID, phone number, and department are required");
+      return;
+    }
+    if (!/^\d{10}$/.test(form.phoneNumber)) {
+      setError("Phone number must be exactly 10 digits");
       return;
     }
     try {
@@ -3641,141 +3669,185 @@ export function AdminUsers() {
       const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/auth/register`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           name: form.name,
           email: form.email,
-          password: "Welcome@123", // default password
+          password: "Welcome@123",
           role: form.role.toUpperCase(),
           department: form.department,
+          universityId: form.universityId,
+          phoneNumber: form.phoneNumber,
         }),
       });
       const data = await res.json();
       if (data.status === "success" || data.status === "ok") {
-        // Refresh users list
-        const usersRes = await fetch(`${API_URL}/v1/users/getAllUsers`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const usersData = await usersRes.json();
-        setUsers(usersData.data || []);
+        await fetchUsers();
         setShowModal(false);
-        setForm({ name: "", email: "", role: "student", department: "" });
+        resetForm();
       } else {
         setError(data.message || "Failed to create user");
       }
+    } catch { setError("Something went wrong"); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleEditUser = async () => {
+    if (!editUser) return;
+    try {
+      setSubmitting(true);
+      setError("");
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/admin/users/${editUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          role: form.role.toUpperCase(),
+          department: form.department,
+          universityId: form.universityId,
+          phoneNumber: form.phoneNumber,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        await fetchUsers();
+        setEditUser(null);
+        resetForm();
+      } else {
+        setError(data.message || "Failed to update user");
+      }
+    } catch { setError("Something went wrong"); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleDeleteUser = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete user "${name}"? This action cannot be undone.`)) return;
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/admin/users/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        await fetchUsers();
+      }
     } catch (err) {
-      setError("Something went wrong");
-    } finally {
-      setSubmitting(false);
+      console.error("Failed to delete user:", err);
     }
   };
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const token = tokenStore.get();
-        const res = await fetch(`${API_URL}/v1/users/getAllUsers`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setUsers(data.data || []); // ← Extract the array
-        setLoading(false);
-      } catch (err) {
-        console.error("Failed to fetch users:", err);
-        setLoading(false);
-      }
-    };
-    fetchUsers();
-  }, []);
+  const openEditModal = (u: any) => {
+    setEditUser(u);
+    setForm({
+      name: u.name || "",
+      email: u.email || "",
+      role: (u.role || "student").toLowerCase(),
+      department: u.department || "",
+      universityId: u.universityId || "",
+      phoneNumber: u.phoneNumber || "",
+    });
+    setError("");
+  };
+
+  const filteredUsers = users.filter((u) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      u.name?.toLowerCase().includes(q) ||
+      u.email?.toLowerCase().includes(q) ||
+      u.role?.toLowerCase().includes(q) ||
+      u.department?.toLowerCase().includes(q) ||
+      u.universityId?.toLowerCase().includes(q)
+    );
+  });
 
   if (loading) return <LoadingSpinner text="Loading users..." />;
 
+  /* User form fields (shared between create & edit modals) */
+  const userFormFields = (
+    <div className="space-y-4">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className={cn("block text-sm font-medium mb-1", heading)}>
+            Full Name <span className="text-red-500">*</span>
+          </label>
+          <input className={inputClass} value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        </div>
+        <div>
+          <label className={cn("block text-sm font-medium mb-1", heading)}>
+            Email <span className="text-red-500">*</span>
+          </label>
+          <input className={inputClass} type="email" value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className={cn("block text-sm font-medium mb-1", heading)}>
+            University ID <span className="text-red-500">*</span>
+          </label>
+          <input className={inputClass} placeholder="e.g. LMS2024STU01" value={form.universityId}
+            onChange={(e) => setForm((f) => ({ ...f, universityId: e.target.value }))} />
+        </div>
+        <div>
+          <label className={cn("block text-sm font-medium mb-1", heading)}>
+            Phone Number <span className="text-red-500">*</span>
+          </label>
+          <input className={inputClass} placeholder="10-digit number" maxLength={10} value={form.phoneNumber}
+            onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value.replace(/\D/g, "").slice(0, 10) }))} />
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className={cn("block text-sm font-medium mb-1", heading)}>Role</label>
+          <select className={selectClass} value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
+            <option value="student">Student</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div>
+          <label className={cn("block text-sm font-medium mb-1", heading)}>
+            Department <span className="text-red-500">*</span>
+          </label>
+          <input className={inputClass} value={form.department}
+            onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))} />
+        </div>
+      </div>
+      {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-md">{error}</p>}
+    </div>
+  );
+
   return (
     <div className="space-y-6">
+      {/* Create User Modal */}
       {showModal && (
-        <Modal
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          title="Add New User"
-        >
-          <div className="space-y-4">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1", heading)}
-                >
-                  Full Name
-                </label>
-                <input
-                  className={inputClass}
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, name: e.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1", heading)}
-                >
-                  Email
-                </label>
-                <input
-                  className={inputClass}
-                  value={form.email}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, email: e.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1", heading)}
-                >
-                  Role
-                </label>
-                <select
-                  className={selectClass}
-                  value={form.role}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, role: e.target.value }))
-                  }
-                >
-                  <option value="student">Student</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1", heading)}
-                >
-                  Department
-                </label>
-                <input
-                  className={inputClass}
-                  value={form.department}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, department: e.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" onClick={() => setShowModal(false)}>
-                Cancel
-              </Button>
-              {/* <Button onClick={() => setShowModal(false)}>Create User</Button> */}
-              {error && <p className="text-red-500 text-sm">{error}</p>}
-              <Button onClick={handleCreateUser} disabled={submitting}>
-                {submitting ? "Creating..." : "Create User"}
-              </Button>
-            </div>
+        <Modal open={showModal} onClose={() => { setShowModal(false); setError(""); resetForm(); }} title="Add New User">
+          {userFormFields}
+          <p className={cn("text-xs mt-2", mutedText)}>Default password: Welcome@123</p>
+          <div className="flex justify-end gap-2 pt-3">
+            <Button variant="secondary" onClick={() => { setShowModal(false); setError(""); resetForm(); }}>Cancel</Button>
+            <Button onClick={handleCreateUser} disabled={submitting}>
+              {submitting ? "Creating..." : "Create User"}
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit User Modal */}
+      {editUser && (
+        <Modal open={!!editUser} onClose={() => { setEditUser(null); setError(""); resetForm(); }} title={`Edit: ${editUser.name}`}>
+          {userFormFields}
+          <div className="flex justify-end gap-2 pt-3">
+            <Button variant="secondary" onClick={() => { setEditUser(null); setError(""); resetForm(); }}>Cancel</Button>
+            <Button onClick={handleEditUser} disabled={submitting}>
+              {submitting ? "Saving..." : "Save Changes"}
+            </Button>
           </div>
         </Modal>
       )}
@@ -3785,14 +3857,9 @@ export function AdminUsers() {
           <h1 className={cn("text-2xl font-bold", heading)}>User Management</h1>
           <p className={cn("text-sm", subtext)}>{users.length} total users</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary">
-            <Upload className="h-4 w-4" /> Import CSV
-          </Button>
-          <Button onClick={() => setShowModal(true)}>
-            <Plus className="h-4 w-4" /> Add User
-          </Button>
-        </div>
+        <Button onClick={() => { resetForm(); setShowModal(true); }}>
+          <Plus className="h-4 w-4" /> Add User
+        </Button>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -3800,16 +3867,12 @@ export function AdminUsers() {
           <Search className={cn("h-4 w-4", mutedText)} />
           <input
             type="text"
-            placeholder="Search users..."
-            className={cn(
-              "bg-transparent text-sm outline-none w-full",
-              heading,
-            )}
+            placeholder="Search by name, email, role, department..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={cn("bg-transparent text-sm outline-none w-full", heading)}
           />
         </div>
-        <Button variant="ghost" size="sm">
-          <Filter className="h-4 w-4" /> Filters
-        </Button>
       </div>
 
       <div className={cn(card, "overflow-hidden")}>
@@ -3817,89 +3880,51 @@ export function AdminUsers() {
           <thead>
             <tr className={tableHead}>
               <th className={cn("text-left py-3 px-5", thCell)}>Name</th>
-              <th
-                className={cn(
-                  "text-left py-3 px-3 hidden sm:table-cell",
-                  thCell,
-                )}
-              >
-                Email
-              </th>
+              <th className={cn("text-left py-3 px-3 hidden sm:table-cell", thCell)}>Email</th>
               <th className={cn("text-left py-3 px-3", thCell)}>Role</th>
-              <th
-                className={cn(
-                  "text-left py-3 px-3 hidden md:table-cell",
-                  thCell,
-                )}
-              >
-                Department
-              </th>
+              <th className={cn("text-left py-3 px-3 hidden md:table-cell", thCell)}>Department</th>
               <th className={cn("text-left py-3 px-3", thCell)}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u._id} className={tableRow}>
+            {filteredUsers.map((u) => (
+              <tr key={u.id} className={tableRow}>
                 <td className="py-3 px-5">
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-neutral-200 dark:bg-[#30363d] flex items-center justify-center text-neutral-600 dark:text-[#c9d1d9] text-xs font-semibold">
-                      {u.name
-                        ?.split(" ")
-                        .map((n: string) => n[0])
-                        .join("")
-                        .slice(0, 2)}
+                      {u.name?.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
                     </div>
                     <div>
                       <p className={cn("font-medium", heading)}>{u.name}</p>
-                      {u.batch && (
-                        <p className={cn("text-xs", mutedText)}>{u.batch}</p>
-                      )}
+                      {u.universityId && <p className={cn("text-xs", mutedText)}>{u.universityId}</p>}
                     </div>
                   </div>
                 </td>
-                <td className={cn("py-3 px-3 hidden sm:table-cell", bodyText)}>
-                  {u.email}
-                </td>
+                <td className={cn("py-3 px-3 hidden sm:table-cell", bodyText)}>{u.email}</td>
                 <td className="py-3 px-3">
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
-                      u.role === "admin"
-                        ? "bg-neutral-200 dark:bg-[#30363d] text-neutral-700 dark:text-[#c9d1d9]"
-                        : u.role === "supervisor"
-                          ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
-                          : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
-                    )}
-                  >
-                    {u.role}
+                  <span className={cn(
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                    u.role === "ADMIN" ? "bg-neutral-200 dark:bg-[#30363d] text-neutral-700 dark:text-[#c9d1d9]"
+                      : u.role === "SUPERVISOR" ? "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
+                      : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
+                  )}>
+                    {u.role?.toLowerCase()}
                   </span>
                 </td>
-                <td className={cn("py-3 px-3 hidden md:table-cell", bodyText)}>
-                  {u.department || "—"}
-                </td>
+                <td className={cn("py-3 px-3 hidden md:table-cell", bodyText)}>{u.department || "—"}</td>
                 <td className="py-3 px-3">
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="sm">
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="!text-red-600 dark:!text-red-400"
-                    >
-                      Delete
-                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => openEditModal(u)}>Edit</Button>
+                    <Button variant="ghost" size="sm" className="!text-red-600 dark:!text-red-400"
+                      onClick={() => handleDeleteUser(u.id, u.name)}>Delete</Button>
                   </div>
                 </td>
               </tr>
             ))}
-            {users.length === 0 && (
+            {filteredUsers.length === 0 && (
               <tr>
-                <td
-                  colSpan={5}
-                  className="py-6 text-center text-muted-foreground"
-                >
-                  No users found
+                <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                  {searchQuery ? "No users match your search" : "No users found"}
                 </td>
               </tr>
             )}
@@ -3909,6 +3934,7 @@ export function AdminUsers() {
     </div>
   );
 }
+
 
 /* ═══════════════════════════════════════════════════
    ADMIN BATCHES
@@ -4004,6 +4030,7 @@ export function AdminBatches() {
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showCourseModal, setShowCourseModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
@@ -4012,11 +4039,12 @@ export function AdminBatches() {
     startYear: new Date().getFullYear(),
     endYear: new Date().getFullYear() + 4,
   });
+  const [courseForm, setCourseForm] = useState({ title: "", code: "", description: "" });
 
   const fetchBatches = async () => {
     try {
       const token = tokenStore.get();
-      const res = await fetch(`${API_URL}/v1/admin/batches`, {
+      const res = await fetch(`${API_URL}/v1/batches`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -4041,69 +4069,65 @@ export function AdminBatches() {
     }
   };
 
-  useEffect(() => {
-    fetchBatches();
-    fetchCourses();
-  }, []);
+  useEffect(() => { fetchBatches(); fetchCourses(); }, []);
 
   const handleCreateBatch = async () => {
-    if (!form.name || !form.courseId) {
-      setError("Batch name and course are required");
-      return;
-    }
-    if (form.endYear <= form.startYear) {
-      setError("End year must be after start year");
-      return;
-    }
+    if (!form.name || !form.courseId) { setError("Batch name and course are required"); return; }
+    if (form.endYear <= form.startYear) { setError("End year must be after start year"); return; }
     try {
-      setSubmitting(true);
-      setError("");
+      setSubmitting(true); setError("");
       const token = tokenStore.get();
       const res = await fetch(`${API_URL}/v1/batches`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: form.name,
-          courseId: form.courseId,
-          startYear: form.startYear,
-          endYear: form.endYear,
-        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: form.name, courseId: form.courseId, startYear: form.startYear, endYear: form.endYear }),
       });
       const data = await res.json();
       if (data.status === "success") {
         await fetchBatches();
         setShowModal(false);
-        setForm({
-          name: "",
-          courseId: "",
-          startYear: new Date().getFullYear(),
-          endYear: new Date().getFullYear() + 4,
-        });
-      } else {
-        setError(data.message || "Failed to create batch");
-      }
-    } catch (err) {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
+        setForm({ name: "", courseId: "", startYear: new Date().getFullYear(), endYear: new Date().getFullYear() + 4 });
+      } else { setError(data.message || "Failed to create batch"); }
+    } catch { setError("Something went wrong."); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleCreateCourse = async () => {
+    if (!courseForm.title || !courseForm.code) { setError("Course title and code are required"); return; }
+    try {
+      setSubmitting(true); setError("");
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/courses/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(courseForm),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        await fetchCourses();
+        setShowCourseModal(false);
+        setCourseForm({ title: "", code: "", description: "" });
+      } else { setError(data.message || "Failed to create course"); }
+    } catch { setError("Something went wrong."); }
+    finally { setSubmitting(false); }
   };
 
   const handleDeleteBatch = async (id: string) => {
     if (!confirm("Are you sure you want to delete this batch?")) return;
     try {
       const token = tokenStore.get();
-      await fetch(`${API_URL}/v1/batches/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await fetch(`${API_URL}/v1/batches/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
       await fetchBatches();
-    } catch (err) {
-      console.error("Failed to delete batch:", err);
-    }
+    } catch (err) { console.error("Failed to delete batch:", err); }
+  };
+
+  const handleDeleteCourse = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this course? All associated batches must be removed first.")) return;
+    try {
+      const token = tokenStore.get();
+      await fetch(`${API_URL}/v1/courses/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      await fetchCourses();
+    } catch (err) { console.error("Failed to delete course:", err); }
   };
 
   if (loading) return <LoadingSpinner text="Loading batches..." />;
@@ -4112,121 +4136,75 @@ export function AdminBatches() {
     <div className="space-y-6">
       {/* ── Create Batch Modal ── */}
       {showModal && (
-        <Modal
-          open={showModal}
-          onClose={() => {
-            setShowModal(false);
-            setError("");
-          }}
-          title="Create New Batch"
-        >
+        <Modal open={showModal} onClose={() => { setShowModal(false); setError(""); }} title="Create New Batch">
           <div className="space-y-4">
-            {/* Batch Name */}
             <div>
-              <label className={cn("block text-sm font-medium mb-1", heading)}>
-                Batch Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                className={inputClass}
-                placeholder="e.g. BCA 2024-2028"
-                value={form.name}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, name: e.target.value }))
-                }
-              />
+              <label className={cn("block text-sm font-medium mb-1", heading)}>Batch Name <span className="text-red-500">*</span></label>
+              <input className={inputClass} placeholder="e.g. BCA 2024-2028" value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
             </div>
-
-            {/* Course */}
             <div>
-              <label className={cn("block text-sm font-medium mb-1", heading)}>
-                Course <span className="text-red-500">*</span>
-              </label>
-              <select
-                className={selectClass}
-                value={form.courseId}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, courseId: e.target.value }))
-                }
-              >
+              <label className={cn("block text-sm font-medium mb-1", heading)}>Course <span className="text-red-500">*</span></label>
+              <select className={selectClass} value={form.courseId}
+                onChange={(e) => setForm((f) => ({ ...f, courseId: e.target.value }))}>
                 <option value="">Select a course</option>
                 {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title} {c.code ? `(${c.code})` : ""}
-                  </option>
+                  <option key={c.id} value={c.id}>{c.title} {c.code ? `(${c.code})` : ""}</option>
                 ))}
               </select>
               {courses.length === 0 && (
                 <p className={cn("text-xs mt-1", mutedText)}>
-                  No courses found. Create a course first.
+                  No courses found.{" "}
+                  <button className="underline text-blue-500" onClick={() => { setShowModal(false); setShowCourseModal(true); }}>Create a course first</button>.
                 </p>
               )}
             </div>
-
-            {/* Years */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1", heading)}
-                >
-                  Start Year <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  className={inputClass}
-                  value={form.startYear}
-                  min={2000}
-                  max={2100}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      startYear: Number(e.target.value),
-                    }))
-                  }
-                />
+                <label className={cn("block text-sm font-medium mb-1", heading)}>Start Year <span className="text-red-500">*</span></label>
+                <input type="number" className={inputClass} value={form.startYear} min={2000} max={2100}
+                  onChange={(e) => setForm((f) => ({ ...f, startYear: Number(e.target.value) }))} />
               </div>
               <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1", heading)}
-                >
-                  End Year <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  className={inputClass}
-                  value={form.endYear}
-                  min={2000}
-                  max={2100}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      endYear: Number(e.target.value),
-                    }))
-                  }
-                />
+                <label className={cn("block text-sm font-medium mb-1", heading)}>End Year <span className="text-red-500">*</span></label>
+                <input type="number" className={inputClass} value={form.endYear} min={2000} max={2100}
+                  onChange={(e) => setForm((f) => ({ ...f, endYear: Number(e.target.value) }))} />
               </div>
             </div>
-
-            {/* Error */}
-            {error && (
-              <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-md">
-                {error}
-              </p>
-            )}
-
-            {/* Actions */}
+            {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-md">{error}</p>}
             <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setShowModal(false);
-                  setError("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleCreateBatch} disabled={submitting}>
-                {submitting ? "Creating..." : "Create Batch"}
-              </Button>
+              <Button variant="secondary" onClick={() => { setShowModal(false); setError(""); }}>Cancel</Button>
+              <Button onClick={handleCreateBatch} disabled={submitting}>{submitting ? "Creating..." : "Create Batch"}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Create Course Modal ── */}
+      {showCourseModal && (
+        <Modal open={showCourseModal} onClose={() => { setShowCourseModal(false); setError(""); }} title="Create New Course">
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className={cn("block text-sm font-medium mb-1", heading)}>Course Title <span className="text-red-500">*</span></label>
+                <input className={inputClass} placeholder="e.g. Bachelor of Computer Applications" value={courseForm.title}
+                  onChange={(e) => setCourseForm((f) => ({ ...f, title: e.target.value }))} />
+              </div>
+              <div>
+                <label className={cn("block text-sm font-medium mb-1", heading)}>Course Code <span className="text-red-500">*</span></label>
+                <input className={inputClass} placeholder="e.g. BCA" value={courseForm.code}
+                  onChange={(e) => setCourseForm((f) => ({ ...f, code: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <label className={cn("block text-sm font-medium mb-1", heading)}>Description</label>
+              <input className={inputClass} placeholder="Optional course description" value={courseForm.description}
+                onChange={(e) => setCourseForm((f) => ({ ...f, description: e.target.value }))} />
+            </div>
+            {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-md">{error}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => { setShowCourseModal(false); setError(""); }}>Cancel</Button>
+              <Button onClick={handleCreateCourse} disabled={submitting}>{submitting ? "Creating..." : "Create Course"}</Button>
             </div>
           </div>
         </Modal>
@@ -4235,81 +4213,100 @@ export function AdminBatches() {
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className={cn("text-2xl font-bold", heading)}>
-            Batches & Courses
-          </h1>
-          <p className={cn("text-sm", subtext)}>
-            Manage academic batches and student-supervisor mappings
-          </p>
+          <h1 className={cn("text-2xl font-bold", heading)}>Batches & Courses</h1>
+          <p className={cn("text-sm", subtext)}>Manage academic batches and courses</p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
-          <Plus className="h-4 w-4" /> Create Batch
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => { setError(""); setShowCourseModal(true); }}>
+            <BookOpen className="h-4 w-4" /> Create Course
+          </Button>
+          <Button onClick={() => { setError(""); setShowModal(true); }}>
+            <Plus className="h-4 w-4" /> Create Batch
+          </Button>
+        </div>
       </div>
 
-      {/* ── Batch Cards ── */}
-      <div className={threeColGrid}>
-        {batches.map((b) => (
-          <div key={b.id || b._id} className={cn(cardHover, "p-5")}>
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <h3 className={cn("font-semibold", heading)}>{b.name}</h3>
-                <p className={cn("text-xs", mutedText)}>
-                  {b.course?.title || "—"} • {b.startYear}–{b.endYear}
-                </p>
+      {/* ── Courses List ── */}
+      {courses.length > 0 && (
+        <div>
+          <h2 className={cn("text-lg font-semibold mb-3", heading)}>Courses ({courses.length})</h2>
+          <div className={threeColGrid}>
+            {courses.map((c) => (
+              <div key={c.id} className={cn(cardHover, "p-4")}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className={cn("font-semibold", heading)}>{c.title}</h3>
+                    <p className={cn("text-xs", mutedText)}>{c.code}{c.description ? ` — ${c.description}` : ""}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="!text-red-600 dark:!text-red-400"
+                    onClick={() => handleDeleteCourse(c.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
-              <span
-                className={cn(
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Batch Cards ── */}
+      <div>
+        <h2 className={cn("text-lg font-semibold mb-3", heading)}>Batches ({batches.length})</h2>
+        <div className={threeColGrid}>
+          {batches.map((b) => (
+            <div key={b.id || b._id} className={cn(cardHover, "p-5")}>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className={cn("font-semibold", heading)}>{b.name}</h3>
+                  <p className={cn("text-xs", mutedText)}>{b.course?.title || "—"} • {b.startYear}–{b.endYear}</p>
+                </div>
+                <span className={cn(
                   "rounded-full px-2 py-0.5 text-xs font-medium",
                   b.isActive
                     ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
                     : "bg-neutral-100 dark:bg-[#21262d] text-neutral-500 dark:text-[#8b949e]",
-                )}
-              >
-                {b.isActive ? "Active" : "Archived"}
-              </span>
+                )}>
+                  {b.isActive ? "Active" : "Archived"}
+                </span>
+              </div>
+              <div className={cn("flex gap-4 text-sm", bodyText)}>
+                <span className="flex items-center gap-1">
+                  <Users className={cn("h-3.5 w-3.5", mutedText)} />
+                  {b._count?.enrollments ?? 0} students
+                </span>
+                <span className="flex items-center gap-1">
+                  <FolderGit2 className={cn("h-3.5 w-3.5", mutedText)} />
+                  {b._count?.projects ?? 0} projects
+                </span>
+              </div>
+              <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-[#30363d] flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => handleDeleteBatch(b.id || b._id)}
+                  className="text-red-500 hover:text-red-600">Delete</Button>
+              </div>
             </div>
-            <div className={cn("flex gap-4 text-sm", bodyText)}>
-              <span className="flex items-center gap-1">
-                <Users className={cn("h-3.5 w-3.5", mutedText)} />
-                {b.enrollments?.length ?? b.studentsCount ?? 0} students
-              </span>
-              <span className="flex items-center gap-1">
-                <FolderGit2 className={cn("h-3.5 w-3.5", mutedText)} />
-                {b.projects?.length ?? b.projectsCount ?? 0} projects
-              </span>
-            </div>
-            <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-[#30363d] flex gap-2">
-              <Button variant="ghost" size="sm">
-                Manage
+          ))}
+          {batches.length === 0 && (
+            <div className="col-span-full text-center py-12">
+              <p className={cn("text-sm", mutedText)}>No batches found</p>
+              <Button className="mt-3" variant="secondary" onClick={() => setShowModal(true)}>
+                <Plus className="h-4 w-4" /> Create your first batch
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleDeleteBatch(b.id || b._id)}
-                className="text-red-500 hover:text-red-600"
-              >
-                Delete
-              </Button>
             </div>
-          </div>
-        ))}
-        {batches.length === 0 && (
-          <div className="col-span-full text-center py-12">
-            <p className={cn("text-sm", mutedText)}>No batches found</p>
-            <Button
-              className="mt-3"
-              variant="secondary"
-              onClick={() => setShowModal(true)}
-            >
-              <Plus className="h-4 w-4" /> Create your first batch
-            </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
 
 /* ═══════════════════════════════════════════════════
    ADMIN GITEA SETTINGS
@@ -4344,7 +4341,7 @@ export function AdminGiteaSettings() {
     setSaving(true);
     const token = tokenStore.get();
     await fetch(`${API_URL}/v1/admin/gitea/config`, {
-      method: "PUT",
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -4567,6 +4564,7 @@ export function AdminGiteaSettings() {
 export function AdminAuditLogs() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState("All");
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -4581,6 +4579,27 @@ export function AdminAuditLogs() {
     fetchLogs();
   }, []);
 
+  const actionTypes = ["All", ...Array.from(new Set(logs.map((l) => l.type).filter(Boolean)))];
+  const filteredLogs = filterType === "All" ? logs : logs.filter((l) => l.type === filterType);
+
+  const exportCSV = () => {
+    const headers = ["Date", "User", "Action", "Details"];
+    const rows = filteredLogs.map((l) => [
+      new Date(l.createdAt).toLocaleString(),
+      l.user?.name || "System",
+      l.type || "",
+      l.message || l.description || "",
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((c: string) => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audit-logs-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) return <LoadingSpinner text="Loading audit logs..." />;
 
   return (
@@ -4588,26 +4607,170 @@ export function AdminAuditLogs() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className={cn("text-2xl font-bold", heading)}>Audit Logs</h1>
-          <p className={cn("text-sm", subtext)}>
-            System-wide event log for security and compliance
-          </p>
+          <p className={cn("text-sm", subtext)}>System-wide event log for security and compliance</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm">
-            <Filter className="h-4 w-4" /> Filter
-          </Button>
-          <Button variant="secondary" size="sm">
-            <Download className="h-4 w-4" /> Export
+          <select className={selectClass + " !w-auto"} value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+            {actionTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <Button variant="secondary" size="sm" onClick={exportCSV}>
+            <Download className="h-4 w-4" /> Export CSV
           </Button>
         </div>
       </div>
-
       <div className={cn(card, "p-5")}>
-        <ActivityTimeline activities={logs} />
+        {filteredLogs.length > 0 ? (
+          <ActivityTimeline activities={filteredLogs} />
+        ) : (
+          <p className={cn("text-center py-8 text-sm", mutedText)}>No logs match the selected filter</p>
+        )}
       </div>
     </div>
   );
 }
+
+/* ═══════════════════════════════════════════════════
+   ADMIN PROJECTS
+   ═══════════════════════════════════════════════════ */
+export function AdminProjects() {
+  const [projects, setProjects] = useState<any[]>([]);
+  const [supervisors, setSupervisors] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [assigning, setAssigning] = useState<string | null>(null);
+
+  const fetchProjects = async () => {
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/admin/projects`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setProjects(data.data || []);
+    } catch (err) { console.error("Failed to fetch projects:", err); }
+    finally { setLoading(false); }
+  };
+
+  const fetchSupervisors = async () => {
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/users/supervisors`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setSupervisors(data.data || []);
+    } catch (err) { console.error("Failed to fetch supervisors:", err); }
+  };
+
+  useEffect(() => { fetchProjects(); fetchSupervisors(); }, []);
+
+  const handleAssignSupervisor = async (projectId: string, supervisorId: string) => {
+    setAssigning(projectId);
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/admin/projects/${projectId}/assign-supervisor`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ supervisorId }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        await fetchProjects();
+      }
+    } catch (err) { console.error("Failed to assign supervisor:", err); }
+    finally { setAssigning(null); }
+  };
+
+  const filteredProjects = projects.filter((p) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      p.owner?.name?.toLowerCase().includes(q) ||
+      p.supervisor?.name?.toLowerCase().includes(q) ||
+      p.status?.toLowerCase().includes(q)
+    );
+  });
+
+  if (loading) return <LoadingSpinner text="Loading projects..." />;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className={cn("text-2xl font-bold", heading)}>Project Management</h1>
+          <p className={cn("text-sm", subtext)}>{projects.length} total projects</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] px-3 py-1.5 flex-1 min-w-[200px]">
+          <Search className={cn("h-4 w-4", mutedText)} />
+          <input type="text" placeholder="Search by title, owner, supervisor..."
+            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            className={cn("bg-transparent text-sm outline-none w-full", heading)} />
+        </div>
+      </div>
+
+      <div className={cn(card, "overflow-hidden")}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className={tableHead}>
+              <th className={cn("text-left py-3 px-4", thCell)}>Project</th>
+              <th className={cn("text-left py-3 px-3 hidden sm:table-cell", thCell)}>Owner</th>
+              <th className={cn("text-left py-3 px-3", thCell)}>Status</th>
+              <th className={cn("text-left py-3 px-3 hidden md:table-cell", thCell)}>Milestones</th>
+              <th className={cn("text-left py-3 px-3", thCell)}>Supervisor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredProjects.map((p) => (
+              <tr key={p.id} className={tableRow}>
+                <td className="py-3 px-4">
+                  <p className={cn("font-medium", heading)}>{p.title}</p>
+                  <p className={cn("text-xs", mutedText)}>{p.techStack?.join(", ") || "—"}</p>
+                </td>
+                <td className={cn("py-3 px-3 hidden sm:table-cell", bodyText)}>{p.owner?.name || "—"}</td>
+                <td className="py-3 px-3">
+                  <span className={cn(
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                    p.status === "APPROVED" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                      : p.status === "PENDING" ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
+                      : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
+                  )}>
+                    {p.status?.toLowerCase() || "—"}
+                  </span>
+                </td>
+                <td className={cn("py-3 px-3 hidden md:table-cell", bodyText)}>{p._count?.milestones ?? 0}</td>
+                <td className="py-3 px-3">
+                  <select
+                    className={selectClass + " !py-1 !text-xs !w-auto min-w-[140px]"}
+                    value={p.supervisorId || ""}
+                    disabled={assigning === p.id}
+                    onChange={(e) => handleAssignSupervisor(p.id, e.target.value)}
+                  >
+                    <option value="">Unassigned</option>
+                    {supervisors.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            ))}
+            {filteredProjects.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                  {searchQuery ? "No projects match your search" : "No projects found"}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 
 /* ═══════════════════════════════════════════════════
    ACTIVITY PAGE (ALL ROLES)
