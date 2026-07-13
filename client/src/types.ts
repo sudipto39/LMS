@@ -53,7 +53,7 @@ export interface BatchEnrollment {
 }
 
 export type ProjectStatus =
-  | "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" | "ARCHIVED";
+  | "DRAFT" | "IN_PROGRESS" | "SUBMITTED" | "APPROVED" | "REJECTED" | "ARCHIVED";
 
 export type MilestoneStatus =
   | "PENDING" | "IN_PROGRESS" | "SUBMITTED" | "APPROVED" | "REJECTED";

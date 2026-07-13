@@ -61,9 +61,16 @@ export const handleGiteaWebhook = async (
   const commits = payload.commits ?? [];
   if (commits.length === 0) return;
 
+  // Fetch active project milestones
+  const milestones = await prisma.milestone.findMany({
+    where: { projectId: project.id, isActive: true },
+    orderBy: { order: "asc" },
+  });
+
   await Promise.all(
-    commits.map((commit) =>
-      logActivity({
+    commits.map(async (commit) => {
+      // 1. Log push activity
+      await logActivity({
         type: "PUSH",
         payload: {
           hash: commit.id,
@@ -76,7 +83,37 @@ export const handleGiteaWebhook = async (
         },
         userId: project.ownerId,
         projectId: project.id,
-      })
-    )
+      });
+
+      // 2. Check for milestone references in commit message
+      const msg = commit.message.toLowerCase();
+      for (let i = 0; i < milestones.length; i++) {
+        const m = milestones[i];
+        if (!m) continue;
+        // Match index like: "milestone 1", "milestone #1", or exact milestone title
+        const matchIndex = msg.includes(`milestone ${i + 1}`) || msg.includes(`milestone #${i + 1}`);
+        const matchTitle = m.title && msg.includes(m.title.toLowerCase());
+
+        if ((matchIndex || matchTitle) && m.status === "PENDING") {
+          await prisma.milestone.update({
+            where: { id: m.id },
+            data: {
+              status: "SUBMITTED",
+              submittedAt: new Date(),
+              submittedById: project.ownerId,
+            },
+          });
+          console.log(`🚀 Gitea Webhook: Auto-submitted milestone "${m.title}" via commit payload`);
+
+          await logActivity({
+            type: "SUBMIT_MILESTONE",
+            payload: { milestoneTitle: m.title, viaWebhook: true },
+            userId: project.ownerId,
+            projectId: project.id,
+          });
+          break;
+        }
+      }
+    })
   );
 };

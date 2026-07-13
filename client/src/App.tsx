@@ -787,6 +787,7 @@ import {
   StudentSubmissions,
   StudentMessages,
   SupervisorDashboard,
+  SupervisorProjects,
   SupervisorProjectDetail,
   SupervisorReviews,
   SupervisorGrades,
@@ -893,6 +894,7 @@ export function App() {
   const [darkMode, setDarkMode] = useState(
     () => localStorage.getItem("giteaforge-dark") === "true",
   );
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Anti-clickjacking
   useEffect(() => {
@@ -975,11 +977,13 @@ export function App() {
   }, [page, logout]);
 
   const navigateTo = useCallback((newPage: Page) => {
+    setSearchQuery("");
     setHistory((prev) => [...prev, newPage]);
     setPage(newPage);
   }, []);
 
   const goBack = useCallback(() => {
+    setSearchQuery("");
     setHistory((prev) => {
       if (prev.length <= 1) return prev;
       const next = prev.slice(0, -1);
@@ -1097,9 +1101,9 @@ export function App() {
   const renderContent = () => {
     switch (page) {
       case "student-dashboard":
-        return <StudentDashboard onNavigate={navigateTo} />;
+        return <StudentDashboard onNavigate={navigateTo} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
       case "student-projects":
-        return <StudentProjects onNavigate={navigateTo} />;
+        return <StudentProjects onNavigate={navigateTo} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
       case "student-create-project":
         return <CreateProject onNavigate={navigateTo} />;
       case "student-project-detail":
@@ -1111,9 +1115,9 @@ export function App() {
       case "student-profile":
         return <ProfilePage />;
       case "supervisor-dashboard":
-        return <SupervisorDashboard onNavigate={navigateTo} />;
+        return <SupervisorDashboard onNavigate={navigateTo} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
       case "supervisor-projects":
-        return <SupervisorDashboard onNavigate={navigateTo} />;
+        return <SupervisorProjects onNavigate={navigateTo} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
       case "supervisor-project-detail":
         return <SupervisorProjectDetail onNavigate={navigateTo} />;
       case "supervisor-reviews":
@@ -1127,13 +1131,13 @@ export function App() {
       case "admin-dashboard":
         return <AdminDashboard onNavigate={navigateTo} />;
       case "admin-users":
-        return <AdminUsers />;
+        return <AdminUsers searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
       case "admin-batches":
         return <AdminBatches />;
       case "admin-gitea-settings":
         return <AdminGiteaSettings />;
       case "admin-projects":
-        return <AdminProjects />;
+        return <AdminProjects searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
       case "admin-audit-logs":
         return <AdminAuditLogs />;
       case "admin-profile":
@@ -1165,6 +1169,8 @@ export function App() {
           userName={user?.name ?? ""}
           userRole={role}
           onLogout={handleLogout}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
           onProfileClick={() => {
             if (!user) return;
             const profilePage: Page =

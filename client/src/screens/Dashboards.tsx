@@ -178,8 +178,12 @@ function EmptyState({
    ═══════════════════════════════════════════════════ */
 export function StudentDashboard({
   onNavigate,
+  searchQuery = "",
+  setSearchQuery,
 }: {
   onNavigate: (page: Page) => void;
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
 }) {
   const [studentProjects, setStudentProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -192,6 +196,20 @@ export function StudentDashboard({
   const [nextMilestoneTitle, setNextMilestoneTitle] = useState<string | null>(
     null,
   );
+
+  const filteredProjects = studentProjects.filter((p: any) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const supervisorName =
+      typeof p.supervisor === "object" && p.supervisor !== null
+        ? (p.supervisor as any).name
+        : p.supervisor || "";
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      supervisorName.toLowerCase().includes(q) ||
+      p.status?.toLowerCase().includes(q)
+    );
+  });
 
   // Re-fetch whenever a supervisor approves/rejects a milestone (signals via localStorage)
   const [projectsUpdatedAt] = useState(() =>
@@ -339,20 +357,32 @@ export function StudentDashboard({
         <div className={cn("lg:col-span-2", card)}>
           <div
             className={cn(
-              "flex items-center justify-between p-5",
+              "flex flex-col sm:flex-row sm:items-center justify-between p-5 gap-3",
               sectionBorder,
             )}
           >
-            <h2 className={cn("text-sm font-semibold", heading)}>
-              My Projects
-            </h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onNavigate("student-projects")}
-            >
-              View All <ArrowUpRight className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <h2 className={cn("text-sm font-semibold", heading)}>
+                My Projects
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onNavigate("student-projects")}
+              >
+                View All <ArrowUpRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] px-3 py-1.5 min-w-[200px]">
+              <Search className={cn("h-4 w-4", mutedText)} />
+              <input
+                type="text"
+                placeholder="Search projects..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery?.(e.target.value)}
+                className={cn("bg-transparent text-sm outline-none w-full", heading)}
+              />
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -380,7 +410,7 @@ export function StudentDashboard({
                 </tr>
               </thead>
               <tbody>
-                {studentProjects.map((p: any) => (
+                {filteredProjects.map((p: any) => (
                   <tr key={p.id ?? p._id} className={tableRow}>
                     <td className="py-3 px-5">
                       <p className={cn("font-medium", heading)}>{p.title}</p>
@@ -418,13 +448,13 @@ export function StudentDashboard({
                     </td>
                   </tr>
                 ))}
-                {studentProjects.length === 0 && (
+                {filteredProjects.length === 0 && (
                   <tr>
                     <td
                       colSpan={5}
                       className="py-6 text-center text-muted-foreground"
                     >
-                      No projects found
+                      {searchQuery ? "No projects match your search query." : "No projects found"}
                     </td>
                   </tr>
                 )}
@@ -453,14 +483,33 @@ export function StudentDashboard({
    ═══════════════════════════════════════════════════ */
 export function StudentProjects({
   onNavigate,
+  searchQuery = "",
+  setSearchQuery,
 }: {
   onNavigate: (page: Page) => void;
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const filteredProjects = projects.filter((p) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const supervisorName =
+      typeof p.supervisor === "object" && p.supervisor !== null
+        ? (p.supervisor as any).name
+        : p.supervisor || "";
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q) ||
+      supervisorName.toLowerCase().includes(q) ||
+      p.status?.toLowerCase().includes(q)
+    );
+  });
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -561,8 +610,21 @@ export function StudentProjects({
         </Button>
       </div>
 
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] px-3 py-1.5 flex-1 min-w-[200px]">
+          <Search className={cn("h-4 w-4", mutedText)} />
+          <input
+            type="text"
+            placeholder="Search projects by title, supervisor, status..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery?.(e.target.value)}
+            className={cn("bg-transparent text-sm outline-none w-full", heading)}
+          />
+        </div>
+      </div>
+
       <div className="grid gap-4">
-        {projects.map((p) => {
+        {filteredProjects.map((p) => {
           const pid = p.id ?? p._id;
           return (
             <div
@@ -635,9 +697,9 @@ export function StudentProjects({
             </div>
           );
         })}
-        {projects.length === 0 && (
+        {filteredProjects.length === 0 && (
           <div className="text-center py-10 text-muted-foreground">
-            No projects yet. Create your first one
+            {searchQuery ? "No projects match your search query." : "No projects yet. Create your first one."}
           </div>
         )}
       </div>
@@ -672,6 +734,8 @@ export function CreateProject({
   const [repoName, setRepoName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
 
+  const [myProjects, setMyProjects] = useState<any[]>([]);
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -679,6 +743,7 @@ export function CreateProject({
     batch: "",
     supervisorId: "",
     techStack: [] as string[],
+    parentProjectId: "",
   });
 
   // useEffect(() => {
@@ -748,11 +813,14 @@ export function CreateProject({
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [supRes, courseRes] = await Promise.all([
+        const [supRes, courseRes, projectsRes] = await Promise.all([
           fetch(`${API_URL}/v1/supervisors/allsupervisors`, {
             headers: getAuthHeaders(),
           }),
           fetch(`${API_URL}/v1/batches/courses`, {
+            headers: getAuthHeaders(),
+          }),
+          fetch(`${API_URL}/v1/projects/me`, {
             headers: getAuthHeaders(),
           }),
         ]);
@@ -775,6 +843,11 @@ export function CreateProject({
               name: c.title,
             })),
           );
+        }
+
+        if (projectsRes.ok) {
+          const projectsData = await projectsRes.json();
+          setMyProjects(projectsData.data || []);
         }
       } catch (err) {
         console.error("Failed to fetch create project data:", err);
@@ -842,6 +915,7 @@ export function CreateProject({
         repoOption: repoOption === "create" ? "create_new" : "link_existing",
         repoName: repoOption === "create" ? repoName : undefined,
         existingRepoUrl: repoOption === "link" ? repoUrl : undefined,
+        parentProjectId: formData.parentProjectId || undefined,
       });
       const projectId = project?.id ?? project?._id;
       if (!projectId) throw new Error("Project created but no ID returned");
@@ -969,6 +1043,49 @@ export function CreateProject({
       <div className={cn(card, "p-6")}>
         {step === 1 && (
           <div className="space-y-5">
+            <div>
+              <label className={cn("block text-sm font-medium mb-1.5", heading)}>
+                Extend a previous project?
+              </label>
+              <select
+                value={formData.parentProjectId}
+                onChange={(e) => {
+                  const pid = e.target.value;
+                  setFormData((f) => ({ ...f, parentProjectId: pid }));
+                  if (pid) {
+                    const parent = myProjects.find(p => p.id === pid || p._id === pid);
+                    if (parent) {
+                      setFormData(f => ({
+                        ...f,
+                        title: `${parent.title} - Phase ${(parent.phase ?? 1) + 1}`,
+                        description: parent.description || "",
+                        techStack: parent.techStack || parent.technologies || [],
+                        supervisorId: parent.supervisorId || "",
+                      }));
+                      setRepoName(parent.repoName || "");
+                      setRepoOption("link");
+                      setRepoUrl(parent.repoUrl || "");
+                    }
+                  } else {
+                    setFormData(f => ({ ...f, title: "", description: "", techStack: [], supervisorId: "" }));
+                    setRepoName("");
+                    setRepoOption("create");
+                    setRepoUrl("");
+                  }
+                }}
+                className={selectClass}
+              >
+                <option value="">No, this is a new project</option>
+                {myProjects.map((p) => (
+                  <option key={p.id || p._id} value={p.id || p._id}>
+                    {p.title} (Phase {p.phase ?? 1}) - {p.status}
+                  </option>
+                ))}
+              </select>
+              <p className={cn("text-xs mt-1", mutedText)}>
+                Select a completed or ongoing project to extend it as a new phase with a shared Git repository.
+              </p>
+            </div>
             <div>
               <label
                 className={cn("block text-sm font-medium mb-1.5", heading)}
@@ -1177,94 +1294,108 @@ export function CreateProject({
             <h3 className={cn("text-base font-semibold", heading)}>
               Repository Setup
             </h3>
-            <p className={cn("text-sm", subtext)}>
-              Connect your project to a Git repository on the institute Gitea
-              server.
-            </p>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <button
-                onClick={() => setRepoOption("create")}
-                className={cn(
-                  "rounded-lg border-2 p-5 text-left transition",
-                  repoOption === "create"
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                    : "border-neutral-200 dark:border-[#30363d] hover:border-neutral-300 dark:hover:border-[#484f58]",
-                )}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <Plus className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  <span className={cn("font-semibold", heading)}>
-                    Create New Repo
-                  </span>
-                </div>
-                <p className={cn("text-xs", subtext)}>
-                  Create a new private repository on institute Gitea server
+            {formData.parentProjectId ? (
+              <div className={cn("p-5 border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 rounded-lg", bodyText)}>
+                <p className="font-semibold text-green-800 dark:text-green-400 mb-1">Reusing Gitea Repository</p>
+                <p className="text-sm">
+                  This project extension will automatically reuse the existing Gitea repository linked to the parent project:
                 </p>
-              </button>
-              <button
-                onClick={() => setRepoOption("link")}
-                className={cn(
-                  "rounded-lg border-2 p-5 text-left transition",
-                  repoOption === "link"
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                    : "border-neutral-200 dark:border-[#30363d] hover:border-neutral-300 dark:hover:border-[#484f58]",
-                )}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <ExternalLink className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  <span className={cn("font-semibold", heading)}>
-                    Link Existing Repo
-                  </span>
-                </div>
-                <p className={cn("text-xs", subtext)}>
-                  Link an existing repository from your Gitea account
+                <code className="block mt-2 p-2 bg-neutral-100 dark:bg-[#161b22] rounded border border-neutral-300 dark:border-[#30363d] text-xs font-mono">
+                  {repoName || "Inherited Repository"}
+                </code>
+              </div>
+            ) : (
+              <>
+                <p className={cn("text-sm", subtext)}>
+                  Connect your project to a Git repository on the institute Gitea
+                  server.
                 </p>
-              </button>
-            </div>
-
-            {repoOption === "create" && (
-              <div className={cn("space-y-3 p-4", infoBox)}>
-                <div>
-                  <label
-                    className={cn("block text-sm font-medium mb-1", heading)}
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setRepoOption("create")}
+                    className={cn(
+                      "rounded-lg border-2 p-5 text-left transition",
+                      repoOption === "create"
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                        : "border-neutral-200 dark:border-[#30363d] hover:border-neutral-300 dark:hover:border-[#484f58]",
+                    )}
                   >
-                    Repository Name
-                  </label>
-                  <input
-                    type="text"
-                    value={repoName}
-                    onChange={(e) => setRepoName(e.target.value)}
-                    placeholder="e.g. ecommerce-platform"
-                    className={inputClass}
-                  />
-                </div>
-                <div className={cn("flex items-center gap-2 text-xs", subtext)}>
-                  <Server className="h-3.5 w-3.5" />
-                  <span>
-                    Will be created at: {GITEA_URL.replace(/^https?:\/\//, "")}
-                    /username/{repoName || "project"}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {repoOption === "link" && (
-              <div className={cn("space-y-3 p-4", infoBox)}>
-                <div>
-                  <label
-                    className={cn("block text-sm font-medium mb-1", heading)}
+                    <div className="flex items-center gap-2 mb-2">
+                      <Plus className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      <span className={cn("font-semibold", heading)}>
+                        Create New Repo
+                      </span>
+                    </div>
+                    <p className={cn("text-xs", subtext)}>
+                      Create a new private repository on institute Gitea server
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => setRepoOption("link")}
+                    className={cn(
+                      "rounded-lg border-2 p-5 text-left transition",
+                      repoOption === "link"
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                        : "border-neutral-200 dark:border-[#30363d] hover:border-neutral-300 dark:hover:border-[#484f58]",
+                    )}
                   >
-                    Repository URL
-                  </label>
-                  <input
-                    type="text"
-                    value={repoUrl}
-                    onChange={(e) => setRepoUrl(e.target.value)}
-                    placeholder="https://gitea.ignou.local/username/repo"
-                    className={inputClass}
-                  />
+                    <div className="flex items-center gap-2 mb-2">
+                      <ExternalLink className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      <span className={cn("font-semibold", heading)}>
+                        Link Existing Repo
+                      </span>
+                    </div>
+                    <p className={cn("text-xs", subtext)}>
+                      Link an existing repository from your Gitea account
+                    </p>
+                  </button>
                 </div>
-              </div>
+
+                {repoOption === "create" && (
+                  <div className={cn("space-y-3 p-4", infoBox)}>
+                    <div>
+                      <label
+                        className={cn("block text-sm font-medium mb-1", heading)}
+                      >
+                        Repository Name
+                      </label>
+                      <input
+                        type="text"
+                        value={repoName}
+                        onChange={(e) => setRepoName(e.target.value)}
+                        placeholder="e.g. ecommerce-platform"
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className={cn("flex items-center gap-2 text-xs", subtext)}>
+                      <Server className="h-3.5 w-3.5" />
+                      <span>
+                        Will be created at: {GITEA_URL.replace(/^https?:\/\//, "")}
+                        /username/{repoName || "project"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {repoOption === "link" && (
+                  <div className={cn("space-y-3 p-4", infoBox)}>
+                    <div>
+                      <label
+                        className={cn("block text-sm font-medium mb-1", heading)}
+                      >
+                        Repository URL
+                      </label>
+                      <input
+                        type="text"
+                        value={repoUrl}
+                        onChange={(e) => setRepoUrl(e.target.value)}
+                        placeholder="https://gitea.ignou.local/username/repo"
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             <div className="flex justify-between pt-2">
               <Button variant="secondary" onClick={() => setStep(1)}>
@@ -1551,52 +1682,79 @@ export function StudentProjectDetail({
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [submittingFinal, setSubmittingFinal] = useState(false);
+  const [submitFinalError, setSubmitFinalError] = useState("");
 
   const projectId = localStorage.getItem("activeProjectId");
 
-  useEffect(() => {
-    const fetchProjectDetail = async () => {
-      try {
-        const token = tokenStore.get();
-        const [projectRes, milestoneRes, filesRes] = await Promise.all([
-          fetch(`${API_URL}/v1/projects/${projectId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/v1/projects/${projectId}/files`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
-        const projectData = await projectRes.json();
-        setProject(projectData.data || projectData);
+  const fetchProjectDetail = useCallback(async () => {
+    try {
+      const token = tokenStore.get();
+      const [projectRes, milestoneRes, filesRes] = await Promise.all([
+        fetch(`${API_URL}/v1/projects/${projectId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/v1/projects/${projectId}/files`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      const projectData = await projectRes.json();
+      setProject(projectData.data || projectData);
 
-        const milestoneData = await milestoneRes.json();
-        setMilestones(
-          Array.isArray(milestoneData.data)
-            ? milestoneData.data
-            : Array.isArray(milestoneData)
-              ? milestoneData
-              : [],
-        );
+      const milestoneData = await milestoneRes.json();
+      setMilestones(
+        Array.isArray(milestoneData.data)
+          ? milestoneData.data
+          : Array.isArray(milestoneData)
+            ? milestoneData
+            : [],
+      );
 
-        const filesData = await filesRes.json();
-        setFiles(
-          Array.isArray(filesData.data)
-            ? filesData.data
-            : Array.isArray(filesData)
-              ? filesData
-              : [],
-        );
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProjectDetail();
+      const filesData = await filesRes.json();
+      setFiles(
+        Array.isArray(filesData.data)
+          ? filesData.data
+          : Array.isArray(filesData)
+            ? filesData
+            : [],
+      );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }, [projectId]);
+
+  useEffect(() => {
+    fetchProjectDetail();
+  }, [fetchProjectDetail]);
+
+  const handleSubmitFinal = async () => {
+    setSubmittingFinal(true);
+    setSubmitFinalError("");
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/projects/${projectId}/submit-final`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        setSubmitConfirmOpen(false);
+        await fetchProjectDetail();
+      } else {
+        setSubmitFinalError(data.message || "Failed to submit project");
+      }
+    } catch (err) {
+      setSubmitFinalError("An error occurred. Please try again.");
+    } finally {
+      setSubmittingFinal(false);
+    }
+  };
 
   if (loading || !project) return <LoadingSpinner text="Loading project..." />;
 
@@ -1610,21 +1768,87 @@ export function StudentProjectDetail({
 
   return (
     <div className="space-y-6">
+      {submitConfirmOpen && (
+        <Modal
+          open={submitConfirmOpen}
+          onClose={() => {
+            setSubmitConfirmOpen(false);
+            setSubmitFinalError("");
+          }}
+          title="Submit Project for Final Evaluation"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-700 dark:text-neutral-300">
+              Are you sure you want to submit your project <span className="font-semibold">{project.title}</span> for final evaluation?
+            </p>
+            <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+              ⚠️ This will freeze all further code commits on Gitea and lock the project milestones. Your supervisor will be notified to begin the final grading process.
+            </div>
+            {submitFinalError && (
+              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-md">
+                {submitFinalError}
+              </p>
+            )}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSubmitConfirmOpen(false);
+                  setSubmitFinalError("");
+                }}
+                disabled={submittingFinal}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmitFinal}
+                disabled={submittingFinal}
+              >
+                {submittingFinal ? "Submitting..." : "Confirm Submission"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h1 className={cn("text-2xl font-bold", heading)}>
               {project.title}
             </h1>
+            {project.phase > 1 && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 dark:bg-purple-950/30 px-2 py-1 text-xs font-medium text-purple-700 dark:text-purple-400 ring-1 ring-inset ring-purple-700/10 dark:ring-purple-400/20">
+                Phase {project.phase}
+              </span>
+            )}
             <StatusPill status={project.status} />
           </div>
+          {project.parentProject && (
+            <p className="text-xs text-purple-600 dark:text-purple-400 font-medium mb-1">
+              ↗️ Extended from phase {(project.phase ?? 2) - 1}: <span className="underline">{project.parentProject.title}</span>
+            </p>
+          )}
           <p className={cn("text-sm", subtext)}>{project.description}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm">
+          <Button variant="secondary" size="sm" onClick={fetchProjectDetail}>
             <RefreshCw className="h-4 w-4" /> Update Progress
           </Button>
-          <Button size="sm">
+          <Button
+            size="sm"
+            disabled={
+              project.status === "SUBMITTED" ||
+              project.status === "APPROVED" ||
+              !(milestones.length > 0 && milestones.every((m) => m.status === "APPROVED"))
+            }
+            title={
+              !(milestones.length > 0 && milestones.every((m) => m.status === "APPROVED"))
+                ? "All milestones must be approved before final submission"
+                : "Submit project for grading"
+            }
+            onClick={() => setSubmitConfirmOpen(true)}
+          >
             <Send className="h-4 w-4" /> Submit Final
           </Button>
         </div>
@@ -2273,19 +2497,30 @@ export function StudentSubmissions({
    ═══════════════════════════════════════════════════ */
 export function SupervisorDashboard({
   onNavigate,
+  searchQuery = "",
+  setSearchQuery,
 }: {
   onNavigate: (page: Page) => void;
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
 }) {
   const [projects, setProjects] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [nextMilestoneDue, setNextMilestoneDue] = useState<string | null>(null);
-  const [nextMilestoneDaysLeft, setNextMilestoneDaysLeft] = useState<
-    number | null
-  >(null);
-  const [nextMilestoneTitle, setNextMilestoneTitle] = useState<string | null>(
-    null,
-  );
+  const [nextMilestoneDaysLeft, setNextMilestoneDaysLeft] = useState<number | null>(null);
+  const [nextMilestoneTitle, setNextMilestoneTitle] = useState<string | null>(null);
+
+  const filteredProjects = projects.filter((p) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const studentName = p.owner?.name ?? p.student?.name ?? "";
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      studentName.toLowerCase().includes(q) ||
+      p.status?.toLowerCase().includes(q)
+    );
+  });
 
   // useEffect(() => {
   //   const fetchDashboard = async () => {
@@ -2400,16 +2635,23 @@ export function SupervisorDashboard({
           <div className={card}>
             <div
               className={cn(
-                "flex items-center justify-between p-5",
+                "flex flex-col sm:flex-row sm:items-center justify-between p-5 gap-3",
                 sectionBorder,
               )}
             >
               <h2 className={cn("text-sm font-semibold", heading)}>
                 Supervised Projects
               </h2>
-              <Button variant="ghost" size="sm">
-                <Filter className="h-4 w-4" /> Filter
-              </Button>
+              <div className="flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] px-3 py-1.5 min-w-[220px]">
+                <Search className={cn("h-4 w-4", mutedText)} />
+                <input
+                  type="text"
+                  placeholder="Search projects or students..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery?.(e.target.value)}
+                  className={cn("bg-transparent text-sm outline-none w-full", heading)}
+                />
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -2443,7 +2685,7 @@ export function SupervisorDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {projects.map((p) => (
+                  {filteredProjects.map((p) => (
                     // <tr key={p.id ?? p._id} className={tableRow}>
                     <tr key={p.id ?? p._id} className={tableRow}>
                       <td className="py-3 px-5">
@@ -2479,7 +2721,7 @@ export function SupervisorDashboard({
                       </td>
                     </tr>
                   ))}
-                  {projects.length === 0 && (
+                  {filteredProjects.length === 0 && (
                     <tr>
                       <td
                         colSpan={5}
@@ -2505,6 +2747,133 @@ export function SupervisorDashboard({
             <ActivityTimeline activities={activities} limit={5} />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   SUPERVISOR PROJECTS LIST
+   ═══════════════════════════════════════════════════ */
+export function SupervisorProjects({
+  onNavigate,
+  searchQuery = "",
+  setSearchQuery,
+}: {
+  onNavigate: (page: Page) => void;
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
+}) {
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const token = tokenStore.get();
+        const res = await fetch(`${API_URL}/v1/projects/supervised`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        setProjects(data.data || []);
+      } catch (err) {
+        console.error("Failed to load supervised projects", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProjects();
+  }, []);
+
+  const filteredProjects = projects.filter((p) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const studentName = p.owner?.name ?? p.student?.name ?? "";
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      studentName.toLowerCase().includes(q) ||
+      p.status?.toLowerCase().includes(q)
+    );
+  });
+
+  if (loading) return <LoadingSpinner text="Loading supervised projects..." />;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className={cn("text-2xl font-bold", heading)}>Supervised Projects</h1>
+          <p className={cn("text-sm", subtext)}>
+            Manage, review, and track progress for all student projects assigned to you
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] px-3 py-1.5 flex-1 min-w-[200px]">
+          <Search className={cn("h-4 w-4", mutedText)} />
+          <input
+            type="text"
+            placeholder="Search by project title, student name, status..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery?.(e.target.value)}
+            className={cn("bg-transparent text-sm outline-none w-full", heading)}
+          />
+        </div>
+      </div>
+
+      <div className={cn(card, "overflow-hidden")}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className={tableHead}>
+              <th className={cn("text-left py-3 px-5", thCell)}>Student / Project</th>
+              <th className={cn("text-left py-3 px-3", thCell)}>Status</th>
+              <th className={cn("text-left py-3 px-3 hidden md:table-cell", thCell)}>Progress</th>
+              <th className={cn("text-left py-3 px-3 hidden sm:table-cell", thCell)}>Last Push</th>
+              <th className={cn("text-left py-3 px-3", thCell)}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredProjects.map((p) => (
+              <tr key={p.id ?? p._id} className={tableRow}>
+                <td className="py-3 px-5">
+                  <p className={cn("font-medium", heading)}>{p.title}</p>
+                  <p className={cn("text-xs", mutedText)}>
+                    {p.owner?.name ?? p.student?.name} · {p.batch?.name || "No Batch"}
+                  </p>
+                </td>
+                <td className="py-3 px-3">
+                  <StatusPill status={p.status} />
+                </td>
+                <td className="py-3 px-3 hidden md:table-cell w-36">
+                  <ProgressBar value={p.progress} size="sm" />
+                </td>
+                <td className="py-3 px-3 hidden sm:table-cell">
+                  <InactivityBadge days={p.inactiveDays} />
+                </td>
+                <td className="py-3 px-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      localStorage.setItem("activeProjectId", p.id ?? p._id);
+                      onNavigate("supervisor-project-detail");
+                    }}
+                  >
+                    <Eye className="h-4 w-4" /> Review
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {filteredProjects.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                  {searchQuery ? "No projects match your search query." : "No supervised projects found."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -3449,30 +3818,26 @@ export function AdminDashboard({
 
   if (loading || !stats) return <LoadingSpinner text="Loading dashboard..." />;
 
-  // Try mapping dynamic breakdown or use generic stats mapping
-  const activeProjectsList =
-    statusBreakdown && statusBreakdown.length > 0
-      ? statusBreakdown
-      : [
-          {
-            label: "Draft",
-            count: stats.activeProjects - stats.inProgress,
-            color: "bg-neutral-400",
-            pct: 20,
-          },
-          {
-            label: "In Progress",
-            count: stats.inProgress,
-            color: "bg-blue-500",
-            pct: 60,
-          },
-          {
-            label: "Approved",
-            count: stats.activeProjects > 0 ? 1 : 0,
-            color: "bg-green-500",
-            pct: 20,
-          },
-        ];
+  const activeProjectsList = [
+    {
+      label: "Draft",
+      count: stats.draft ?? 0,
+      color: "bg-neutral-400",
+      pct: stats.activeProjects > 0 ? Math.round(((stats.draft ?? 0) / stats.activeProjects) * 100) : 0,
+    },
+    {
+      label: "In Progress",
+      count: stats.inProgress ?? 0,
+      color: "bg-blue-500",
+      pct: stats.activeProjects > 0 ? Math.round(((stats.inProgress ?? 0) / stats.activeProjects) * 100) : 0,
+    },
+    {
+      label: "Approved",
+      count: stats.approved ?? 0,
+      color: "bg-green-500",
+      pct: stats.activeProjects > 0 ? Math.round(((stats.approved ?? 0) / stats.activeProjects) * 100) : 0,
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -3545,7 +3910,7 @@ export function AdminDashboard({
               {activeProjectsList.map((s, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <span className={cn("text-xs w-20", bodyText)}>
-                    {s.label || s._id}
+                    {s.label}
                   </span>
                   <div className="flex-1 h-2 bg-neutral-100 dark:bg-[#21262d] rounded-full overflow-hidden">
                     <div
@@ -3617,12 +3982,17 @@ export function AdminDashboard({
 /* ═══════════════════════════════════════════════════
    ADMIN USERS
    ═══════════════════════════════════════════════════ */
-export function AdminUsers() {
+export function AdminUsers({
+  searchQuery = "",
+  setSearchQuery,
+}: {
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
+}) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser] = useState<any>(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -3633,6 +4003,11 @@ export function AdminUsers() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // CSV Import state hooks
+  const [csvUsers, setCsvUsers] = useState<any[]>([]);
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [importingCsv, setImportingCsv] = useState(false);
 
   const resetForm = () =>
     setForm({ name: "", email: "", role: "student", department: "", universityId: "", phoneNumber: "" });
@@ -3653,6 +4028,111 @@ export function AdminUsers() {
   };
 
   useEffect(() => { fetchUsers(); }, []);
+
+  const triggerCSVImport = () => {
+    document.getElementById("csv-file-input")?.click();
+  };
+
+  const handleCSVFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string;
+      if (!text) return;
+
+      const rows = text.split(/\r?\n/).map(line => {
+        const result = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = "";
+          } else {
+            current += char;
+          }
+        }
+        result.push(current.trim());
+        return result;
+      }).filter(row => row.length > 1 && row.some(cell => cell !== ""));
+
+      if (rows.length < 2) {
+        alert("CSV file is empty or missing headers");
+        return;
+      }
+
+      const headers = rows[0].map(h => h.toLowerCase().trim());
+      const nameIdx = headers.indexOf("name");
+      const emailIdx = headers.indexOf("email");
+      const roleIdx = headers.indexOf("role");
+      const deptIdx = headers.indexOf("department");
+      const idIdx = headers.indexOf("university id") !== -1 ? headers.indexOf("university id") : headers.indexOf("universityid");
+      const phoneIdx = headers.indexOf("phone number") !== -1 ? headers.indexOf("phone number") : headers.indexOf("phonenumber");
+
+      if (nameIdx === -1 || emailIdx === -1) {
+        alert("CSV must contain at least 'Name' and 'Email' columns");
+        return;
+      }
+
+      const parsedUsers = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (row[nameIdx] && row[emailIdx]) {
+          parsedUsers.push({
+            name: row[nameIdx],
+            email: row[emailIdx],
+            role: roleIdx !== -1 ? row[roleIdx].toLowerCase() : "student",
+            department: deptIdx !== -1 ? row[deptIdx] : "",
+            universityId: idIdx !== -1 ? row[idIdx] : "",
+            phoneNumber: phoneIdx !== -1 ? row[phoneIdx] : "",
+          });
+        }
+      }
+
+      if (parsedUsers.length === 0) {
+        alert("No valid user records found in CSV");
+        return;
+      }
+
+      setCsvUsers(parsedUsers);
+      setShowCsvModal(true);
+      e.target.value = "";
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConfirmImport = async () => {
+    setImportingCsv(true);
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/admin/users/import-csv`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ users: csvUsers }),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        alert(`Successfully imported ${data.data.successCount} users. Failed: ${data.data.failed.length}`);
+        if (data.data.failed.length > 0) {
+          console.warn("Failed imports:", data.data.failed);
+        }
+        setShowCsvModal(false);
+        setCsvUsers([]);
+        await fetchUsers();
+      } else {
+        alert(data.message || "Failed to import users");
+      }
+    } catch {
+      alert("Something went wrong");
+    } finally {
+      setImportingCsv(false);
+    }
+  };
 
   const handleCreateUser = async () => {
     if (!form.name || !form.email || !form.universityId || !form.phoneNumber || !form.department) {
@@ -3825,6 +4305,51 @@ export function AdminUsers() {
 
   return (
     <div className="space-y-6">
+      <input type="file" id="csv-file-input" accept=".csv" className="hidden" onChange={handleCSVFileChange} />
+
+      {/* CSV Import Preview Modal */}
+      {showCsvModal && (
+        <Modal open={showCsvModal} onClose={() => { setShowCsvModal(false); setCsvUsers([]); }} title="Import Users Preview">
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-700 dark:text-neutral-300">
+              Loaded <span className="font-semibold">{csvUsers.length}</span> user records from the CSV file. Please confirm to proceed.
+            </p>
+            <div className="max-h-[300px] overflow-y-auto border border-neutral-200 dark:border-[#30363d] rounded-md">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className={tableHead}>
+                    <th className="py-2 px-3 text-left">Name</th>
+                    <th className="py-2 px-3 text-left">Email</th>
+                    <th className="py-2 px-3 text-left">Role</th>
+                    <th className="py-2 px-3 text-left">Dept</th>
+                    <th className="py-2 px-3 text-left">Uni ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {csvUsers.map((cu, idx) => (
+                    <tr key={idx} className="border-b border-neutral-100 dark:border-[#21262d]">
+                      <td className="py-2 px-3 font-medium">{cu.name}</td>
+                      <td className="py-2 px-3">{cu.email}</td>
+                      <td className="py-2 px-3 capitalize">{cu.role}</td>
+                      <td className="py-2 px-3">{cu.department || "—"}</td>
+                      <td className="py-2 px-3">{cu.universityId || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => { setShowCsvModal(false); setCsvUsers([]); }} disabled={importingCsv}>
+                Cancel
+              </Button>
+              <Button onClick={handleConfirmImport} disabled={importingCsv}>
+                {importingCsv ? "Importing..." : "Confirm Import"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Create User Modal */}
       {showModal && (
         <Modal open={showModal} onClose={() => { setShowModal(false); setError(""); resetForm(); }} title="Add New User">
@@ -3857,9 +4382,14 @@ export function AdminUsers() {
           <h1 className={cn("text-2xl font-bold", heading)}>User Management</h1>
           <p className={cn("text-sm", subtext)}>{users.length} total users</p>
         </div>
-        <Button onClick={() => { resetForm(); setShowModal(true); }}>
-          <Plus className="h-4 w-4" /> Add User
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={triggerCSVImport}>
+            <Upload className="h-4 w-4" /> Import CSV
+          </Button>
+          <Button onClick={() => { resetForm(); setShowModal(true); }}>
+            <Plus className="h-4 w-4" /> Add User
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -3869,7 +4399,7 @@ export function AdminUsers() {
             type="text"
             placeholder="Search by name, email, role, department..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery?.(e.target.value)}
             className={cn("bg-transparent text-sm outline-none w-full", heading)}
           />
         </div>
@@ -4632,11 +5162,16 @@ export function AdminAuditLogs() {
 /* ═══════════════════════════════════════════════════
    ADMIN PROJECTS
    ═══════════════════════════════════════════════════ */
-export function AdminProjects() {
+export function AdminProjects({
+  searchQuery = "",
+  setSearchQuery,
+}: {
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
+}) {
   const [projects, setProjects] = useState<any[]>([]);
   const [supervisors, setSupervisors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
   const [assigning, setAssigning] = useState<string | null>(null);
 
   const fetchProjects = async () => {
@@ -4707,7 +5242,7 @@ export function AdminProjects() {
         <div className="flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] px-3 py-1.5 flex-1 min-w-[200px]">
           <Search className={cn("h-4 w-4", mutedText)} />
           <input type="text" placeholder="Search by title, owner, supervisor..."
-            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchQuery} onChange={(e) => setSearchQuery?.(e.target.value)}
             className={cn("bg-transparent text-sm outline-none w-full", heading)} />
         </div>
       </div>
@@ -5421,9 +5956,21 @@ function ChatView({
   const [messageInput, setMessageInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showMobileList, setShowMobileList] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const selectedConvo = conversations.find((c) => c.id === selectedChat);
+
+  const filteredConversations = conversations.filter((c) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      c.name?.toLowerCase().includes(q) ||
+      c.project?.toLowerCase().includes(q) ||
+      c.lastMessage?.toLowerCase().includes(q)
+    );
+  });
 
   const currentMessages = selectedChat ? messages[selectedChat] || [] : [];
-  const selectedConvo = conversations.find((c) => c.id === selectedChat);
 
   useEffect(() => {
     if (!selectedChat) return;
@@ -5534,6 +6081,8 @@ function ChatView({
             <input
               type="text"
               placeholder="Search conversations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className={cn(
                 "bg-transparent text-sm outline-none w-full",
                 heading,
@@ -5542,7 +6091,7 @@ function ChatView({
           </div>
         </div>
         <div className="flex-1 overflow-auto">
-          {conversations.map((convo) => (
+          {filteredConversations.map((convo) => (
             <button
               key={convo.id}
               onClick={() => {

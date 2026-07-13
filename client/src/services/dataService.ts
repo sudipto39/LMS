@@ -664,6 +664,7 @@ const dataService = {
     repoOption?: string;
     repoName?: string;
     existingRepoUrl?: string;
+    parentProjectId?: string;
   }) => {
     const res = await projectsAPI.create({
       title: data.title,
@@ -672,6 +673,7 @@ const dataService = {
       repoName: data.repoName,
       technologies: data.techStack ?? [],
       supervisorId: data.supervisorId,
+      parentProjectId: data.parentProjectId,
     });
     return res.data?.data ?? res.data;
   },
