@@ -821,6 +821,28 @@ const defaultPages: Record<Role, Page> = {
   ADMIN: "admin-dashboard",
 };
 
+const getSafePage = (targetPage: Page, user: any): Page => {
+  const publicPages = ["landing", "login", "signup"];
+  
+  if (!user) {
+    return publicPages.includes(targetPage) ? targetPage : "landing";
+  }
+
+  if (publicPages.includes(targetPage)) {
+    return defaultPages[user.role as Role] || "student-dashboard";
+  }
+
+  if (["activity", "settings"].includes(targetPage)) {
+    return targetPage;
+  }
+
+  if (user.role === "STUDENT" && targetPage.startsWith("student-")) return targetPage;
+  if (user.role === "SUPERVISOR" && targetPage.startsWith("supervisor-")) return targetPage;
+  if (user.role === "ADMIN" && targetPage.startsWith("admin-")) return targetPage;
+
+  return defaultPages[user.role as Role] || "student-dashboard";
+};
+
 const parentPages: Partial<Record<Page, Page>> = {
   login: "landing",
   signup: "login",
@@ -923,6 +945,7 @@ export function App() {
       logout();
       setPage("login");
       setHistory(["login"]);
+      window.history.replaceState({ page: "login" }, "", "#/login");
       clearAuth();
     };
     window.addEventListener("auth:logout", handleForceLogout);
@@ -942,6 +965,7 @@ export function App() {
       const dash = defaultPages[user.role];
       setHistory([dash]);
       setPage(dash);
+      window.history.replaceState({ page: dash }, "", `#/${dash}`);
     }
   }, [isAuthenticated, user, page]);
 
@@ -976,20 +1000,96 @@ export function App() {
     };
   }, [page, logout]);
 
+  // Security guard: Validate active page against authenticated user role
+  useEffect(() => {
+    if (isLoading) return;
+    const resolved = getSafePage(page, user);
+    if (resolved !== page) {
+      setPage(resolved);
+      window.history.replaceState({ page: resolved }, "", `#/${resolved}`);
+    }
+  }, [page, user, isLoading]);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state as { page?: Page } | null;
+      if (state?.page) {
+        setPage(state.page);
+        setHistory((prev) => {
+          const idx = prev.lastIndexOf(state.page!);
+          if (idx !== -1) {
+            return prev.slice(0, idx + 1);
+          }
+          return [...prev, state.page!];
+        });
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+
+    // Initial deep-linking hash extraction on mount
+    const initialHash = window.location.hash.replace(/^#\/?/, "") as Page;
+    const validPages: Page[] = [
+      "landing",
+      "login",
+      "signup",
+      "student-dashboard",
+      "student-projects",
+      "student-create-project",
+      "student-project-detail",
+      "student-submissions",
+      "student-messages",
+      "student-profile",
+      "supervisor-dashboard",
+      "supervisor-projects",
+      "supervisor-project-detail",
+      "supervisor-reviews",
+      "supervisor-grades",
+      "supervisor-messages",
+      "supervisor-profile",
+      "admin-dashboard",
+      "admin-users",
+      "admin-batches",
+      "admin-gitea-settings",
+      "admin-projects",
+      "admin-audit-logs",
+      "admin-profile",
+      "activity",
+      "settings",
+    ];
+
+    let startPage = page;
+    if (initialHash && validPages.includes(initialHash)) {
+      startPage = initialHash;
+      setPage(initialHash);
+      setHistory([initialHash]);
+    }
+
+    if (!window.history.state) {
+      window.history.replaceState({ page: startPage }, "", `#/${startPage}`);
+    }
+
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   const navigateTo = useCallback((newPage: Page) => {
     setSearchQuery("");
     setHistory((prev) => [...prev, newPage]);
     setPage(newPage);
+    window.history.pushState({ page: newPage }, "", `#/${newPage}`);
   }, []);
 
   const goBack = useCallback(() => {
     setSearchQuery("");
-    setHistory((prev) => {
-      if (prev.length <= 1) return prev;
-      const next = prev.slice(0, -1);
-      setPage(next[next.length - 1]!);
-      return next;
-    });
+    if (window.history.state && window.history.state.page) {
+      window.history.back();
+    } else {
+      setHistory((prev) => {
+        if (prev.length <= 1) return prev;
+        const next = prev.slice(0, -1);
+        setPage(next[next.length - 1]!);
+        return next;
+      });
+    }
   }, []);
 
   const getParentPage = useCallback(

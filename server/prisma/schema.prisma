@@ -27,6 +27,7 @@ model User {
   submittedMilestones Milestone[]       @relation("MilestoneSubmitter")
   ownedProjects       Project[]         @relation("ProjectOwner")
   supervisedProjects  Project[]         @relation("ProjectSupervisor")
+  projectMembers      ProjectMember[]
 
   @@map("users")
 }
@@ -75,8 +76,8 @@ model Project {
   id           String        @id @default(cuid())
   title        String
   description  String?
-  repoName     String?       @unique
-  repoUrl      String?       @unique
+  repoName     String?
+  repoUrl      String?
   ownerId      String
   supervisorId String?
   batchId      String
@@ -97,6 +98,7 @@ model Project {
   parentProject   Project?      @relation("ProjectExtension", fields: [parentProjectId], references: [id])
   extensions      Project[]     @relation("ProjectExtension")
   phase           Int           @default(1)
+  members         ProjectMember[]
 
   @@map("projects")
 }
@@ -141,6 +143,16 @@ model Activity {
   @@index([projectId])
   @@index([userId])
   @@map("activities")
+}
+
+model ProjectMember {
+  projectId String
+  userId    String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@map("project_members")
 }
 
 enum Role {

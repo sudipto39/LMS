@@ -11,6 +11,9 @@ import {
   getProjectFeedback,
   postProjectFeedback,
   submitFinalProject,
+  getPotentialMembers,
+  addProjectMember,
+  removeProjectMember,
 } from "../controllers/projectController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
@@ -30,6 +33,10 @@ router.get("/:id/files", protect, getProjectFiles);
 // Feedback thread — GET to read, POST to reply (student + supervisor)
 router.get("/:id/feedback", protect, getProjectFeedback);
 router.post("/:id/feedback", protect, postProjectFeedback);
+
+router.get("/:id/potential-members", protect, restrictTo("STUDENT"), getPotentialMembers);
+router.post("/:id/members", protect, restrictTo("STUDENT"), addProjectMember);
+router.delete("/:id/members/:userId", protect, removeProjectMember);
 
 // /:id must be AFTER named routes
 router.get("/:id", protect, getProjectById);

@@ -47,6 +47,7 @@ import {
 } from "@/components/Icons";
 import { User as UserIcon, Trash2 } from "lucide-react";
 import { cn } from "@/utils/cn";
+import { useAuth } from "../hooks/useAuth";
 
 const GITEA_URL = getGiteaURL() || "https://gitea.example.com";
 
@@ -665,9 +666,9 @@ export function StudentProjects({
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" /> Due:{" "}
-                      {(p as any).endDate
-                        ? new Date((p as any).endDate).toLocaleDateString()
-                        : p.deadline || "—"}
+                      {(p as any).endDate || p.deadline
+                        ? new Date((p as any).endDate || p.deadline).toLocaleString(undefined, { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : "—"}
                     </span>
                     <InactivityBadge lastPush={p.lastPush} />
                     {(p as any).repoUrl && (
@@ -715,6 +716,7 @@ export function CreateProject({
 }: {
   onNavigate: (page: Page) => void;
 }) {
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [repoOption, setRepoOption] = useState<"create" | "link">("create");
   const [showSuccess, setShowSuccess] = useState(false);
@@ -733,6 +735,12 @@ export function CreateProject({
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [repoName, setRepoName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
+  const [projectMilestones, setProjectMilestones] = useState([
+    { title: "Project Setup & Database Design", order: 1, dueDate: "" },
+    { title: "Core Features Implementation", order: 2, dueDate: "" },
+    { title: "Testing & Documentation", order: 3, dueDate: "" },
+    { title: "Final Submission", order: 4, dueDate: "" },
+  ]);
 
   const [myProjects, setMyProjects] = useState<any[]>([]);
 
@@ -745,6 +753,17 @@ export function CreateProject({
     techStack: [] as string[],
     parentProjectId: "",
   });
+
+  useEffect(() => {
+    const enrollment = user?.enrollments?.[0];
+    if (enrollment?.batch) {
+      setFormData((f) => ({
+        ...f,
+        courseId: enrollment.batch.courseId || enrollment.batch.course?.id || "",
+        batch: enrollment.batch.id || "",
+      }));
+    }
+  }, [user]);
 
   // useEffect(() => {
   //   const fetchInitialData = async () => {
@@ -922,22 +941,16 @@ export function CreateProject({
 
       localStorage.setItem("activeProjectId", projectId);
 
-      // 2. Create default milestones
-      const defaultMilestones = [
-        { title: "Project Setup & Database Design", order: 1 },
-        { title: "Core Features Implementation", order: 2 },
-        { title: "Testing & Documentation", order: 3 },
-        { title: "Final Submission", order: 4 },
-      ];
-
+      // 2. Create milestones
       await Promise.all(
-        defaultMilestones.map((m) =>
+        projectMilestones.map((m) =>
           fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
             method: "POST",
             headers: getAuthHeaders(),
             body: JSON.stringify({
-              title: m.title,
+              title: m.title || `Milestone ${m.order}`,
               order: m.order,
+              dueDate: m.dueDate || undefined,
             }),
           }),
         ),
@@ -965,7 +978,7 @@ export function CreateProject({
     } finally {
       setIsCreating(false);
     }
-  }, [formData, repoOption, repoName, repoUrl, onNavigate]);
+  }, [formData, repoOption, repoName, repoUrl, projectMilestones, onNavigate]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -1168,84 +1181,124 @@ export function CreateProject({
                 </select>
               </div>
             </div> */}
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1.5", heading)}
-                >
-                  Course *
-                </label>
-                <select
-                  className={selectClass}
-                  value={formData.courseId}
-                  onChange={(e) => {
-                    setFormData((f) => ({
-                      ...f,
-                      courseId: e.target.value,
-                      batch: "", // reset batch when course changes
-                    }));
-                  }}
-                >
-                  <option value="">Select Course</option>
-                  {courses.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+            {user?.enrollments?.[0]?.batch ? (
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={cn("block text-sm font-medium mb-1.5", heading)}>
+                    Course
+                  </label>
+                  <div className="px-3 py-2 bg-neutral-100 dark:bg-[#161b22] border border-neutral-300 dark:border-[#30363d] rounded-lg text-sm text-neutral-800 dark:text-[#c9d1d9] font-medium select-none">
+                    {user.enrollments[0].batch.course?.title || "Enrolled Course"}
+                  </div>
+                </div>
+                <div>
+                  <label className={cn("block text-sm font-medium mb-1.5", heading)}>
+                    Batch
+                  </label>
+                  <div className="px-3 py-2 bg-neutral-100 dark:bg-[#161b22] border border-neutral-300 dark:border-[#30363d] rounded-lg text-sm text-neutral-800 dark:text-[#c9d1d9] font-medium select-none">
+                    {user.enrollments[0].batch.name}
+                  </div>
+                </div>
+                <div>
+                  <label className={cn("block text-sm font-medium mb-1.5", heading)}>
+                    Supervisor
+                  </label>
+                  <select
+                    className={selectClass}
+                    value={formData.supervisorId}
+                    onChange={(e) =>
+                      setFormData((f) => ({ ...f, supervisorId: e.target.value }))
+                    }
+                  >
+                    <option value="">Select Supervisor</option>
+                    {supervisors.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label
+                    className={cn("block text-sm font-medium mb-1.5", heading)}
+                  >
+                    Course *
+                  </label>
+                  <select
+                    className={selectClass}
+                    value={formData.courseId}
+                    onChange={(e) => {
+                      setFormData((f) => ({
+                        ...f,
+                        courseId: e.target.value,
+                        batch: "", // reset batch when course changes
+                      }));
+                    }}
+                  >
+                    <option value="">Select Course</option>
+                    {courses.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1.5", heading)}
-                >
-                  Batch *
-                </label>
-                <select
-                  className={selectClass}
-                  value={formData.batch}
-                  onChange={(e) =>
-                    setFormData((f) => ({ ...f, batch: e.target.value }))
-                  }
-                  disabled={!formData.courseId || loadingBatches}
-                >
-                  <option value="">
-                    {!formData.courseId
-                      ? "Select a course first"
-                      : loadingBatches
-                        ? "Loading batches..."
-                        : "Select Batch"}
-                  </option>
-                  {batches.map((b) => (
-                    <option key={b._id} value={b._id}>
-                      {b.name}
+                <div>
+                  <label
+                    className={cn("block text-sm font-medium mb-1.5", heading)}
+                  >
+                    Batch *
+                  </label>
+                  <select
+                    className={selectClass}
+                    value={formData.batch}
+                    onChange={(e) =>
+                      setFormData((f) => ({ ...f, batch: e.target.value }))
+                    }
+                    disabled={!formData.courseId || loadingBatches}
+                  >
+                    <option value="">
+                      {!formData.courseId
+                        ? "Select a course first"
+                        : loadingBatches
+                          ? "Loading batches..."
+                          : "Select Batch"}
                     </option>
-                  ))}
-                </select>
-              </div>
+                    {batches.map((b) => (
+                      <option key={b._id} value={b._id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label
-                  className={cn("block text-sm font-medium mb-1.5", heading)}
-                >
-                  Supervisor
-                </label>
-                <select
-                  className={selectClass}
-                  value={formData.supervisorId}
-                  onChange={(e) =>
-                    setFormData((f) => ({ ...f, supervisorId: e.target.value }))
-                  }
-                >
-                  <option value="">Select Supervisor</option>
-                  {supervisors.map((s) => (
-                    <option key={s._id} value={s._id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <label
+                    className={cn("block text-sm font-medium mb-1.5", heading)}
+                  >
+                    Supervisor
+                  </label>
+                  <select
+                    className={selectClass}
+                    value={formData.supervisorId}
+                    onChange={(e) =>
+                      setFormData((f) => ({ ...f, supervisorId: e.target.value }))
+                    }
+                  >
+                    <option value="">Select Supervisor</option>
+                    {supervisors.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
             <div>
               <label
                 className={cn("block text-sm font-medium mb-1.5", heading)}
@@ -1417,14 +1470,9 @@ export function CreateProject({
               Define key milestones for your project (you can add more later).
             </p>
             <div className="space-y-3">
-              {[
-                "Project Setup & Database Design",
-                "Core Features Implementation",
-                "Testing & Documentation",
-                "Final Submission",
-              ].map((m, i) => (
+              {projectMilestones.map((m, i) => (
                 <div
-                  key={m}
+                  key={i}
                   className={cn("flex items-center gap-3 px-4 py-3", infoBox)}
                 >
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-200 dark:bg-[#30363d] text-xs font-bold text-neutral-600 dark:text-[#c9d1d9]">
@@ -1432,7 +1480,12 @@ export function CreateProject({
                   </span>
                   <input
                     type="text"
-                    defaultValue={m}
+                    value={m.title}
+                    onChange={(e) => {
+                      const updated = [...projectMilestones];
+                      updated[i].title = e.target.value;
+                      setProjectMilestones(updated);
+                    }}
                     className={cn(
                       "flex-1 text-sm bg-transparent outline-none",
                       heading,
@@ -1440,6 +1493,12 @@ export function CreateProject({
                   />
                   <input
                     type="date"
+                    value={m.dueDate}
+                    onChange={(e) => {
+                      const updated = [...projectMilestones];
+                      updated[i].dueDate = e.target.value;
+                      setProjectMilestones(updated);
+                    }}
                     className={cn(
                       "text-xs bg-transparent outline-none border border-neutral-200 dark:border-[#30363d] rounded px-2 py-1",
                       subtext,
@@ -1448,7 +1507,16 @@ export function CreateProject({
                 </div>
               ))}
             </div>
-            <Button variant="ghost" size="sm">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setProjectMilestones((prev) => [
+                  ...prev,
+                  { title: "", order: prev.length + 1, dueDate: "" },
+                ])
+              }
+            >
               <Plus className="h-4 w-4" /> Add Milestone
             </Button>
             <div className="flex justify-between pt-2">
@@ -1674,6 +1742,7 @@ export function StudentProjectDetail({
 }: {
   onNavigate: (page: Page) => void;
 }) {
+  const { user } = useAuth();
   const [tab, setTab] = useState<
     "overview" | "milestones" | "progress" | "files" | "feedback"
   >("overview");
@@ -1686,7 +1755,65 @@ export function StudentProjectDetail({
   const [submittingFinal, setSubmittingFinal] = useState(false);
   const [submitFinalError, setSubmitFinalError] = useState("");
 
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [memberIdentifier, setMemberIdentifier] = useState("");
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
   const projectId = localStorage.getItem("activeProjectId");
+
+  const handleAddMember = async () => {
+    if (!memberIdentifier) return;
+    setLoadingMembers(true);
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/projects/${projectId}/members`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ identifier: memberIdentifier }),
+      });
+      if (res.ok) {
+        const memberData = await res.json();
+        setProject((prev: any) => ({
+          ...prev,
+          members: [...(prev?.members || []), memberData.data],
+        }));
+        setMemberIdentifier("");
+        setShowMemberModal(false);
+      } else {
+        const errData = await res.json();
+        alert(errData.message || "Failed to add member");
+      }
+    } catch (err) {
+      console.error("Failed to add member", err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!window.confirm("Are you sure you want to remove this group member?")) return;
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/projects/${projectId}/members/${userId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setProject((prev: any) => ({
+          ...prev,
+          members: (prev?.members || []).filter((m: any) => m.userId !== userId),
+        }));
+      } else {
+        const errData = await res.json();
+        alert(errData.message || "Failed to remove member");
+      }
+    } catch (err) {
+      console.error("Failed to remove member", err);
+    }
+  };
 
   const fetchProjectDetail = useCallback(async () => {
     try {
@@ -1811,6 +1938,52 @@ export function StudentProjectDetail({
         </Modal>
       )}
 
+      {showMemberModal && (
+        <Modal
+          open={showMemberModal}
+          onClose={() => {
+            setShowMemberModal(false);
+            setMemberIdentifier("");
+          }}
+          title="Add Group Member"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+              Add a student to your group project. Enter their registered email address, Gitea username, or University ID exactly as registered in the system.
+            </p>
+            <div>
+              <label className={cn("block text-sm font-medium mb-1.5", heading)}>
+                Student Identifier *
+              </label>
+              <input
+                type="text"
+                placeholder="Email, Gitea username, or University ID..."
+                value={memberIdentifier}
+                onChange={(e) => setMemberIdentifier(e.target.value)}
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-[#161b22] border border-neutral-300 dark:border-[#30363d] rounded-lg text-sm text-neutral-900 dark:text-[#c9d1d9] focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowMemberModal(false);
+                  setMemberIdentifier("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddMember}
+                disabled={!memberIdentifier || loadingMembers}
+              >
+                {loadingMembers ? "Adding..." : "Add Member"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
@@ -1898,9 +2071,9 @@ export function StudentProjectDetail({
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Deadline</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {project.endDate
-                      ? new Date(project.endDate).toLocaleDateString()
-                      : project.deadline || "—"}
+                    {project.endDate || project.deadline
+                      ? new Date(project.endDate || project.deadline).toLocaleString(undefined, { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : "—"}
                   </dd>
                 </div>
                 <div>
@@ -1961,6 +2134,67 @@ export function StudentProjectDetail({
                   </Button>
                 </div>
               )}
+            </div>
+
+            <div className={cn(card, "p-5")}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className={cn("font-semibold", heading)}>Group Members</h3>
+                {project.ownerId === user?.id && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setShowMemberModal(true);
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1 inline" /> Add Member
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-3">
+                {/* Creator/Owner */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-neutral-50 dark:bg-[#161b22] border border-neutral-100 dark:border-[#30363d]">
+                  <div>
+                    <p className={cn("text-sm font-semibold", heading)}>
+                      {project.owner?.name} (Owner)
+                    </p>
+                    <p className={cn("text-xs text-neutral-500", subtext)}>{project.owner?.email}</p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-xs bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 font-medium">
+                    Creator
+                  </span>
+                </div>
+
+                {/* Additional Group Members */}
+                {(!project.members || project.members.length === 0) && (
+                  <p className="text-xs italic text-center py-2 text-neutral-500">
+                    No group members added yet.
+                  </p>
+                )}
+
+                {project.members?.map((m: any) => (
+                  <div
+                    key={m.userId}
+                    className="flex items-center justify-between p-3 rounded-lg bg-neutral-50 dark:bg-[#161b22] border border-neutral-100 dark:border-[#30363d]"
+                  >
+                    <div>
+                      <p className={cn("text-sm font-semibold", heading)}>
+                        {m.user?.name}
+                      </p>
+                      <p className={cn("text-xs text-neutral-500", subtext)}>{m.user?.email}</p>
+                    </div>
+                    {project.ownerId === user?.id && (
+                      <button
+                        onClick={() => handleRemoveMember(m.userId)}
+                        className="text-red-500 hover:text-red-600 p-1 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition"
+                        title="Remove member"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <div className="space-y-6">
@@ -2086,7 +2320,7 @@ export function StudentProjectDetail({
                     {m.dueDate && (
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        Due: {m.dueDate}
+                        Due: {new Date(m.dueDate).toLocaleDateString(undefined, { dateStyle: 'medium' })}
                       </span>
                     )}
                   </div>
@@ -2110,15 +2344,7 @@ export function StudentProjectDetail({
                             headers: { Authorization: `Bearer ${token}` },
                           },
                         );
-                        // Refresh milestones
-                        const res = await fetch(
-                          `${API_URL}/v1/projects/${projectId}/milestones`,
-                          { headers: getAuthHeaders() },
-                        );
-                        const data = await res.json();
-                        setMilestones(
-                          Array.isArray(data.data) ? data.data : [],
-                        );
+                        await fetchProjectDetail();
                       }}
                     >
                       Start
@@ -2140,14 +2366,7 @@ export function StudentProjectDetail({
                             body: JSON.stringify({ studentNotes: "Completed" }),
                           },
                         );
-                        const res = await fetch(
-                          `${API_URL}/v1/projects/${projectId}/milestones`,
-                          { headers: getAuthHeaders() },
-                        );
-                        const data = await res.json();
-                        setMilestones(
-                          Array.isArray(data.data) ? data.data : [],
-                        );
+                        await fetchProjectDetail();
                       }}
                     >
                       <Send className="h-4 w-4" /> Submit
@@ -2170,6 +2389,25 @@ export function StudentProjectDetail({
                     >
                       ✓ Approved
                     </span>
+                  )}
+                  {m.status === "REJECTED" && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        const token = tokenStore.get();
+                        await fetch(
+                          `${API_URL}/v1/milestones/${m.id ?? m._id}/start`,
+                          {
+                            method: "PATCH",
+                            headers: { Authorization: `Bearer ${token}` },
+                          },
+                        );
+                        await fetchProjectDetail();
+                      }}
+                    >
+                      Resubmit
+                    </Button>
                   )}
                 </div>
               </div>
@@ -3087,8 +3325,8 @@ export function SupervisorProjectDetail({
                 <div>
                   <dt className={cn("mb-0.5", mutedText)}>Deadline</dt>
                   <dd className={cn("font-medium", heading)}>
-                    {project.endDate
-                      ? new Date(project.endDate).toLocaleDateString()
+                    {project.endDate || project.deadline
+                      ? new Date(project.endDate || project.deadline).toLocaleString(undefined, { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                       : "—"}
                   </dd>
                 </div>
@@ -3224,7 +3462,7 @@ export function SupervisorProjectDetail({
                         )}
                       >
                         <Calendar className="h-3 w-3" />
-                        Due: {m.dueDate}
+                        Due: {new Date(m.dueDate).toLocaleDateString(undefined, { dateStyle: 'medium' })}
                       </p>
                     )}
                   </div>

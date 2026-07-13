@@ -40,13 +40,21 @@ const handleGiteaWebhook = async (
 
   if (event !== "push") return;
 
-  const payload = JSON.parse((req.body as Buffer).toString());
-  const repoName = payload.repository?.name as string | undefined;
+  let payload: any;
+  try {
+    const rawBody = (req.body as Buffer).toString();
+    payload = JSON.parse(rawBody);
+  } catch (err) {
+    console.error("❌ Failed to parse Gitea webhook payload:", err);
+    return;
+  }
+  const repoUrl = payload.repository?.html_url as string | undefined;
 
-  if (!repoName) return;
+  if (!repoUrl) return;
 
-  const project = await prisma.project.findUnique({
-    where: { repoName },
+  const project = await prisma.project.findFirst({
+    where: { repoUrl },
+    orderBy: { phase: "desc" },
     select: { id: true, ownerId: true },
   });
 
