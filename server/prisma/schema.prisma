@@ -93,6 +93,10 @@ model Project {
   batch        Batch         @relation(fields: [batchId], references: [id])
   owner        User          @relation("ProjectOwner", fields: [ownerId], references: [id])
   supervisor   User?         @relation("ProjectSupervisor", fields: [supervisorId], references: [id])
+  parentProjectId String?
+  parentProject   Project?      @relation("ProjectExtension", fields: [parentProjectId], references: [id])
+  extensions      Project[]     @relation("ProjectExtension")
+  phase           Int           @default(1)
 
   @@map("projects")
 }
@@ -155,6 +159,7 @@ enum MilestoneStatus {
 
 enum ProjectStatus {
   DRAFT
+  IN_PROGRESS
   SUBMITTED
   APPROVED
   REJECTED

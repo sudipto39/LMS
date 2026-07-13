@@ -19,50 +19,84 @@ const projectInclude = {
   owner: { select: { id: true, name: true, email: true } },
   supervisor: { select: { id: true, name: true, email: true } },
   batch: { select: { id: true, name: true, endYear: true } },
+  parentProject: { select: { id: true, title: true, phase: true, status: true } },
   _count: { select: { milestones: true } },
 } as const;
 
 export const createProject = catchAsync(async (req: Request, res: Response) => {
   console.log("📋 Received body:", JSON.stringify(req.body, null, 2));
   const userId = req.user!.id;
-  const { title, description, batchId, repoName } = req.body as {
+  const { title, description, batchId, repoName, parentProjectId } = req.body as {
     title: string;
     description?: string;
     batchId: string;
     repoName?: string;
+    parentProjectId?: string;
   };
 
   if (!title) throw new BadRequestError("Project title is required");
   if (!batchId) throw new BadRequestError("Batch ID is required");
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { giteaUsername: true },
-  });
+  let repo: { name: string; html_url: string };
+  let phase = 1;
 
-  if (!user?.giteaUsername) {
-    throw new BadRequestError(
-      "Please set up your Gitea username in your profile before creating a project",
+  if (parentProjectId) {
+    const parentProject = await prisma.project.findUnique({
+      where: { id: parentProjectId },
+      select: { ownerId: true, repoName: true, repoUrl: true, phase: true },
+    });
+
+    if (!parentProject) throw new NotFoundError("Parent project not found");
+    if (parentProject.ownerId !== userId) throw new ForbiddenError("You must own the parent project to extend it");
+    if (!parentProject.repoName || !parentProject.repoUrl) throw new BadRequestError("Parent project has no Gitea repository linked");
+
+    // Archive the parent project
+    await prisma.project.update({
+      where: { id: parentProjectId },
+      data: { status: "ARCHIVED" },
+    });
+
+    // Reuse the parent project's Gitea repository settings
+    repo = {
+      name: parentProject.repoName,
+      html_url: parentProject.repoUrl,
+    };
+    phase = parentProject.phase + 1;
+  } else {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { giteaUsername: true },
+    });
+
+    if (!user?.giteaUsername) {
+      throw new BadRequestError(
+        "Please set up your Gitea username in your profile before creating a project",
+      );
+    }
+
+    const sanitizedName = (repoName ?? title)
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    const newRepo = await giteaService.createRepo(
+      user.giteaUsername,
+      sanitizedName,
+      description,
     );
+
+    await giteaService.createWebhook(
+      user.giteaUsername,
+      sanitizedName,
+      `${env.CLIENT_URL}/api/v1/webhooks/gitea`,
+    );
+
+    repo = {
+      name: newRepo.name,
+      html_url: newRepo.html_url,
+    };
   }
-
-  const sanitizedName = (repoName ?? title)
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  const repo = await giteaService.createRepo(
-    user.giteaUsername,
-    sanitizedName,
-    description,
-  );
-
-  await giteaService.createWebhook(
-    user.giteaUsername,
-    sanitizedName,
-    `${env.CLIENT_URL}/api/v1/webhooks/gitea`,
-  );
 
   const { supervisorId } = req.body as { supervisorId?: string };
 
@@ -75,6 +109,8 @@ export const createProject = catchAsync(async (req: Request, res: Response) => {
       ownerId: userId,
       batchId,
       ...(supervisorId && { supervisorId }),
+      parentProjectId: parentProjectId || null,
+      phase,
     },
     include: projectInclude,
   });
@@ -172,6 +208,7 @@ export const getMyProjects = catchAsync(async (req: Request, res: Response) => {
 
       return {
         ...project,
+        status: (project.status === "DRAFT" && (approved > 0 || total > 0)) ? "IN_PROGRESS" : project.status,
         progress: total > 0 ? Math.round((approved / total) * 100) : 0,
         milestonesTotal: total,
         milestonesCompleted: approved,
@@ -270,6 +307,7 @@ export const getSupervisedProjects = catchAsync(
 
         return {
           ...project,
+          status: (project.status === "DRAFT" && (approved > 0 || total > 0)) ? "IN_PROGRESS" : project.status,
           progress,
           milestonesTotal: total,
           milestonesCompleted: approved,
@@ -349,6 +387,7 @@ export const getProjectById = catchAsync(
       status: "success",
       data: {
         ...project,
+        status: (project.status === "DRAFT" && (approvedCount > 0 || totalMilestones > 0)) ? "IN_PROGRESS" : project.status,
         progress,
         milestonesCompleted: approvedCount,
         milestonesTotal: totalMilestones,
@@ -506,6 +545,55 @@ export const updateProject = catchAsync(async (req: Request, res: Response) => {
   });
 
   res.status(200).json({ status: "success", data: project });
+});
+
+export const submitFinalProject = catchAsync(async (req: Request, res: Response) => {
+  const id = requireParam(req.params["id"], "id");
+
+  const project = await prisma.project.findUnique({
+    where: { id },
+    select: { ownerId: true },
+  });
+
+  if (!project) throw new NotFoundError("Project");
+  if (project.ownerId !== req.user!.id) throw new ForbiddenError();
+
+  // Check if any milestone is not approved
+  const unapprovedMilestone = await prisma.milestone.findFirst({
+    where: {
+      projectId: id,
+      isActive: true,
+      status: { not: "APPROVED" },
+    },
+  });
+
+  if (unapprovedMilestone) {
+    throw new BadRequestError("All milestones must be approved before final submission.");
+  }
+
+  // Check if there is at least one milestone
+  const milestoneCount = await prisma.milestone.count({
+    where: { projectId: id, isActive: true },
+  });
+
+  if (milestoneCount === 0) {
+    throw new BadRequestError("Project must have at least one milestone before submission.");
+  }
+
+  const updatedProject = await prisma.project.update({
+    where: { id },
+    data: { status: "SUBMITTED" },
+    include: projectInclude,
+  });
+
+  await logActivity({
+    type: "SUBMIT_FINAL",
+    payload: { status: "SUBMITTED" },
+    userId: req.user!.id,
+    projectId: id,
+  });
+
+  res.status(200).json({ status: "success", data: updatedProject });
 });
 
 export const getProjectFiles = catchAsync(

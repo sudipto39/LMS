@@ -371,6 +371,7 @@ export interface CreateProjectPayload {
   repoName?: string;
   technologies?: string[];
   supervisorId?: string;
+  parentProjectId?: string;
 }
 
 export interface UpdateProjectPayload {

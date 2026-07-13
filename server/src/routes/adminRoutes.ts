@@ -10,6 +10,7 @@ import {
   testGiteaConnection,
   deleteUser,
   updateUser,
+  importUsers,
 } from "../controllers/adminController.js";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
@@ -24,6 +25,7 @@ router.get("/audit-logs", getAuditLogs);
 
 router.delete("/users/:id", deleteUser);
 router.patch("/users/:id", updateUser);
+router.post("/users/import-csv", importUsers);
 
 router.get("/gitea/config", getGiteaConfig);
 router.post("/gitea/config", saveGiteaConfig);

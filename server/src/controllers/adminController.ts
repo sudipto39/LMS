@@ -4,6 +4,7 @@ import { prisma } from "../config/db.js";
 import { catchAsync } from "../utils/catchAsync.js";
 import { NotFoundError } from "../utils/appError.js";
 import { requireParam } from "../utils/requireParam.js";
+import bcrypt from "bcrypt";
 
 export const getAdminStats = catchAsync(
   async (_req: Request, res: Response) => {
@@ -11,17 +12,39 @@ export const getAdminStats = catchAsync(
       totalUsers,
       students,
       supervisors,
-      activeProjects,
-      inProgress,
+      activeProjectsCount,
       pendingReviews,
+      allProjects,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { role: "STUDENT" } }),
       prisma.user.count({ where: { role: "SUPERVISOR" } }),
       prisma.project.count(),
-      prisma.project.count({ where: { status: "APPROVED" } }),
       prisma.milestone.count({ where: { status: "SUBMITTED" } }),
+      prisma.project.findMany({
+        include: { _count: { select: { milestones: true } } },
+      }),
     ]);
+
+    let draft = 0;
+    let inProgress = 0;
+    let submitted = 0;
+    let approved = 0;
+    let rejected = 0;
+    let archived = 0;
+
+    for (const p of allProjects) {
+      let status = p.status;
+      if (status === "DRAFT" && p._count.milestones > 0) {
+        status = "IN_PROGRESS";
+      }
+      if (status === "DRAFT") draft++;
+      else if (status === "IN_PROGRESS") inProgress++;
+      else if (status === "SUBMITTED") submitted++;
+      else if (status === "APPROVED") approved++;
+      else if (status === "REJECTED") rejected++;
+      else if (status === "ARCHIVED") archived++;
+    }
 
     const giteaHost = process.env.GITEA_URL 
       ? new URL(process.env.GITEA_URL).hostname 
@@ -33,9 +56,14 @@ export const getAdminStats = catchAsync(
         totalUsers,
         students,
         supervisors,
-        activeProjects,
+        activeProjects: activeProjectsCount,
         inProgress,
         pendingReviews,
+        draft,
+        submitted,
+        approved,
+        rejected,
+        archived,
         giteaStatus: process.env.GITEA_URL ? "online" : "offline",
         giteaHost,
       },
@@ -60,10 +88,24 @@ export const getAllProjectsForAdmin = catchAsync(
       orderBy: { createdAt: "desc" },
     });
 
+    const projectsWithStatus = await Promise.all(
+      projects.map(async (p) => {
+        const [total, approved] = await Promise.all([
+          prisma.milestone.count({ where: { projectId: p.id, isActive: true } }),
+          prisma.milestone.count({ where: { projectId: p.id, isActive: true, status: "APPROVED" } }),
+        ]);
+        return {
+          ...p,
+          status: (p.status === "DRAFT" && (approved > 0 || total > 0)) ? "IN_PROGRESS" : p.status,
+          progress: total > 0 ? Math.round((approved / total) * 100) : 0,
+        };
+      })
+    );
+
     res.status(200).json({
       status: "success",
-      count: projects.length,
-      data: projects,
+      count: projectsWithStatus.length,
+      data: projectsWithStatus,
     });
   },
 );
@@ -199,5 +241,73 @@ export const updateUser = catchAsync(
     });
 
     res.status(200).json({ status: "success", data: updated });
+  },
+);
+
+export const importUsers = catchAsync(
+  async (req: Request, res: Response) => {
+    const { users } = req.body as {
+      users: Array<{
+        name: string;
+        email: string;
+        role: string;
+        department?: string;
+        universityId?: string;
+        phoneNumber?: string;
+      }>;
+    };
+
+    if (!Array.isArray(users)) {
+      res.status(400).json({ status: "error", message: "Users list must be an array" });
+      return;
+    }
+
+    const results = {
+      successCount: 0,
+      failed: [] as Array<{ email: string; reason: string }>,
+    };
+
+    for (const u of users) {
+      try {
+        if (!u.name || !u.email) {
+          results.failed.push({ email: u.email || "unknown", reason: "Name and email are required" });
+          continue;
+        }
+
+        const existing = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { email: u.email },
+              ...(u.universityId ? [{ universityId: u.universityId }] : []),
+            ],
+          },
+        });
+
+        if (existing) {
+          results.failed.push({ email: u.email, reason: "Email or University ID already exists" });
+          continue;
+        }
+
+        const defaultPassword = "Welcome@123";
+        const hashedPassword = await bcrypt.hash(defaultPassword, 12);
+
+        await prisma.user.create({
+          data: {
+            name: u.name,
+            email: u.email.toLowerCase(),
+            password: hashedPassword,
+            role: (u.role || "STUDENT").toUpperCase() as any,
+            department: u.department || null,
+            universityId: u.universityId || null,
+            phoneNumber: u.phoneNumber || null,
+          },
+        });
+        results.successCount++;
+      } catch (err: any) {
+        results.failed.push({ email: u.email || "unknown", reason: err.message || "Failed to create user" });
+      }
+    }
+
+    res.status(200).json({ status: "success", data: results });
   },
 );

@@ -24,7 +24,7 @@ import {
   ChevronDown,
   X,
 } from "./Icons";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useEffect } from "react";
 
 /* ── Status Pills (GitHub-style flat) ── */
 // const statusColors: Record<ProjectStatus, string> = {
@@ -46,10 +46,12 @@ import { type ReactNode, useState } from "react";
 const statusColors: Record<ProjectStatus, string> = {
   DRAFT:
     "bg-neutral-100 dark:bg-[#21262d] text-neutral-600 dark:text-[#8b949e] border-neutral-300 dark:border-[#30363d]",
+  IN_PROGRESS:
+    "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800",
   SUBMITTED:
     "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-300 dark:border-yellow-800",
   APPROVED:
-    "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800",
+    "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-[#2ea44f] border-green-300 dark:border-green-800",
   REJECTED:
     "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-300 dark:border-red-800",
   ARCHIVED:
@@ -426,6 +428,7 @@ export function Button({
   onClick,
   disabled,
   id,
+  title,
 }: {
   children: ReactNode;
   variant?: "primary" | "secondary" | "ghost" | "danger" | "success";
@@ -434,6 +437,7 @@ export function Button({
   onClick?: () => void;
   disabled?: boolean;
   id?: string;
+  title?: string;
 }) {
   const base =
     "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
@@ -457,6 +461,7 @@ export function Button({
   return (
     <button
       id={id}
+      title={title}
       className={cn(base, variants[variant], sizes[size], className)}
       onClick={onClick}
       disabled={disabled}
@@ -542,6 +547,8 @@ export function Topbar({
   userRole,
   onLogout,
   onProfileClick,
+  searchValue,
+  onSearchChange,
 }: {
   sidebarOpen: boolean;
   setSidebarOpen: (v: boolean) => void;
@@ -551,9 +558,27 @@ export function Topbar({
   userRole: string;
   onLogout: () => void;
   onProfileClick?: () => void;
+  searchValue?: string;
+  onSearchChange?: (v: string) => void;
 }) {
   const [showProfile, setShowProfile] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
+  const [displayedText, setDisplayedText] = useState("");
+  const greeting = userName ? `Hi!! ${userName}` : "Hi!!";
+
+  useEffect(() => {
+    let index = 0;
+    setDisplayedText("");
+    const interval = setInterval(() => {
+      index++;
+      setDisplayedText(greeting.slice(0, index));
+      if (index >= greeting.length) {
+        clearInterval(interval);
+      }
+    }, 150);
+    return () => clearInterval(interval);
+  }, [userName, greeting]);
+
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-neutral-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] px-4 lg:px-6">
       <div className="flex items-center gap-3">
@@ -563,13 +588,22 @@ export function Topbar({
         >
           <Menu className="h-5 w-5 text-neutral-600 dark:text-[#8b949e]" />
         </button>
+        {/* Commented out top-most search bar per user request */}
+        {/*
         <div className="hidden lg:flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-neutral-50 dark:bg-[#0d1117] px-3 py-1.5 w-80">
           <Search className="h-4 w-4 text-neutral-400 dark:text-[#484f58]" />
           <input
             type="text"
             placeholder="Search projects, students..."
+            value={searchValue || ""}
+            onChange={(e) => onSearchChange?.(e.target.value)}
             className="bg-transparent text-sm outline-none w-full text-neutral-700 dark:text-[#c9d1d9] placeholder:text-neutral-400 dark:placeholder:text-[#484f58]"
           />
+        </div>
+        */}
+        <div className="hidden lg:flex items-center text-base font-semibold text-neutral-800 dark:text-[#c9d1d9] tracking-tight min-h-[2rem] select-none">
+          <span>{displayedText}</span>
+          <span className="w-[2px] h-4 bg-blue-500 ml-1.5 animate-pulse" />
         </div>
       </div>
       <div className="flex items-center gap-1">
