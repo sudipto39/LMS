@@ -264,8 +264,8 @@ export const startMilestone = catchAsync(
 
     if (!milestone) throw new NotFoundError("Milestone");
     if (milestone.project.ownerId !== req.user!.id) throw new ForbiddenError();
-    if (milestone.status !== "PENDING") {
-      throw new BadRequestError("Only pending milestones can be started");
+    if (milestone.status !== "PENDING" && milestone.status !== "REJECTED") {
+      throw new BadRequestError("Only pending or rejected milestones can be started");
     }
 
     const updated = await prisma.milestone.update({

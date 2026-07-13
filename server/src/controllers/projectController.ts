@@ -20,22 +20,44 @@ const projectInclude = {
   supervisor: { select: { id: true, name: true, email: true } },
   batch: { select: { id: true, name: true, endYear: true } },
   parentProject: { select: { id: true, title: true, phase: true, status: true } },
+  members: {
+    include: {
+      user: {
+        select: { id: true, name: true, email: true, giteaUsername: true }
+      }
+    }
+  },
   _count: { select: { milestones: true } },
 } as const;
 
 export const createProject = catchAsync(async (req: Request, res: Response) => {
   console.log("📋 Received body:", JSON.stringify(req.body, null, 2));
   const userId = req.user!.id;
-  const { title, description, batchId, repoName, parentProjectId } = req.body as {
+  const { title, description, batchId, repoName, parentProjectId, technologies, repoOption, existingRepoUrl } = req.body as {
     title: string;
     description?: string;
     batchId: string;
     repoName?: string;
     parentProjectId?: string;
+    technologies?: string[];
+    repoOption?: "create_new" | "link_existing";
+    existingRepoUrl?: string;
   };
 
   if (!title) throw new BadRequestError("Project title is required");
-  if (!batchId) throw new BadRequestError("Batch ID is required");
+
+  let finalBatchId = batchId;
+  if (!finalBatchId) {
+    const enrollment = await prisma.batchEnrollment.findFirst({
+      where: { userId },
+      select: { batchId: true },
+    });
+    if (enrollment) {
+      finalBatchId = enrollment.batchId;
+    }
+  }
+
+  if (!finalBatchId) throw new BadRequestError("Batch ID is required");
 
   let repo: { name: string; html_url: string };
   let phase = 1;
@@ -62,6 +84,32 @@ export const createProject = catchAsync(async (req: Request, res: Response) => {
       html_url: parentProject.repoUrl,
     };
     phase = parentProject.phase + 1;
+  } else if (repoOption === "link_existing") {
+    if (!existingRepoUrl) {
+      throw new BadRequestError("Repository URL is required when linking an existing repository");
+    }
+
+    const urlPath = existingRepoUrl.trim().replace(/\/$/, "");
+    const parts = urlPath.split("/");
+    const extractedName = parts[parts.length - 1] || "project";
+    const extractedOwner = parts[parts.length - 2];
+
+    if (extractedOwner && extractedName) {
+      try {
+        await giteaService.createWebhook(
+          extractedOwner,
+          extractedName,
+          `${env.CLIENT_URL}/api/v1/webhooks/gitea`
+        );
+      } catch (err) {
+        console.warn("⚠️ Could not create webhook for existing repository:", err);
+      }
+    }
+
+    repo = {
+      name: extractedName,
+      html_url: existingRepoUrl.trim(),
+    };
   } else {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -107,10 +155,11 @@ export const createProject = catchAsync(async (req: Request, res: Response) => {
       repoName: repo.name,
       repoUrl: repo.html_url,
       ownerId: userId,
-      batchId,
+      batchId: finalBatchId,
       ...(supervisorId && { supervisorId }),
       parentProjectId: parentProjectId || null,
       phase,
+      technologies: Array.isArray(technologies) ? technologies : [],
     },
     include: projectInclude,
   });
@@ -165,7 +214,12 @@ export const deleteProject = catchAsync(async (req: Request, res: Response) => {
 
 export const getMyProjects = catchAsync(async (req: Request, res: Response) => {
   const projects = await prisma.project.findMany({
-    where: { ownerId: req.user!.id },
+    where: {
+      OR: [
+        { ownerId: req.user!.id },
+        { members: { some: { userId: req.user!.id } } },
+      ],
+    },
     include: projectInclude,
     orderBy: { createdAt: "desc" },
   });
@@ -200,11 +254,21 @@ export const getMyProjects = catchAsync(async (req: Request, res: Response) => {
         prisma.milestone.count({ where: { projectId: project.id, isActive: true, status: "APPROVED" } }),
       ]);
 
-      // effectiveDeadline: explicit endDate or June 30 of batch endYear
-      const batchEndYear = (project.batch as any)?.endYear;
-      const effectiveDeadline: Date | null =
-        project.endDate ??
-        (batchEndYear ? new Date(batchEndYear, 5, 30) : null);
+      // Find nearest upcoming milestone's due date
+      const nearestMilestone = await prisma.milestone.findFirst({
+        where: {
+          projectId: project.id,
+          isActive: true,
+          status: { notIn: ["APPROVED", "REJECTED"] },
+          dueDate: { not: null },
+        },
+        orderBy: { dueDate: "asc" },
+        select: { dueDate: true },
+      });
+
+      const resolvedDeadline = nearestMilestone?.dueDate
+        ? nearestMilestone.dueDate.toISOString()
+        : (project.endDate ? project.endDate.toISOString() : null);
 
       return {
         ...project,
@@ -212,10 +276,8 @@ export const getMyProjects = catchAsync(async (req: Request, res: Response) => {
         progress: total > 0 ? Math.round((approved / total) * 100) : 0,
         milestonesTotal: total,
         milestonesCompleted: approved,
-        effectiveDeadline: effectiveDeadline?.toISOString() ?? null,
-        daysUntilDeadline: effectiveDeadline
-          ? Math.ceil((effectiveDeadline.getTime() - now.getTime()) / 86400000)
-          : null,
+        deadline: resolvedDeadline,
+        endDate: resolvedDeadline,
       };
     })
   );
@@ -292,18 +354,28 @@ export const getSupervisedProjects = catchAsync(
           (now.getTime() - new Date(lastActiveDate).getTime()) / (1000 * 60 * 60 * 24)
         );
 
-        // effectiveDeadline: use explicit endDate first, then derive from batch endYear (June 30)
-        const batchEndYear = (project.batch as any)?.endYear;
-        const effectiveDeadline: Date | null =
-          project.endDate ??
-          (batchEndYear ? new Date(batchEndYear, 5, 30) : null); // June 30 of endYear
+        // Find nearest upcoming milestone's due date
+        const nearestMilestone = await prisma.milestone.findFirst({
+          where: {
+            projectId: project.id,
+            isActive: true,
+            status: { notIn: ["APPROVED", "REJECTED"] },
+            dueDate: { not: null },
+          },
+          orderBy: { dueDate: "asc" },
+          select: { dueDate: true },
+        });
+
+        const resolvedDeadline = nearestMilestone?.dueDate
+          ? nearestMilestone.dueDate.toISOString()
+          : (project.endDate ? project.endDate.toISOString() : null);
 
         // upcomingDeadline: within the next 180 days (6 months) — practical for academic projects
         const sixMonthsFromNow = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
         const upcomingDeadline =
-          effectiveDeadline !== null &&
-          effectiveDeadline > now &&
-          effectiveDeadline <= sixMonthsFromNow;
+          nearestMilestone?.dueDate !== undefined && nearestMilestone?.dueDate !== null &&
+          nearestMilestone.dueDate > now &&
+          nearestMilestone.dueDate <= sixMonthsFromNow;
 
         return {
           ...project,
@@ -315,7 +387,9 @@ export const getSupervisedProjects = catchAsync(
           pendingReviewCount,
           inactiveDays,
           upcomingDeadline,
-          effectiveDeadline: effectiveDeadline?.toISOString() ?? null,
+          deadline: resolvedDeadline,
+          endDate: resolvedDeadline,
+          effectiveDeadline: resolvedDeadline,
           lastPushAt: lastPushActivity?.createdAt ?? null,
         };
       })
@@ -365,7 +439,10 @@ export const getProjectById = catchAsync(
     const isOwner = project.ownerId === req.user!.id;
     const isSupervisor = project.supervisorId === req.user!.id;
     const isAdmin = req.user!.role === "ADMIN";
-    if (!isOwner && !isSupervisor && !isAdmin) throw new ForbiddenError();
+    const isMember = await prisma.projectMember.findFirst({
+      where: { projectId, userId: req.user!.id }
+    });
+    if (!isOwner && !isSupervisor && !isAdmin && !isMember) throw new ForbiddenError();
 
     // ── Calculate progress from milestones ────────────────────────────────
     const milestoneStats = await prisma.milestone.aggregate({
@@ -383,6 +460,22 @@ export const getProjectById = catchAsync(
         ? Math.round((approvedCount / totalMilestones) * 100)
         : 0;
 
+    // Find nearest upcoming milestone's due date
+    const nearestMilestone = await prisma.milestone.findFirst({
+      where: {
+        projectId,
+        isActive: true,
+        status: { notIn: ["APPROVED", "REJECTED"] },
+        dueDate: { not: null },
+      },
+      orderBy: { dueDate: "asc" },
+      select: { dueDate: true },
+    });
+
+    const resolvedDeadline = nearestMilestone?.dueDate
+      ? nearestMilestone.dueDate.toISOString()
+      : (project.endDate ? project.endDate.toISOString() : null);
+
     res.status(200).json({
       status: "success",
       data: {
@@ -391,6 +484,8 @@ export const getProjectById = catchAsync(
         progress,
         milestonesCompleted: approvedCount,
         milestonesTotal: totalMilestones,
+        deadline: resolvedDeadline,
+        endDate: resolvedDeadline,
       },
     });
   },
@@ -522,9 +617,10 @@ export const postProjectFeedback = catchAsync(async (req: Request, res: Response
 
 export const updateProject = catchAsync(async (req: Request, res: Response) => {
   const id = requireParam(req.params["id"], "id");
-  const { title, description } = req.body as {
+  const { title, description, technologies } = req.body as {
     title?: string;
     description?: string;
+    technologies?: string[];
   };
 
   const existing = await prisma.project.findUnique({
@@ -540,6 +636,7 @@ export const updateProject = catchAsync(async (req: Request, res: Response) => {
     data: {
       ...(title && { title }),
       ...(description !== undefined && { description }),
+      ...(technologies && { technologies }),
     },
     include: projectInclude,
   });
@@ -665,4 +762,148 @@ export const getProjectFiles = catchAsync(
       data: files,
     });
   },
+);
+
+export const getPotentialMembers = catchAsync(
+  async (req: Request, res: Response) => {
+    const projectId = requireParam(req.params["id"], "id");
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerId: true, batchId: true },
+    });
+
+    if (!project) throw new NotFoundError("Project");
+
+    // Fetch members
+    const members = await prisma.projectMember.findMany({
+      where: { projectId },
+      select: { userId: true },
+    });
+    const memberIds = members.map((m) => m.userId);
+
+    // Fetch other students in the same batch
+    const potentialUsers = await prisma.user.findMany({
+      where: {
+        role: "STUDENT",
+        enrollments: {
+          some: {
+            batchId: project.batchId,
+          },
+        },
+        id: {
+          notIn: [project.ownerId, ...memberIds],
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    res.status(200).json({
+      status: "success",
+      count: potentialUsers.length,
+      data: potentialUsers,
+    });
+  }
+);
+
+export const addProjectMember = catchAsync(
+  async (req: Request, res: Response) => {
+    const projectId = requireParam(req.params["id"], "id");
+    const { identifier } = req.body as { identifier: string };
+
+    if (!identifier) {
+      throw new BadRequestError("Student email, Gitea username, or University ID is required");
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerId: true, batchId: true },
+    });
+
+    if (!project) throw new NotFoundError("Project");
+    if (project.ownerId !== req.user!.id) {
+      throw new ForbiddenError("Only the project owner can add group members");
+    }
+
+    // Lookup student by email, giteaUsername, or universityId
+    const student = await prisma.user.findFirst({
+      where: {
+        role: "STUDENT",
+        OR: [
+          { email: identifier.trim() },
+          { giteaUsername: identifier.trim() },
+          { universityId: identifier.trim() },
+        ],
+      },
+    });
+
+    if (!student) {
+      throw new NotFoundError(
+        "No student user found matching the provided Email, Gitea username, or University ID"
+      );
+    }
+
+    if (student.id === project.ownerId) {
+      throw new BadRequestError("You cannot add yourself as a group member");
+    }
+
+    // Verify not already member
+    const existing = await prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: { projectId, userId: student.id },
+      },
+    });
+    if (existing) throw new BadRequestError("Student is already a group member");
+
+    const member = await prisma.projectMember.create({
+      data: {
+        projectId,
+        userId: student.id,
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, giteaUsername: true },
+        },
+      },
+    });
+
+    res.status(201).json({
+      status: "success",
+      data: member,
+    });
+  }
+);
+
+export const removeProjectMember = catchAsync(
+  async (req: Request, res: Response) => {
+    const projectId = requireParam(req.params["id"], "id");
+    const memberId = requireParam(req.params["userId"], "userId");
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerId: true },
+    });
+
+    if (!project) throw new NotFoundError("Project");
+
+    // Only owner or the member themselves can remove
+    if (project.ownerId !== req.user!.id && memberId !== req.user!.id) {
+      throw new ForbiddenError("You do not have permission to remove this member");
+    }
+
+    await prisma.projectMember.delete({
+      where: {
+        projectId_userId: { projectId, userId: memberId },
+      },
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: "Member removed successfully",
+    });
+  }
 );

@@ -36,7 +36,7 @@ export const handleGiteaWebhook = async (
   if (event !== "push") return;
 
   const payload = JSON.parse((req.body as Buffer).toString()) as {
-    repository?: { name?: string };
+    repository?: { name?: string; html_url?: string };
     commits?: Array<{
       id: string;
       message: string;
@@ -48,11 +48,12 @@ export const handleGiteaWebhook = async (
     }>;
   };
 
-  const repoName = payload.repository?.name;
-  if (!repoName) return;
+  const repoUrl = payload.repository?.html_url;
+  if (!repoUrl) return;
 
-  const project = await prisma.project.findUnique({
-    where: { repoName },
+  const project = await prisma.project.findFirst({
+    where: { repoUrl },
+    orderBy: { phase: "desc" },
     select: { id: true, ownerId: true },
   });
 
