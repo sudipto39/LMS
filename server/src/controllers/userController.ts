@@ -49,7 +49,45 @@ export const getMe = catchAsync(async (req: Request, res: Response) => {
   });
 
   if (!user) throw new NotFoundError("User");
-  res.status(200).json({ status: "success", data: user });
+
+  const batchName = user.enrollments?.[0]?.batch?.name || "—";
+  let activeProjects = 0;
+
+  if (user.role === "STUDENT") {
+    activeProjects = await prisma.project.count({
+      where: {
+        OR: [
+          { ownerId: user.id },
+          { members: { some: { userId: user.id } } },
+        ],
+        isActive: true,
+        status: { not: "ARCHIVED" },
+      },
+    });
+  } else if (user.role === "SUPERVISOR") {
+    activeProjects = await prisma.project.count({
+      where: {
+        supervisorId: user.id,
+        isActive: true,
+        status: { not: "ARCHIVED" },
+      },
+    });
+  } else if (user.role === "ADMIN") {
+    activeProjects = await prisma.project.count({
+      where: {
+        isActive: true,
+        status: { not: "ARCHIVED" },
+      },
+    });
+  }
+
+  const enrichedUser = {
+    ...user,
+    batch: batchName,
+    activeProjects,
+  };
+
+  res.status(200).json({ status: "success", data: enrichedUser });
 });
 
 export const updateMe = catchAsync(async (req: Request, res: Response) => {
@@ -116,7 +154,45 @@ export const getUserById = catchAsync(
       },
     });
     if (!user) throw new NotFoundError("User");
-    res.status(200).json({ status: "success", data: user });
+
+    const batchName = user.enrollments?.[0]?.batch?.name || "—";
+    let activeProjects = 0;
+
+    if (user.role === "STUDENT") {
+      activeProjects = await prisma.project.count({
+        where: {
+          OR: [
+            { ownerId: user.id },
+            { members: { some: { userId: user.id } } },
+          ],
+          isActive: true,
+          status: { not: "ARCHIVED" },
+        },
+      });
+    } else if (user.role === "SUPERVISOR") {
+      activeProjects = await prisma.project.count({
+        where: {
+          supervisorId: user.id,
+          isActive: true,
+          status: { not: "ARCHIVED" },
+        },
+      });
+    } else if (user.role === "ADMIN") {
+      activeProjects = await prisma.project.count({
+        where: {
+          isActive: true,
+          status: { not: "ARCHIVED" },
+        },
+      });
+    }
+
+    const enrichedUser = {
+      ...user,
+      batch: batchName,
+      activeProjects,
+    };
+
+    res.status(200).json({ status: "success", data: enrichedUser });
   }
 );
 
