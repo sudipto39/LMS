@@ -117,6 +117,9 @@ export const submitMilestone = catchAsync(
     if (milestone.status === "APPROVED") {
       throw new BadRequestError("Milestone already approved");
     }
+    if (milestone.status === "SUBMITTED") {
+      throw new BadRequestError("Milestone already submitted and awaiting review");
+    }
 
     // ── S3 uploaded files ──────────────────────────────────────────────────
     const uploadedFiles = (req.files as Express.MulterS3.File[]) ?? [];

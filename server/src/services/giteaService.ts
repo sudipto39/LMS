@@ -100,6 +100,15 @@ export const giteaService = {
 
   async createWebhook(owner: string, repo: string, webhookUrl: string) {
     try {
+      // Check if a webhook with this URL already exists to avoid duplicates
+      const existingHooks = await gitea.get(`/repos/${owner}/${repo}/hooks`);
+      const hooks = existingHooks.data as Array<{ config?: { url?: string } }>;
+      const alreadyExists = hooks.some((h) => h.config?.url === webhookUrl);
+      if (alreadyExists) {
+        console.log(`ℹ️  Gitea: Webhook already exists for ${owner}/${repo} — skipping`);
+        return null;
+      }
+
       const res = await gitea.post(`/repos/${owner}/${repo}/hooks`, {
         type: "gitea",
         active: true,
