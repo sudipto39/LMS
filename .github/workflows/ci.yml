@@ -22,6 +22,11 @@ jobs:
       GITEA_BASE_URL: ${{ secrets.GITEA_BASE_URL || 'http://localhost:3000' }}
       GITEA_ADMIN_TOKEN: ${{ secrets.GITEA_ADMIN_TOKEN || 'dummy-token' }}
       GITEA_WEBHOOK_SECRET: ${{ secrets.GITEA_WEBHOOK_SECRET || 'dummy-webhook-secret' }}
+      # AWS — dummy values so S3Client initializes without crashing during tests
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || 'AKIADUMMYACCESSKEYID' }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || 'dummySecretAccessKey1234567890123456' }}
+      AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME || 'dummy-bucket' }}
 
     steps:
       - name: Checkout repository
