@@ -1,0 +1,48 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy via SSH
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH and Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            echo "🚀 Navigating to project directory..."
+            cd /home/${{ secrets.SSH_USER }}/lms || cd ~/lms
+
+            echo "📦 Fetching latest changes..."
+            git pull origin main
+
+            echo "🛠 Installing backend dependencies..."
+            cd server
+            npm ci
+
+            echo "🗄 Running database migrations..."
+            npx prisma generate
+            npx prisma migrate deploy
+
+            echo "🔨 Building backend..."
+            npm run build
+
+            echo "🎨 Building frontend..."
+            cd ../client
+            npm ci
+            npm run build
+
+            echo "🔄 Restarting application with PM2..."
+            cd ..
+            pm2 restart lms-backend || pm2 start server/dist/index.js --name lms-backend
+            pm2 save
+
+            echo "✅ Deployment completed successfully!"
