@@ -19,8 +19,9 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             set -e
-            echo "🚀 Navigating to project directory..."
-            cd /home/${{ secrets.SSH_USER }}/lms || cd ~/lms
+
+            echo "🚀 Navigating to /home/${{ secrets.SSH_USER }}/LMS..."
+            cd /home/${{ secrets.SSH_USER }}/LMS
 
             echo "📦 Fetching latest changes..."
             git pull origin main
