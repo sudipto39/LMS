@@ -65,3 +65,36 @@ export const getRepoCommits = catchAsync(
     res.status(200).json({ status: "success", data: commits });
   }
 );
+
+export const listContents = catchAsync(
+  async (req: Request, res: Response) => {
+    const owner = requireParam(req.params["owner"], "owner");
+    const repo = requireParam(req.params["repo"], "repo");
+    const path = (req.query["path"] as string) || "";
+    const data = await giteaService.getRepoContents(owner, repo, path);
+    res.status(200).json({ status: "success", data });
+  }
+);
+
+export const updateFile = catchAsync(
+  async (req: Request, res: Response) => {
+    const owner = requireParam(req.params["owner"], "owner");
+    const repo = requireParam(req.params["repo"], "repo");
+    const { filepath, content, message } = req.body as {
+      filepath: string;
+      content: string;
+      message?: string;
+    };
+    if (!filepath || content === undefined) {
+      throw new BadRequestError("Filepath and content are required");
+    }
+    const data = await giteaService.updateRepoFile(
+      owner,
+      repo,
+      filepath,
+      content,
+      message
+    );
+    res.status(200).json({ status: "success", data });
+  }
+);

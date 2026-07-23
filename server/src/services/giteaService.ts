@@ -156,4 +156,49 @@ export const giteaService = {
       return handleGiteaError(error, "deleteRepo");
     }
   },
+  async getRepoContents(owner: string, repo: string, path = "") {
+    try {
+      const res = await gitea.get(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`);
+      return res.data;
+    } catch (error) {
+      return handleGiteaError(error, "getRepoContents");
+    }
+  },
+  async updateRepoFile(
+    owner: string,
+    repo: string,
+    filepath: string,
+    content: string,
+    message = "Updated via GiteaForge Sandbox"
+  ) {
+    try {
+      const base64Content = Buffer.from(content).toString("base64");
+      let sha: string | undefined;
+      try {
+        const existing = await gitea.get(`/repos/${owner}/${repo}/contents/${filepath}`);
+        sha = existing.data.sha;
+      } catch {
+        // file does not exist yet
+      }
+
+      if (sha) {
+        const res = await gitea.put(`/repos/${owner}/${repo}/contents/${filepath}`, {
+          content: base64Content,
+          message,
+          sha,
+          branch: "main",
+        });
+        return res.data;
+      } else {
+        const res = await gitea.post(`/repos/${owner}/${repo}/contents/${filepath}`, {
+          content: base64Content,
+          message,
+          branch: "main",
+        });
+        return res.data;
+      }
+    } catch (error) {
+      return handleGiteaError(error, "updateRepoFile");
+    }
+  },
 };
