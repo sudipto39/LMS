@@ -48,6 +48,11 @@ import {
 import { User as UserIcon, Trash2 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useAuth } from "../hooks/useAuth";
+import {
+  exportStudentProjectsToExcel,
+  exportGroupProjectsToExcel,
+  exportGradesToExcel,
+} from "@/utils/excelExport";
 
 const GITEA_URL = getGiteaURL() || "https://gitea.example.com";
 
@@ -3912,6 +3917,8 @@ export function SupervisorGrades({
 }) {
   const [grades, setGrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [toast, setToast] = useState("");
 
   useEffect(() => {
     const fetchGrades = async () => {
@@ -3926,11 +3933,124 @@ export function SupervisorGrades({
     fetchGrades();
   }, []);
 
+  const handleExportGrades = async () => {
+    if (grades.length === 0) {
+      setToast("No grades available to export.");
+      setTimeout(() => setToast(""), 3000);
+      return;
+    }
+    setExporting(true);
+    try {
+      const rows = grades.map((g) => ({
+        studentName: g.studentName ?? "",
+        projectTitle: g.projectTitle ?? "",
+        score: g.score ?? "",
+        grade: g.grade ?? "",
+        status: g.status ?? "",
+        supervisorFeedback: g.supervisorFeedback ?? "",
+        gradedAt: g.gradedAt ? new Date(g.gradedAt).toLocaleDateString() : "",
+        codeQuality: g.rubricDetail?.codeQuality ?? "",
+        documentation: g.rubricDetail?.documentation ?? "",
+        presentation: g.rubricDetail?.presentation ?? "",
+        innovation: g.rubricDetail?.innovation ?? "",
+        teamwork: g.rubricDetail?.teamwork ?? "",
+      }));
+      exportGradesToExcel(rows);
+      setToast(`Exported ${rows.length} grade record${rows.length !== 1 ? "s" : ""} successfully!`);
+    } catch (err) {
+      console.error("Export failed:", err);
+      setToast("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+      setTimeout(() => setToast(""), 3500);
+    }
+  };
+
   if (loading) return <LoadingSpinner text="Loading grades..." />;
 
   return (
     <div className="space-y-6">
-      <h1 className={cn("text-2xl font-bold", heading)}>Grades</h1>
+      {toast && (
+        <Toast
+          message={toast}
+          type={toast.includes("failed") || toast.includes("No grades") ? "error" : "success"}
+          onClose={() => setToast("")}
+        />
+      )}
+
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className={cn("text-2xl font-bold", heading)}>Grades</h1>
+          <p className={cn("text-sm", subtext)}>
+            {grades.length} graded project{grades.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          onClick={handleExportGrades}
+          disabled={exporting}
+          id="export-grades-btn"
+        >
+          <Download className="h-4 w-4" />
+          {exporting ? "Exporting..." : "Export to Excel"}
+        </Button>
+      </div>
+
+      {/* ── Summary KPIs ── */}
+      {grades.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            {
+              label: "Total Graded",
+              value: grades.length,
+              color: "text-blue-600 dark:text-blue-400",
+              bg: "bg-blue-50 dark:bg-blue-900/20",
+            },
+            {
+              label: "Avg Score",
+              value:
+                grades.length > 0
+                  ? Math.round(
+                      grades.reduce((s, g) => s + Number(g.score || 0), 0) /
+                        grades.length,
+                    ) + "/100"
+                  : "—",
+              color: "text-purple-600 dark:text-purple-400",
+              bg: "bg-purple-50 dark:bg-purple-900/20",
+            },
+            {
+              label: "A Grade (≥80)",
+              value: grades.filter((g) => Number(g.score) >= 80).length,
+              color: "text-green-600 dark:text-green-400",
+              bg: "bg-green-50 dark:bg-green-900/20",
+            },
+            {
+              label: "Below Pass (<50)",
+              value: grades.filter(
+                (g) => Number(g.score) > 0 && Number(g.score) < 50,
+              ).length,
+              color: "text-red-600 dark:text-red-400",
+              bg: "bg-red-50 dark:bg-red-900/20",
+            },
+          ].map((stat, i) => (
+            <div
+              key={i}
+              className={cn(
+                "rounded-lg border border-neutral-200 dark:border-[#30363d] p-4",
+                stat.bg,
+              )}
+            >
+              <p className={cn("text-xs font-medium", subtext)}>{stat.label}</p>
+              <p className={cn("text-2xl font-bold mt-1", stat.color)}>
+                {stat.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Table ── */}
       <div className={cn(card, "overflow-hidden")}>
         <table className="w-full text-sm">
           <thead>
@@ -5411,6 +5531,9 @@ export function AdminProjects({
   const [supervisors, setSupervisors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<"students" | "groups" | null>(null);
+  const [toast, setToast] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error">("success");
 
   const fetchProjects = async () => {
     try {
@@ -5454,6 +5577,61 @@ export function AdminProjects({
     finally { setAssigning(null); }
   };
 
+  /** Fetch rich export data from dedicated endpoint and trigger download */
+  const handleExport = async (mode: "students" | "groups") => {
+    setExporting(mode);
+    try {
+      const token = tokenStore.get();
+      const res = await fetch(`${API_URL}/v1/admin/projects/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch export data");
+      const data = await res.json();
+      const rows = (data.data || []).map((p: any) => ({
+        studentName: p.studentName ?? "",
+        universityId: p.universityId ?? "",
+        department: p.department ?? "",
+        projectTitle: p.projectTitle ?? "",
+        technologies: p.technologies ?? "",
+        status: p.status ?? "",
+        progress: p.progress ?? 0,
+        supervisor: p.supervisorName ?? "",
+        batch: p.batchName ?? "",
+        startDate: p.startDate ?? "",
+        endDate: p.endDate ?? "",
+        milestonesTotal: p.milestonesTotal ?? 0,
+        milestonesApproved: p.milestonesApproved ?? 0,
+      }));
+
+      if (rows.length === 0) {
+        setToastType("error");
+        setToast("No projects available to export.");
+        setTimeout(() => setToast(""), 3000);
+        return;
+      }
+
+      if (mode === "students") {
+        exportStudentProjectsToExcel(rows);
+      } else {
+        exportGroupProjectsToExcel(rows);
+      }
+
+      setToastType("success");
+      setToast(
+        `Exported ${rows.length} project${rows.length !== 1 ? "s" : ""} ${
+          mode === "groups" ? "grouped by batch" : "(student-wise)"
+        } successfully!`,
+      );
+    } catch (err) {
+      console.error("Export failed:", err);
+      setToastType("error");
+      setToast("Export failed. Please try again.");
+    } finally {
+      setExporting(null);
+      setTimeout(() => setToast(""), 3500);
+    }
+  };
+
   const filteredProjects = projects.filter((p) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -5469,13 +5647,45 @@ export function AdminProjects({
 
   return (
     <div className="space-y-6">
+      {toast && (
+        <Toast
+          message={toast}
+          type={toastType}
+          onClose={() => setToast("")}
+        />
+      )}
+
+      {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className={cn("text-2xl font-bold", heading)}>Project Management</h1>
           <p className={cn("text-sm", subtext)}>{projects.length} total projects</p>
         </div>
+
+        {/* Export buttons */}
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="secondary"
+            onClick={() => handleExport("students")}
+            disabled={exporting !== null}
+            id="export-student-projects-btn"
+          >
+            <Download className="h-4 w-4" />
+            {exporting === "students" ? "Exporting..." : "Export Students"}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => handleExport("groups")}
+            disabled={exporting !== null}
+            id="export-group-projects-btn"
+          >
+            <Download className="h-4 w-4" />
+            {exporting === "groups" ? "Exporting..." : "Export by Group"}
+          </Button>
+        </div>
       </div>
 
+      {/* ── Search ── */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2 rounded-md border border-neutral-300 dark:border-[#30363d] bg-white dark:bg-[#0d1117] px-3 py-1.5 flex-1 min-w-[200px]">
           <Search className={cn("h-4 w-4", mutedText)} />
@@ -5485,6 +5695,7 @@ export function AdminProjects({
         </div>
       </div>
 
+      {/* ── Table ── */}
       <div className={cn(card, "overflow-hidden")}>
         <table className="w-full text-sm">
           <thead>

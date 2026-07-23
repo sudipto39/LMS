@@ -110,6 +110,68 @@ export const getAllProjectsForAdmin = catchAsync(
   },
 );
 
+export const getProjectsForExport = catchAsync(
+  async (_req: Request, res: Response) => {
+    const projects = await prisma.project.findMany({
+      include: {
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            universityId: true,
+            department: true,
+          },
+        },
+        supervisor: { select: { id: true, name: true, email: true } },
+        batch: { select: { id: true, name: true } },
+        milestones: {
+          where: { isActive: true },
+          select: { id: true, status: true },
+        },
+      },
+      orderBy: [{ batch: { name: "asc" } }, { createdAt: "desc" }],
+    });
+
+    const rows = projects.map((p) => {
+      const total = p.milestones.length;
+      const approved = p.milestones.filter((m) => m.status === "APPROVED").length;
+      const progress = total > 0 ? Math.round((approved / total) * 100) : 0;
+
+      // Derive display status
+      let status: string = p.status;
+      if (status === "DRAFT" && total > 0) status = "IN_PROGRESS";
+
+      return {
+        id: p.id,
+        projectTitle: p.title,
+        technologies: p.technologies?.join(", ") ?? "",
+        status,
+        progress,
+        startDate: p.startDate
+          ? new Date(p.startDate).toLocaleDateString("en-IN")
+          : "",
+        endDate: p.endDate
+          ? new Date(p.endDate).toLocaleDateString("en-IN")
+          : "",
+        studentName: p.owner?.name ?? "",
+        universityId: p.owner?.universityId ?? "",
+        department: p.owner?.department ?? "",
+        supervisorName: p.supervisor?.name ?? "",
+        batchName: p.batch?.name ?? "",
+        milestonesTotal: total,
+        milestonesApproved: approved,
+      };
+    });
+
+    res.status(200).json({
+      status: "success",
+      count: rows.length,
+      data: rows,
+    });
+  },
+);
+
 export const assignSupervisorToProject = catchAsync(
   async (req: Request, res: Response) => {
     const { supervisorId } = req.body as { supervisorId: string | null };
