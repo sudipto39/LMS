@@ -3,6 +3,7 @@ import { Router } from "express";
 import {
   assignSupervisorToProject,
   getAllProjectsForAdmin,
+  getProjectsForExport,
   getAdminStats,
   getAuditLogs,
   getGiteaConfig,
@@ -12,6 +13,7 @@ import {
   updateUser,
   importUsers,
 } from "../controllers/adminController.js";
+
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 
 const router = Router();
@@ -20,7 +22,9 @@ router.use(protect, restrictTo("ADMIN"));
 
 router.get("/stats", getAdminStats);
 router.get("/projects", getAllProjectsForAdmin);
+router.get("/projects/export", getProjectsForExport);
 router.patch("/projects/:id/assign-supervisor", assignSupervisorToProject);
+
 router.get("/audit-logs", getAuditLogs);
 
 router.delete("/users/:id", deleteUser);
