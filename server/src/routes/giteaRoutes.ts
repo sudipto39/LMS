@@ -6,7 +6,6 @@ import {
   getRepository,
   listCommits,
   listBranches,
-  getRepoCommits,
   listContents,
   updateFile,
 } from "../controllers/giteaController.js";

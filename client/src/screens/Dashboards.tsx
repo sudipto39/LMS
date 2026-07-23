@@ -3135,7 +3135,7 @@ export function SupervisorProjectDetail({
   onNavigate: (page: Page) => void;
 }) {
   const [tab, setTab] = useState<
-    "summary" | "activity" | "milestones" | "files" | "grade" | "feedback"
+    "summary" | "activity" | "milestones" | "files" | "grade" | "feedback" | "sandbox"
   >("summary");
   const [project, setProject] = useState<any>(null);
   const [milestones, setMilestones] = useState<any[]>([]);
