@@ -48,6 +48,7 @@ import {
 import { User as UserIcon, Trash2 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useAuth } from "../hooks/useAuth";
+import SandboxTab from "@/components/SandboxTab";
 import {
   exportStudentProjectsToExcel,
   exportGroupProjectsToExcel,
@@ -1749,7 +1750,7 @@ export function StudentProjectDetail({
 }) {
   const { user } = useAuth();
   const [tab, setTab] = useState<
-    "overview" | "milestones" | "progress" | "files" | "feedback"
+    "overview" | "milestones" | "progress" | "files" | "feedback" | "sandbox"
   >("overview");
   const [project, setProject] = useState<any>(null);
   const [milestones, setMilestones] = useState<any[]>([]);
@@ -1896,6 +1897,7 @@ export function StudentProjectDetail({
     { id: "progress" as const, label: "Progress" },
     { id: "files" as const, label: "Files" },
     { id: "feedback" as const, label: "Feedback" },
+    { id: "sandbox" as const, label: "Sandbox" },
   ];
 
   return (
@@ -2645,6 +2647,8 @@ export function StudentProjectDetail({
           <FeedbackThread projectId={project.id ?? project._id} />
         </div>
       )}
+
+      {tab === "sandbox" && <SandboxTab project={project} milestones={milestones} />}
     </div>
   );
 }
@@ -3244,6 +3248,7 @@ export function SupervisorProjectDetail({
     { id: "files" as const, label: "Files" },
     { id: "grade" as const, label: "Grade" },
     { id: "feedback" as const, label: "Feedback" },
+    { id: "sandbox" as const, label: "Sandbox" },
   ];
 
   return (
@@ -3819,6 +3824,9 @@ export function SupervisorProjectDetail({
         </div>
       )}
 
+      {tab === "sandbox" && (
+        <SandboxTab project={project} milestones={milestones} />
+      )}
     </div>
   );
 }

@@ -16,8 +16,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { s3, BUCKET } from "../middlewares/fileUploadMiddleware.js";
 
 const projectInclude = {
-  owner: { select: { id: true, name: true, email: true } },
-  supervisor: { select: { id: true, name: true, email: true } },
+  owner: { select: { id: true, name: true, email: true, giteaUsername: true } },
+  supervisor: { select: { id: true, name: true, email: true, giteaUsername: true } },
   batch: { select: { id: true, name: true, endYear: true } },
   parentProject: { select: { id: true, title: true, phase: true, status: true } },
   members: {

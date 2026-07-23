@@ -7,6 +7,8 @@ import {
   listCommits,
   listBranches,
   getRepoCommits,
+  listContents,
+  updateFile,
 } from "../controllers/giteaController.js";
 
 const router = Router();
@@ -17,6 +19,7 @@ router.post("/repos", restrictTo("STUDENT"), createRepository);
 router.get("/repos/:owner/:repo", getRepository);
 router.get("/repos/:owner/:repo/commits", listCommits);
 router.get("/repos/:owner/:repo/branches", listBranches);
-router.get("/repos/:owner/:repo/commits", protect, getRepoCommits);
+router.get("/repos/:owner/:repo/contents", listContents);
+router.post("/repos/:owner/:repo/files", updateFile);
 
 export default router;
