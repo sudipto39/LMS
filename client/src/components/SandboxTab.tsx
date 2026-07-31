@@ -19,9 +19,11 @@ import {
   Copy,
   Check,
   Eye,
+  Play,
+  Sliders,
 } from "lucide-react";
 import { cn } from "@/utils/cn";
-import { tokenStore } from "@/api/client";
+import client, { tokenStore } from "@/api/client";
 import { useAuth } from "@/hooks/useAuth";
 
 const API_URL = import.meta.env.VITE_API_BASE_URL;
@@ -315,9 +317,12 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
   const [fileTreeWidth, setFileTreeWidth] = useState<number>(180);
   const [previewHeightPx, setPreviewHeightPx] = useState<number>(280);
 
-  // Interactive Terminal State
+  // Interactive Terminal & Judge0 Execution State
   const [terminalInput, setTerminalInput] = useState<string>("");
   const [copiedTerminal, setCopiedTerminal] = useState<boolean>(false);
+  const [stdinInput, setStdinInput] = useState<string>("");
+  const [showStdinDrawer, setShowStdinDrawer] = useState<boolean>(false);
+  const [executingJudge0, setExecutingJudge0] = useState<boolean>(false);
   const terminalInputRef = useRef<HTMLInputElement>(null);
   const terminalLogsEndRef = useRef<HTMLDivElement>(null);
 
@@ -861,6 +866,111 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
     }
   };
 
+  // ─── Production Code Execution via Judge0 Engine Backend ───
+  const handleRunViaJudge0 = useCallback(
+    async (overrideTargetFile?: string) => {
+      const targetPath = overrideTargetFile || selectedFilePath;
+      const targetFile =
+        files.find(
+          (f) =>
+            f.path.toLowerCase() === targetPath.toLowerCase() ||
+            f.name.toLowerCase() === targetPath.toLowerCase()
+        ) || files[0];
+
+      if (!targetFile || targetFile.isFolder) {
+        setTerminalLogs((prev) => [
+          ...prev,
+          `⚠️ Execution Error: ${targetPath} is not a valid code file`,
+        ]);
+        return;
+      }
+
+      setExecutingJudge0(true);
+      const promptLine = `student@giteaforge:~$ ${engineLanguage} ${targetFile.name}`;
+
+      setTerminalLogs((prev) => [
+        ...prev,
+        promptLine,
+        `🚀 Compiling and executing ${targetFile.name} via Judge0 Cloud Runner (${engineLanguage.toUpperCase()})...`,
+      ]);
+
+      try {
+        const response = await client.post("/v1/execute", {
+          engine: engineLanguage,
+          selectedFilePath: targetFile.path,
+          files: files.map((f) => ({
+            name: f.name,
+            path: f.path,
+            content: f.content || "",
+            isFolder: f.isFolder,
+          })),
+          stdin: stdinInput,
+        });
+
+        const resData = response.data?.data;
+        if (!resData) throw new Error("Invalid execution response from server");
+
+        const logEntries: string[] = [];
+
+        // 1. Compilation warnings/errors output
+        if (resData.compileOutput && resData.compileOutput.trim()) {
+          logEntries.push("⚠️ Compilation Message:");
+          logEntries.push(...resData.compileOutput.trim().split("\n"));
+        }
+
+        // 2. Standard Output
+        if (resData.stdout && resData.stdout.trim()) {
+          logEntries.push(...resData.stdout.trim().split("\n"));
+        }
+
+        // 3. Standard Error
+        if (resData.stderr && resData.stderr.trim()) {
+          logEntries.push("❌ Runtime Error / Stderr:");
+          logEntries.push(...resData.stderr.trim().split("\n"));
+        }
+
+        if (resData.message && resData.message.trim()) {
+          logEntries.push(`ℹ️ Message: ${resData.message.trim()}`);
+        }
+
+        // 4. Execution Metrics summary line
+        const statusDesc = resData.status?.description || "Completed";
+        const timeStr = resData.time ? `Time: ${resData.time}` : "";
+        const memStr =
+          resData.memory !== null && resData.memory !== undefined
+            ? `Peak Memory: ${resData.memory} MB`
+            : "";
+        const metrics = [statusDesc, timeStr, memStr]
+          .filter(Boolean)
+          .join(" | ");
+
+        logEntries.push("");
+        logEntries.push(`[Judge0 Engine] ${metrics}`);
+        logEntries.push(
+          `Process finished with exit code ${resData.exitCode ?? 0}`
+        );
+
+        setTerminalLogs((prev) => [...prev, ...logEntries]);
+      } catch (err: any) {
+        const errorMsg =
+          err.response?.data?.message ||
+          err.message ||
+          "Failed to execute code on Judge0 server";
+        setTerminalLogs((prev) => [
+          ...prev,
+          `⚠️ Execution Failed: ${errorMsg}`,
+          "Process finished with exit code 1",
+        ]);
+      } finally {
+        setExecutingJudge0(false);
+        setTimeout(() => {
+          terminalLogsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 50);
+      }
+    },
+    [engineLanguage, selectedFilePath, files, stdinInput]
+  );
+
   // Interactive Terminal Command Execution Handler
   const handleTerminalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -880,16 +990,19 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
 
     if (lower === "help") {
       outputLines = [
-        "GiteaForge Interactive Terminal v1.0",
+        "GiteaForge Polyglot Execution Terminal (Judge0 Cloud Runner)",
         "Available Commands:",
+        "  run                 Execute active file via Judge0",
+        "  python <file>       Compile & execute Python script via Judge0",
+        "  node <file>         Compile & execute JavaScript/Node script via Judge0",
+        "  java <file>         Compile & execute Java source file via Judge0",
+        "  g++ / gcc <file>    Compile & execute C/C++ program via Judge0",
         "  ls, dir             List project workspace files",
         "  cat <filepath>      Display content of a file",
         "  clear, cls          Clear terminal logs",
         "  git status          View Git repository status",
         "  git push, commit    Commit & push changes to Gitea",
         "  npm run dev         Rebuild and start dev server",
-        "  javac, java         Compile and execute Java Main",
-        "  python <file>       Run Python interpreter on script",
         "  echo <message>      Print text to terminal stream",
       ];
     } else if (lower === "ls" || lower === "dir") {
@@ -918,11 +1031,6 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
       return;
     } else if (lower.startsWith("echo ")) {
       outputLines = [cmd.substring(5)];
-    } else if (lower.startsWith("javac") || lower.startsWith("java")) {
-      outputLines = [
-        `Compiling and executing ${cmd}...`,
-        `[JVM] Main.class compiled and executed cleanly (exit code 0)`,
-      ];
     } else if (lower === "npm run dev" || lower === "npm start" || lower === "vite") {
       outputLines = [
         "> dev",
@@ -931,11 +1039,20 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
         "➜ Local: http://localhost:5173/",
         "✓ Live browser preview updated",
       ];
-    } else if (lower.startsWith("python") || lower.startsWith("node")) {
-      outputLines = [
-        `Executing ${cmd}...`,
-        `[Output] ${activeFile.name} executed successfully (exit code 0)`,
-      ];
+    } else if (
+      lower === "run" ||
+      lower.startsWith("python") ||
+      lower.startsWith("node") ||
+      lower.startsWith("java") ||
+      lower.startsWith("javac") ||
+      lower.startsWith("g++") ||
+      lower.startsWith("gcc") ||
+      lower.startsWith("./")
+    ) {
+      const parts = cmd.split(" ").filter(Boolean);
+      const targetName = parts.length > 1 ? parts.slice(1).join(" ") : selectedFilePath;
+      handleRunViaJudge0(targetName);
+      return;
     } else {
       outputLines = [`bash: ${cmd}: command executed successfully`];
     }
@@ -1315,15 +1432,51 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
             </div>
           </div>
 
-          {/* Bottom-Right: Interactive Terminal Card */}
+            {/* Bottom-Right: Interactive Terminal Card */}
           <div className="flex-1 bg-[#161b22] border border-[#30363d] rounded-lg overflow-hidden flex flex-col shadow-xl min-h-[140px]">
             {/* Terminal Header */}
             <div className="px-3 py-2 border-b border-[#30363d] bg-[#161b22] flex items-center justify-between text-xs text-[#8b949e] font-mono select-none">
               <div className="flex items-center gap-2">
                 <TerminalIcon className="h-3.5 w-3.5 text-green-400" />
                 <span className="font-semibold text-[#f0f6fc]">terminal: sh</span>
+                <span className="text-[10px] bg-blue-950/80 text-blue-300 border border-blue-800/60 px-1.5 py-0.5 rounded font-mono font-semibold">
+                  Judge0 Cloud Runner
+                </span>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowStdinDrawer((prev) => !prev)}
+                  className={cn(
+                    "flex items-center gap-1 text-[10px] px-2 py-0.5 rounded transition border",
+                    showStdinDrawer || stdinInput.trim()
+                      ? "bg-purple-950/60 text-purple-300 border-purple-800/60 font-semibold"
+                      : "text-[#8b949e] hover:text-[#f0f6fc] hover:bg-[#21262d] border-[#30363d]"
+                  )}
+                  title="Configure Program Input (stdin)"
+                >
+                  <Sliders className="h-3 w-3" />
+                  <span>Input (stdin){stdinInput.trim() ? " •" : ""}</span>
+                </button>
+
+                <button
+                  onClick={() => handleRunViaJudge0()}
+                  disabled={executingJudge0}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-white bg-green-600 hover:bg-green-500 disabled:opacity-50 px-2.5 py-0.5 rounded shadow transition border border-green-500/50"
+                  title="Execute active file on Judge0 Cloud Runner"
+                >
+                  {executingJudge0 ? (
+                    <>
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      <span>Running...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3 w-3 fill-current" />
+                      <span>Run Code</span>
+                    </>
+                  )}
+                </button>
+
                 <button
                   onClick={handleCopyTerminal}
                   className="flex items-center gap-1 text-[10px] text-[#8b949e] hover:text-[#f0f6fc] px-2 py-0.5 rounded hover:bg-[#21262d] transition border border-[#30363d]"

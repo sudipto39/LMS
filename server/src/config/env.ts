@@ -37,6 +37,10 @@ const envSchema = z.object({
   GITEA_BASE_URL: z.string().url("GITEA_BASE_URL must be a valid URL"),
   GITEA_ADMIN_TOKEN: z.string().min(1, "GITEA_ADMIN_TOKEN is required"),
   GITEA_WEBHOOK_SECRET: z.string().min(1, "GITEA_WEBHOOK_SECRET is required"),
+
+  // Judge0 Code Execution
+  JUDGE0_URL: z.string().url("JUDGE0_URL must be a valid URL").default("http://localhost:2358"),
+  JUDGE0_AUTH_TOKEN: z.string().optional().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);
