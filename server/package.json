@@ -2,13 +2,13 @@
   "name": "lms-backend",
   "version": "1.0.0",
   "description": "GiteaForge — Academic Project Management Backend",
-  "homepage": "https://github.com/BreachFinder777/LMS#readme",
+  "homepage": "https://github.com/sudipto39/LMS#readme",
   "bugs": {
-    "url": "https://github.com/BreachFinder777/LMS/issues"
+    "url": "https://github.com/sudipto39/LMS/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BreachFinder777/LMS.git"
+    "url": "git+https://github.com/sudipto39/LMS.git"
   },
   "license": "ISC",
   "author": "sudipto gayen",
