@@ -1,51 +1,103 @@
-name: Deploy to Production
+name: Deploy Backend to GCP Cloud Run
 
 on:
   push:
     branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/deploy.yml"
 
 jobs:
-  deploy:
-    name: Deploy via SSH
+  # Run Prisma migrations on Neon BEFORE deploying
+  migrate:
+    name: Prisma Migrate (Neon)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
 
     steps:
-      - name: Setup SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
 
-      - name: Execute deployment commands via SSH
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Deploy Database Migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+
+  # Build Docker image and deploy to Cloud Run only after migrations succeed
+  deploy-backend:
+    name: Build & Deploy to GCP Cloud Run
+    runs-on: ubuntu-latest
+    needs: migrate
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCP Artifact Registry
+        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & Push Docker Image
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-            set -e
+          IMAGE="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lms/lms-backend:${{ github.sha }}"
+          docker build -t "$IMAGE" ./server
+          docker push "$IMAGE"
+          docker tag "$IMAGE" "${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lms/lms-backend:latest"
+          docker push "${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lms/lms-backend:latest"
 
-            echo "🚀 Navigating to /home/${{ secrets.SSH_USER }}/LMS..."
-            cd /home/${{ secrets.SSH_USER }}/LMS
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy lms-backend \
+            --image "${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lms/lms-backend:${{ github.sha }}" \
+            --region "${{ secrets.GCP_REGION }}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080 \
+            --set-env-vars "NODE_ENV=production" \
+            --set-env-vars "DATABASE_URL=${{ secrets.NEON_DATABASE_URL }}" \
+            --set-env-vars "JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}" \
+            --set-env-vars "JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}" \
+            --set-env-vars "JWT_ACCESS_EXPIRES_IN=15m" \
+            --set-env-vars "JWT_REFRESH_EXPIRES_IN=7d" \
+            --set-env-vars "CLIENT_URL=${{ secrets.CLIENT_URL }}" \
+            --set-env-vars "EMAIL_VERIFICATION=false" \
+            --set-env-vars "GITEA_BASE_URL=${{ secrets.GITEA_BASE_URL }}" \
+            --set-env-vars "GITEA_ADMIN_TOKEN=${{ secrets.GITEA_ADMIN_TOKEN }}" \
+            --set-env-vars "GITEA_WEBHOOK_SECRET=${{ secrets.GITEA_WEBHOOK_SECRET }}" \
+            --set-env-vars "JUDGE0_URL=${{ secrets.JUDGE0_URL }}" \
+            --set-env-vars "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --set-env-vars "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            --set-env-vars "AWS_REGION=${{ secrets.AWS_REGION }}" \
+            --set-env-vars "AWS_S3_BUCKET_NAME=${{ secrets.AWS_S3_BUCKET_NAME }}" \
+            --set-env-vars "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" \
+            --set-env-vars "REDIS_URL=${{ secrets.REDIS_URL }}"
 
-            echo "📦 Fetching latest changes..."
-            git pull origin main
+      - name: Show Cloud Run URL
+        run: |
+          echo "Backend deployed at:"
+          gcloud run services describe lms-backend \
+            --region "${{ secrets.GCP_REGION }}" \
+            --format "value(status.url)"
 
-            echo "🛠 Installing backend dependencies..."
-            cd server
-            npm ci
-
-            echo "🗄 Running database migrations..."
-            npx prisma generate
-            npx prisma migrate deploy
-
-            echo "🔨 Building backend..."
-            npm run build
-
-            echo "🎨 Building frontend..."
-            cd ../client
-            npm ci
-            npm run build
-
-            echo "🔄 Restarting application with PM2..."
-            cd ..
-            pm2 restart lms-backend || pm2 start server/dist/index.js --name lms-backend
-            pm2 save
-
-            echo "✅ Deployment completed successfully!"
-          EOF

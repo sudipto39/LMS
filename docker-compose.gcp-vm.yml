@@ -1,0 +1,96 @@
+version: "3.9"
+
+# --- Gitea & Judge0 on GCP Compute Engine VM ----------------------------------
+# Setup:
+#   1. Copy this file to your VM:  scp docker-compose.gcp-vm.yml <user>@<VM_IP>:~/
+#   2. On the VM, run: docker compose -f docker-compose.gcp-vm.yml up -d
+#   3. Open Firewall Ports in GCP: 3000 (Gitea) and 2358 (Judge0)
+# -----------------------------------------------------------------------------
+
+services:
+  # -- Gitea Service ---------------------------------------------------------
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__database__PATH=/data/gitea/gitea.db
+      - GITEA__server__HTTP_PORT=3000
+      - GITEA__webhook__ALLOWED_HOST_LIST=*
+      - GITEA__security__INSTALL_LOCK=false
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    volumes:
+      - gitea_data:/data
+
+  # -- Judge0 API Server -----------------------------------------------------
+  judge0-server:
+    image: judge0/judge0:latest
+    container_name: judge0-server
+    restart: unless-stopped
+    depends_on:
+      - judge0-redis
+      - judge0-postgres
+    ports:
+      - "2358:2358"
+    environment:
+      - REDIS_HOST=judge0-redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=judge0-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=judge0
+      - POSTGRES_USER=judge0
+      - POSTGRES_PASSWORD=judge0pass
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+
+  # -- Judge0 Worker ---------------------------------------------------------
+  judge0-worker:
+    image: judge0/judge0:latest
+    container_name: judge0-worker
+    restart: unless-stopped
+    command: ["./scripts/workers"]
+    depends_on:
+      - judge0-redis
+      - judge0-postgres
+    environment:
+      - REDIS_HOST=judge0-redis
+      - REDIS_PORT=6379
+      - POSTGRES_HOST=judge0-postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=judge0
+      - POSTGRES_USER=judge0
+      - POSTGRES_PASSWORD=judge0pass
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+
+  # -- Judge0 Redis ----------------------------------------------------------
+  judge0-redis:
+    image: redis:7-alpine
+    container_name: judge0-redis
+    restart: unless-stopped
+    volumes:
+      - judge0_redis_data:/data
+
+  # -- Judge0 Postgres -------------------------------------------------------
+  judge0-postgres:
+    image: postgres:15-alpine
+    container_name: judge0-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: judge0pass
+    volumes:
+      - judge0_pg_data:/var/lib/postgresql/data
+
+volumes:
+  gitea_data:
+  judge0_redis_data:
+  judge0_pg_data:

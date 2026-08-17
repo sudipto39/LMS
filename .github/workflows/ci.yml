@@ -7,26 +7,27 @@ on:
     branches: [main]
 
 jobs:
-  # ─────────────── BACKEND ───────────────
+  # --------------- BACKEND ---------------
   backend:
-    name: Backend — Type-check & Build
+    name: Backend � Type-check & Build
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: server
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://user:pass@ep-dummy.neon.tech/neondb?sslmode=require' }}
-      JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET || 'test-access-secret-min-32-characters-long' }}
-      JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET || 'test-refresh-secret-min-32-characters-long' }}
-      CLIENT_URL: ${{ secrets.CLIENT_URL || 'http://localhost:5173' }}
-      GITEA_BASE_URL: ${{ secrets.GITEA_BASE_URL || 'http://localhost:3000' }}
-      GITEA_ADMIN_TOKEN: ${{ secrets.GITEA_ADMIN_TOKEN || 'dummy-token' }}
-      GITEA_WEBHOOK_SECRET: ${{ secrets.GITEA_WEBHOOK_SECRET || 'dummy-webhook-secret' }}
-      # AWS — dummy values so S3Client initializes without crashing during tests
-      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || 'AKIADUMMYACCESSKEYID' }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || 'dummySecretAccessKey1234567890123456' }}
-      AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME || 'dummy-bucket' }}
+      # Real secrets take priority; CI-safe dummy fallbacks for fork/PR runs
+      DATABASE_URL: ${{ secrets.DATABASE_URL != '' && secrets.DATABASE_URL || 'postgresql://user:pass@ep-dummy.neon.tech/neondb?sslmode=require' }}
+      JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET != '' && secrets.JWT_ACCESS_SECRET || 'test-access-secret-min-32-characters-long' }}
+      JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET != '' && secrets.JWT_REFRESH_SECRET || 'test-refresh-secret-min-32-characters-long' }}
+      CLIENT_URL: ${{ secrets.CLIENT_URL != '' && secrets.CLIENT_URL || 'http://localhost:5173' }}
+      GITEA_BASE_URL: ${{ secrets.GITEA_BASE_URL != '' && secrets.GITEA_BASE_URL || 'http://localhost:3000' }}
+      GITEA_ADMIN_TOKEN: ${{ secrets.GITEA_ADMIN_TOKEN != '' && secrets.GITEA_ADMIN_TOKEN || 'dummy-token' }}
+      GITEA_WEBHOOK_SECRET: ${{ secrets.GITEA_WEBHOOK_SECRET != '' && secrets.GITEA_WEBHOOK_SECRET || 'dummy-webhook-secret' }}
+      # AWS � dummy values so S3Client initializes without crashing during tests
+      AWS_REGION: ${{ secrets.AWS_REGION != '' && secrets.AWS_REGION || 'us-east-1' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_ACCESS_KEY_ID || 'AKIADUMMYACCESSKEYID' }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_SECRET_ACCESS_KEY || 'dummySecretAccessKey1234567890123456789' }}
+      AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME != '' && secrets.AWS_S3_BUCKET_NAME || 'dummy-bucket' }}
 
     steps:
       - name: Checkout repository
@@ -60,9 +61,9 @@ jobs:
       - name: Build backend
         run: npm run build
 
-  # ─────────────── FRONTEND ───────────────
+  # --------------- FRONTEND ---------------
   frontend:
-    name: Frontend — Type-check & Build
+    name: Frontend � Type-check & Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -87,3 +88,7 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+        env:
+          VITE_API_BASE_URL: https://placeholder.run.app/api
+          VITE_WS_URL: wss://placeholder.run.app
+          VITE_GITEA_URL: https://placeholder.gitea.com

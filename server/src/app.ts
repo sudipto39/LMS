@@ -60,9 +60,6 @@ if (env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
-// ─── Static files ─────────────────────────────────────────────────────────────
-app.use("/uploads", express.static("uploads"));
-
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 const isDev = env.NODE_ENV === "development";
 

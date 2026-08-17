@@ -1,6 +1,4 @@
-import dotenv from "dotenv";
-dotenv.config();
-import "dotenv/config"; 
+import "dotenv/config";
 import "./config/env.js";
 import { app } from "./app.js";
 import { env } from "./config/env.js";

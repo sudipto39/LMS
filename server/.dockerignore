@@ -1,0 +1,16 @@
+# Build artifacts
+dist/
+node_modules/
+
+# Local environment secrets
+.env
+.env.local
+.env.production
+
+# Logs & test output
+*.log
+coverage/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db

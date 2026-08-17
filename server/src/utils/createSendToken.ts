@@ -125,7 +125,7 @@ export const createSendToken = async (
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
-    sameSite: env.NODE_ENV === "production" ? "strict" : "lax",
+    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: REFRESH_TTL_SECONDS * 1000,
   });
 
