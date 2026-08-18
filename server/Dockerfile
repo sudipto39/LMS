@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Build-time placeholder for Prisma client type generation
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+
 # Install ALL deps (including devDeps needed for build)
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -24,7 +27,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-# Cloud Run injects PORT=8080 — this sets a safe default
+# Cloud Run injects PORT=8080 - this sets a safe default
 ENV PORT=8080
 
 # Install production-only dependencies
