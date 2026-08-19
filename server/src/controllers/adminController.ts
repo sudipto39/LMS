@@ -1,8 +1,9 @@
 // src/controllers/adminController.ts
 import type { Request, Response } from "express";
+import crypto from "crypto";
 import { prisma } from "../config/db.js";
 import { catchAsync } from "../utils/catchAsync.js";
-import { NotFoundError } from "../utils/appError.js";
+import { NotFoundError, BadRequestError } from "../utils/appError.js";
 import { requireParam } from "../utils/requireParam.js";
 import bcrypt from "bcrypt";
 
@@ -226,12 +227,17 @@ export const getAuditLogs = catchAsync(async (_req: Request, res: Response) => {
 
 export const getGiteaConfig = catchAsync(
   async (_req: Request, res: Response) => {
+    const rawToken = process.env["GITEA_ADMIN_TOKEN"] || process.env["GITEA_TOKEN"] || "";
+    const maskedToken = rawToken
+      ? `${rawToken.slice(0, 4)}••••••••${rawToken.slice(-4)}`
+      : "";
+
     res.status(200).json({
       status: "success",
       data: {
-        baseUrl: process.env.GITEA_URL || "",
-        apiToken: process.env.GITEA_TOKEN || "",
-        orgTemplate: process.env.GITEA_ORG || "",
+        baseUrl: process.env["GITEA_BASE_URL"] || process.env["GITEA_URL"] || "",
+        apiToken: maskedToken,
+        orgTemplate: process.env["GITEA_ORG"] || "",
       },
     });
   },
@@ -256,15 +262,36 @@ export const deleteUser = catchAsync(
     const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!user) throw new NotFoundError("User");
 
-    // Delete related records first, then the user
-    await prisma.$transaction([
-      prisma.batchEnrollment.deleteMany({ where: { userId: id } }),
-      prisma.activity.deleteMany({ where: { userId: id } }),
-      prisma.milestone.updateMany({ where: { reviewedById: id }, data: { reviewedById: null } }),
-      prisma.milestone.updateMany({ where: { submittedById: id }, data: { submittedById: null } }),
-      prisma.project.updateMany({ where: { supervisorId: id }, data: { supervisorId: null } }),
-      prisma.user.delete({ where: { id } }),
-    ]);
+    // Collect all projects owned by this user
+    const ownedProjects = await prisma.project.findMany({
+      where: { ownerId: id },
+      select: { id: true },
+    });
+    const ownedProjectIds = ownedProjects.map((p) => p.id);
+
+    // Delete/unlink all related records then the user — order matters for FK constraints
+    await prisma.$transaction(async (tx) => {
+      // Unlink child projects that reference owned projects as parent
+      if (ownedProjectIds.length > 0) {
+        await tx.project.updateMany({
+          where: { parentProjectId: { in: ownedProjectIds } },
+          data: { parentProjectId: null },
+        });
+        // Delete milestone attachments, activities, members for owned projects
+        await tx.milestone.deleteMany({ where: { projectId: { in: ownedProjectIds } } });
+        await tx.activity.deleteMany({ where: { projectId: { in: ownedProjectIds } } });
+        await tx.projectMember.deleteMany({ where: { projectId: { in: ownedProjectIds } } });
+        await tx.project.deleteMany({ where: { id: { in: ownedProjectIds } } });
+      }
+      // Clean up non-owned references
+      await tx.batchEnrollment.deleteMany({ where: { userId: id } });
+      await tx.activity.deleteMany({ where: { userId: id } });
+      await tx.milestone.updateMany({ where: { reviewedById: id }, data: { reviewedById: null } });
+      await tx.milestone.updateMany({ where: { submittedById: id }, data: { submittedById: null } });
+      await tx.project.updateMany({ where: { supervisorId: id }, data: { supervisorId: null } });
+      await tx.projectMember.deleteMany({ where: { userId: id } });
+      await tx.user.delete({ where: { id } });
+    });
 
     res.status(200).json({ status: "success", message: "User deleted" });
   },
@@ -284,6 +311,12 @@ export const updateUser = catchAsync(
 
     const user = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!user) throw new NotFoundError("User");
+
+    // Validate role against allowed enum values
+    const VALID_ROLES = ["STUDENT", "SUPERVISOR", "ADMIN"] as const;
+    if (role && !VALID_ROLES.includes(role as typeof VALID_ROLES[number])) {
+      throw new BadRequestError("Invalid role value");
+    }
 
     const updated = await prisma.user.update({
       where: { id },
@@ -350,7 +383,14 @@ export const importUsers = catchAsync(
           continue;
         }
 
-        const defaultPassword = "Welcome@123";
+        const VALID_IMPORT_ROLES = ["STUDENT", "SUPERVISOR"];
+        const resolvedRole = (u.role || "STUDENT").toUpperCase();
+        if (!VALID_IMPORT_ROLES.includes(resolvedRole)) {
+          results.failed.push({ email: u.email, reason: `Invalid role '${u.role}'. Allowed: STUDENT, SUPERVISOR` });
+          continue;
+        }
+
+        const defaultPassword = `${crypto.randomBytes(10).toString("base64url")}!1`;
         const hashedPassword = await bcrypt.hash(defaultPassword, 12);
 
         await prisma.user.create({
@@ -358,7 +398,7 @@ export const importUsers = catchAsync(
             name: u.name,
             email: u.email.toLowerCase(),
             password: hashedPassword,
-            role: (u.role || "STUDENT").toUpperCase() as any,
+            role: resolvedRole as any,
             department: u.department || null,
             universityId: u.universityId || null,
             phoneNumber: u.phoneNumber || null,

@@ -27,7 +27,9 @@ export const app = express();
 
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());
-app.set("trust proxy", 1);
+if (env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
 
 const allowedOrigins = env.CLIENT_URL
   .split(",")
@@ -39,7 +41,6 @@ app.use(
       if (!origin) return callback(null, true);
       const cleanOrigin = origin.replace(/\/$/, "");
       if (allowedOrigins.includes(cleanOrigin)) return callback(null, true);
-      // return callback(new Error(`CORS blocked: ${origin}`));
       return callback(null, false);
     },
     credentials: true,
@@ -50,8 +51,8 @@ app.use(
 app.use("/api/v1/webhooks", webhookRouter);
 
 // ─── Body parsers ─────────────────────────────────────────────────────────────
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "256kb" }));
+app.use(express.urlencoded({ extended: true, limit: "256kb" }));
 app.use(cookieParser());
 app.use(compression());
 
@@ -122,7 +123,6 @@ app.get("/", (_req, res) => {
   res.status(200).json({
     status: "success",
     message: "GiteaForge API is running 🚀",
-    env: env.NODE_ENV,
   });
 });
 

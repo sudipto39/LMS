@@ -45,6 +45,8 @@ describe("Gitea Webhook HMAC Signature Validation Tests", () => {
       payload: {},
       createdAt: new Date(),
     } as any);
+
+    jest.spyOn(prisma.milestone, "findMany").mockResolvedValue([]);
   });
 
   afterEach(() => {

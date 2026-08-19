@@ -37,7 +37,7 @@ export const signUpSchema = z.object({
       .min(2, "Department must be at least 2 characters"),
 
     role: z
-      .enum(["STUDENT", "SUPERVISOR"])
+      .enum(["STUDENT"])
       .optional()
       .default("STUDENT"),
 

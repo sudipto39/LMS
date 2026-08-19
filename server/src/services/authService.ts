@@ -1,9 +1,10 @@
 // src/services/authService.ts
+import crypto from "crypto";
 import bcrypt from "bcrypt";
 import { prisma } from "../config/db.js";
 import { redis } from "../config/redis.js";
 import { emailService } from "./sendVerificationEmail.js";
-import { giteaService } from "./giteaService.js"; // ← ADD THIS
+import { giteaService } from "./giteaService.js";
 import {
   ConflictError,
   UnauthorizedError,
@@ -15,11 +16,12 @@ import { env } from "../config/env.js";
 
 const SALT_ROUNDS = 12;
 const OTP_TTL_SECONDS = 10 * 60;
+const MAX_OTP_ATTEMPTS = 5;
 
-// ─── OTP helpers ──────────────────────────────────────────────────────────────
+// ─── OTP helpers (CSPRNG) ─────────────────────────────────────────────────────
 
 const generateOTP = (): string =>
-  Math.floor(100000 + Math.random() * 900000).toString();
+  crypto.randomInt(100000, 1000000).toString();
 
 const storeOTP = async (key: string, code: string): Promise<void> => {
   try {
@@ -40,6 +42,40 @@ const getOTP = async (key: string): Promise<string | null> => {
 const deleteOTP = async (key: string): Promise<void> => {
   try {
     await redis.del(key);
+  } catch {
+    // ignore
+  }
+};
+
+const checkAndIncrementAttempts = async (
+  keyPrefix: string,
+  email: string
+): Promise<void> => {
+  const attemptKey = `attempts:${keyPrefix}:${email}`;
+  try {
+    const attempts = await redis.incr(attemptKey);
+    if (attempts === 1) {
+      await redis.expire(attemptKey, OTP_TTL_SECONDS);
+    }
+    if (attempts >= MAX_OTP_ATTEMPTS) {
+      await deleteOTP(`${keyPrefix}:${email}`);
+      await redis.del(attemptKey);
+      throw new BadRequestError(
+        "Maximum attempts exceeded. Please request a new code."
+      );
+    }
+  } catch (err) {
+    if (err instanceof BadRequestError) throw err;
+    // continue if Redis is offline
+  }
+};
+
+const clearAttempts = async (
+  keyPrefix: string,
+  email: string
+): Promise<void> => {
+  try {
+    await redis.del(`attempts:${keyPrefix}:${email}`);
   } catch {
     // ignore
   }
@@ -79,7 +115,6 @@ export const authService = {
     }
 
     // 3. Generate Gitea username from email BEFORE hashing password
-    // e.g. "soham@example.com" → "soham"
     const giteaUsername = data.email
       .split("@")[0]!
       .toLowerCase()
@@ -90,7 +125,7 @@ export const authService = {
     // 4. Hash password
     const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
 
-    // 5. Create user in DB
+    // 5. Create user in DB — enforce role to STUDENT on self-registration
     const user = await prisma.user.create({
       data: {
         name: data.name,
@@ -99,9 +134,9 @@ export const authService = {
         password: hashedPassword,
         phoneNumber: data.phoneNumber,
         department: data.department,
-        role: data.role,
+        role: "STUDENT",
         isEmailVerified: !env.EMAIL_VERIFICATION,
-        giteaUsername, // ← save immediately
+        giteaUsername,
         ...(data.batchId && {
           enrollments: {
             create: { batchId: data.batchId },
@@ -141,28 +176,27 @@ export const authService = {
       },
     });
 
-    // 6. Auto-create Gitea account (non-fatal — works only if Gitea is running)
-    if (user.role === "STUDENT" || user.role === "SUPERVISOR") {
-      try {
-        await giteaService.createGiteaUser(
-          giteaUsername,
-          data.email,
-          data.password // plain password — needed before hashing
-        );
-        console.log(`✅ Gitea user created: ${giteaUsername}`);
-      } catch {
-        // Non-fatal — user can still login, giteaUsername saved in DB
-        // Admin can manually create Gitea account later
-        console.warn(
-          `⚠️ Gitea user creation failed for ${giteaUsername} — Gitea may be offline`
-        );
-      }
+    // 6. Auto-create Gitea account (non-fatal)
+    try {
+      // Use a separate random password for Gitea — never forward the user's LMS password
+      const giteaPassword = crypto.randomBytes(16).toString("hex");
+      await giteaService.createGiteaUser(
+        giteaUsername,
+        data.email,
+        giteaPassword
+      );
+      console.log(`✅ Gitea user created: ${giteaUsername}`);
+    } catch {
+      console.warn(
+        `⚠️ Gitea user creation failed for ${giteaUsername} — Gitea may be offline`
+      );
     }
 
     // 7. Send OTP only if email verification is enabled
     if (env.EMAIL_VERIFICATION) {
       const otp = generateOTP();
       await storeOTP(`otp:${user.email}`, otp);
+      await clearAttempts("otp", user.email);
       await emailService.sendVerificationEmail({
         to: user.email,
         name: user.name,
@@ -177,10 +211,11 @@ export const authService = {
     const storedOTP = await getOTP(`otp:${email}`);
     if (!storedOTP) {
       throw new BadRequestError(
-        "Verification code expired. Please request a new one"
+        "Verification code expired or invalid. Please request a new one"
       );
     }
     if (storedOTP !== code) {
+      await checkAndIncrementAttempts("otp", email);
       throw new BadRequestError("Invalid verification code");
     }
 
@@ -202,6 +237,7 @@ export const authService = {
     });
 
     await deleteOTP(`otp:${email}`);
+    await clearAttempts("otp", email);
     return user;
   },
 
@@ -247,11 +283,14 @@ export const authService = {
     });
 
     if (!user) {
+      // Artificial delay to equalize response time and prevent email enumeration
+      await new Promise((r) => setTimeout(r, 150 + Math.random() * 100));
       return { message: "If that email exists, a reset code has been sent" };
     }
 
     const otp = generateOTP();
     await storeOTP(`reset:${email}`, otp);
+    await clearAttempts("reset", email);
 
     await emailService.sendPasswordResetEmail({
       to: user.email,
@@ -263,13 +302,17 @@ export const authService = {
   },
 
   async resetPassword(email: string, code: string, newPassword: string) {
+    if (!email || !code || !newPassword) {
+      throw new BadRequestError("Email, code, and new password are required");
+    }
     const storedOTP = await getOTP(`reset:${email}`);
     if (!storedOTP) {
       throw new BadRequestError(
-        "Reset code expired. Please request a new one"
+        "Reset code expired or invalid. Please request a new one"
       );
     }
     if (storedOTP !== code) {
+      await checkAndIncrementAttempts("reset", email);
       throw new BadRequestError("Invalid reset code");
     }
 
@@ -281,6 +324,7 @@ export const authService = {
     });
 
     await deleteOTP(`reset:${email}`);
+    await clearAttempts("reset", email);
 
     return { message: "Password reset successfully. Please log in." };
   },

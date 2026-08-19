@@ -43,6 +43,5 @@ router.get("/:id", protect, getProjectById);
 router.patch("/:id", protect, restrictTo("STUDENT"), updateProject);
 router.post("/:id/submit-final", protect, restrictTo("STUDENT"), submitFinalProject);
 router.delete("/:id", protect, restrictTo("STUDENT", "ADMIN"), deleteProject);
-router.get("/supervised", protect, restrictTo("SUPERVISOR"), getSupervisedProjects);
 
 export default router;

@@ -31,7 +31,6 @@ const projectInclude = {
 } as const;
 
 export const createProject = catchAsync(async (req: Request, res: Response) => {
-  console.log("📋 Received body:", JSON.stringify(req.body, null, 2));
   const userId = req.user!.id;
   const { title, description, batchId, repoName, parentProjectId, technologies, repoOption, existingRepoUrl } = req.body as {
     title: string;
@@ -58,6 +57,18 @@ export const createProject = catchAsync(async (req: Request, res: Response) => {
   }
 
   if (!finalBatchId) throw new BadRequestError("Batch ID is required");
+
+  // Verify that the user is actually enrolled in this batch (unless ADMIN)
+  if (req.user!.role !== "ADMIN") {
+    const isEnrolled = await prisma.batchEnrollment.findUnique({
+      where: {
+        userId_batchId: { userId, batchId: finalBatchId },
+      },
+    });
+    if (!isEnrolled) {
+      throw new ForbiddenError("You are not enrolled in the selected batch");
+    }
+  }
 
   let repo: { name: string; html_url: string };
   let phase = 1;
@@ -202,8 +213,13 @@ export const deleteProject = catchAsync(async (req: Request, res: Response) => {
     }
   }
 
-  // 2. Delete all child records then the project (cascade via Prisma)
+  // 2. Delete/unlink child records then delete the project
   await prisma.$transaction([
+    prisma.project.updateMany({
+      where: { parentProjectId: id },
+      data: { parentProjectId: null },
+    }),
+    prisma.projectMember.deleteMany({ where: { projectId: id } }),
     prisma.activity.deleteMany({ where: { projectId: id } }),
     prisma.milestone.deleteMany({ where: { projectId: id } }),
     prisma.project.delete({ where: { id } }),
@@ -554,7 +570,10 @@ export const getProjectFeedback = catchAsync(async (req: Request, res: Response)
   const isOwner = project.ownerId === req.user!.id;
   const isSupervisor = project.supervisorId === req.user!.id;
   const isAdmin = req.user!.role === "ADMIN";
-  if (!isOwner && !isSupervisor && !isAdmin) throw new ForbiddenError();
+  const isMember = !!(await prisma.projectMember.findFirst({
+    where: { projectId, userId: req.user!.id },
+  }));
+  if (!isOwner && !isSupervisor && !isAdmin && !isMember) throw new ForbiddenError();
 
   const feedbackActivities = await prisma.activity.findMany({
     where: {
@@ -594,9 +613,13 @@ export const postProjectFeedback = catchAsync(async (req: Request, res: Response
   const isOwner = project.ownerId === req.user!.id;
   const isSupervisor = project.supervisorId === req.user!.id;
   const isAdmin = req.user!.role === "ADMIN";
-  if (!isOwner && !isSupervisor && !isAdmin) throw new ForbiddenError();
+  const isMember = !!(await prisma.projectMember.findFirst({
+    where: { projectId, userId: req.user!.id },
+  }));
+  if (!isOwner && !isSupervisor && !isAdmin && !isMember) throw new ForbiddenError();
 
-  const activityType = isOwner ? "STUDENT_FEEDBACK" : "SUPERVISOR_FEEDBACK";
+  const activityType =
+    (isOwner || isMember) ? "STUDENT_FEEDBACK" : "SUPERVISOR_FEEDBACK";
 
   await logActivity({
     type: activityType,
@@ -708,7 +731,10 @@ export const getProjectFiles = catchAsync(
     const isOwner = project.ownerId === req.user!.id;
     const isSupervisor = project.supervisorId === req.user!.id;
     const isAdmin = req.user!.role === "ADMIN";
-    if (!isOwner && !isSupervisor && !isAdmin) throw new ForbiddenError();
+    const isMember = !!(await prisma.projectMember.findFirst({
+      where: { projectId, userId: req.user!.id },
+    }));
+    if (!isOwner && !isSupervisor && !isAdmin && !isMember) throw new ForbiddenError();
 
     // Get all milestones with attachments
     const milestones = await prisma.milestone.findMany({
@@ -774,6 +800,11 @@ export const getPotentialMembers = catchAsync(
     });
 
     if (!project) throw new NotFoundError("Project");
+
+    // Only the project owner can view the potential member list (prevents batch enumeration)
+    if (project.ownerId !== req.user!.id) {
+      throw new ForbiddenError("Only the project owner can view potential members");
+    }
 
     // Fetch members
     const members = await prisma.projectMember.findMany({
@@ -849,6 +880,18 @@ export const addProjectMember = catchAsync(
 
     if (student.id === project.ownerId) {
       throw new BadRequestError("You cannot add yourself as a group member");
+    }
+
+    // Verify target student is enrolled in the same batch as this project
+    const isTargetEnrolled = await prisma.batchEnrollment.findUnique({
+      where: {
+        userId_batchId: { userId: student.id, batchId: project.batchId },
+      },
+    });
+    if (!isTargetEnrolled) {
+      throw new BadRequestError(
+        "Student is not enrolled in the same batch as this project"
+      );
     }
 
     // Verify not already member

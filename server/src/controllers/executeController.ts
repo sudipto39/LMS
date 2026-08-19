@@ -10,7 +10,8 @@ const RATE_LIMIT_WINDOW_SEC = 60;
 const MAX_RUNS_PER_WINDOW = 20;
 
 export const executeCode = catchAsync(async (req: Request, res: Response) => {
-  const userId = req.user?.id || "anonymous";
+  // protect middleware guarantees req.user is always set on this route
+  const userId = req.user!.id;
   const {
     engine = "python",
     selectedFilePath = "main.py",
@@ -43,23 +44,21 @@ export const executeCode = catchAsync(async (req: Request, res: Response) => {
   }
 
   // Rate Limiter per User (Redis backed with soft fail)
-  if (userId !== "anonymous") {
-    try {
-      const redisKey = `ratelimit:execute:${userId}`;
-      const current = await redis.incr(redisKey);
-      if (current === 1) {
-        await redis.expire(redisKey, RATE_LIMIT_WINDOW_SEC);
-      }
-      if (current > MAX_RUNS_PER_WINDOW) {
-        res.status(429).json({
-          status: "fail",
-          message: `Execution rate limit exceeded. Max ${MAX_RUNS_PER_WINDOW} runs per minute allowed.`,
-        });
-        return;
-      }
-    } catch {
-      // Ignore Redis connection errors and continue
+  try {
+    const redisKey = `ratelimit:execute:${userId}`;
+    const current = await redis.incr(redisKey);
+    if (current === 1) {
+      await redis.expire(redisKey, RATE_LIMIT_WINDOW_SEC);
     }
+    if (current > MAX_RUNS_PER_WINDOW) {
+      res.status(429).json({
+        status: "fail",
+        message: `Execution rate limit exceeded. Max ${MAX_RUNS_PER_WINDOW} runs per minute allowed.`,
+      });
+      return;
+    }
+  } catch {
+    // Ignore Redis connection errors and continue
   }
 
   const result = await judge0Service.executeCode({

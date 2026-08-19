@@ -1,21 +1,30 @@
+// ⚠️  LEGACY — this middleware is superseded by fileUploadMiddleware.ts.
+// It is kept for backward compatibility only. Do not add new routes that use this.
+// For any new upload routes, use src/middlewares/fileUploadMiddleware.ts instead.
 import multer from "multer";
 import multerS3 from "multer-s3";
 import path from "path";
 import { s3Client, BUCKET_NAME } from "../config/s3.js";
+import { AppError } from "../utils/appError.js";
+
+// Restricted to the same safe types as fileUploadMiddleware.ts
+const ALLOWED_MIMETYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "application/zip",
+  "application/x-zip-compressed",
+];
 
 const fileFilter = (
   _req: Express.Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ) => {
-  const allowedTypes = /jpeg|jpg|png|gif|pdf|mp4|doc|docx|zip|txt|ppt|pptx|xls|xlsx/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
-
-  if (extname && mimetype) {
+  if (ALLOWED_MIMETYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error(`Invalid file type: ${file.mimetype}`));
+    cb(new AppError(`Invalid file type: ${file.mimetype}. Only PDF, JPG, PNG, ZIP are allowed.`, 400));
   }
 };
 
@@ -34,7 +43,7 @@ export const uploadToS3 = multer({
     },
   }),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB max
+    fileSize: 10 * 1024 * 1024, // 10 MB — aligned with fileUploadMiddleware.ts
   },
   fileFilter,
 });

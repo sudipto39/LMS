@@ -17,6 +17,10 @@ export const createCourse = catchAsync(
 
     if (!title) throw new BadRequestError("Course title is required");
 
+    if (durationYears !== undefined && (durationYears < 1 || durationYears > 10 || !Number.isInteger(durationYears))) {
+      throw new BadRequestError("Duration years must be a whole number between 1 and 10");
+    }
+
     const course = await prisma.course.create({
       data: {
         title,
@@ -82,6 +86,10 @@ export const updateCourse = catchAsync(
         description?: string;
         isActive?: boolean;
       };
+
+    if (durationYears !== undefined && (durationYears < 1 || durationYears > 10 || !Number.isInteger(durationYears))) {
+      throw new BadRequestError("Duration years must be a whole number between 1 and 10");
+    }
 
     const course = await prisma.course.update({
       where: { id },

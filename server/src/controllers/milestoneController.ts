@@ -47,6 +47,23 @@ export const createMilestone = catchAsync(
 export const getProjectMilestones = catchAsync(
   async (req: Request, res: Response) => {
     const projectId = requireParam(req.params["projectId"], "projectId");
+    const user = req.user!;
+
+    if (user.role !== "ADMIN") {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: { members: { select: { userId: true } } },
+      });
+      if (!project) throw new NotFoundError("Project");
+
+      const isOwner = project.ownerId === user.id;
+      const isSupervisor = project.supervisorId === user.id;
+      const isMember = project.members?.some((m) => m.userId === user.id) ?? false;
+
+      if (!isOwner && !isSupervisor && !isMember) {
+        throw new ForbiddenError("You do not have permission to view this project's milestones");
+      }
+    }
 
     const milestones = await prisma.milestone.findMany({
       where: { projectId, isActive: true },
@@ -109,11 +126,24 @@ export const submitMilestone = catchAsync(
 
     const milestone = await prisma.milestone.findUnique({
       where: { id },
-      include: { project: { select: { ownerId: true, id: true } } },
+      include: {
+        project: {
+          select: {
+            ownerId: true,
+            id: true,
+            members: { select: { userId: true } },
+          },
+        },
+      },
     });
 
     if (!milestone) throw new NotFoundError("Milestone");
-    if (milestone.project.ownerId !== req.user!.id) throw new ForbiddenError();
+
+    // Allow both the project owner and group members to submit
+    const isOwner = milestone.project.ownerId === req.user!.id;
+    const isMember = milestone.project.members?.some((m) => m.userId === req.user!.id) ?? false;
+    if (!isOwner && !isMember) throw new ForbiddenError();
+
     if (milestone.status === "APPROVED") {
       throw new BadRequestError("Milestone already approved");
     }
@@ -235,9 +265,15 @@ export const rejectMilestone = catchAsync(
 
 export const getMySubmissions = catchAsync(
   async (req: Request, res: Response) => {
+    const userId = req.user!.id;
     const milestones = await prisma.milestone.findMany({
       where: {
-        project: { ownerId: req.user!.id },
+        project: {
+          OR: [
+            { ownerId: userId },
+            { members: { some: { userId } } },
+          ],
+        },
         status: { in: ["SUBMITTED", "APPROVED", "REJECTED"] },
         isActive: true,
       },
@@ -262,11 +298,22 @@ export const startMilestone = catchAsync(
 
     const milestone = await prisma.milestone.findUnique({
       where: { id },
-      include: { project: { select: { ownerId: true } } },
+      include: {
+        project: {
+          select: {
+            ownerId: true,
+            members: { select: { userId: true } },
+          },
+        },
+      },
     });
 
     if (!milestone) throw new NotFoundError("Milestone");
-    if (milestone.project.ownerId !== req.user!.id) throw new ForbiddenError();
+
+    const isOwner = milestone.project.ownerId === req.user!.id;
+    const isMember = milestone.project.members?.some((m) => m.userId === req.user!.id) ?? false;
+    if (!isOwner && !isMember) throw new ForbiddenError();
+
     if (milestone.status !== "PENDING" && milestone.status !== "REJECTED") {
       throw new BadRequestError("Only pending or rejected milestones can be started");
     }

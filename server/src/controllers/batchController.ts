@@ -78,6 +78,14 @@ export const createBatch = catchAsync(
       throw new BadRequestError("Start year and end year are required");
     }
 
+    const currentYear = new Date().getFullYear();
+    if (startYear < 1900 || endYear > currentYear + 10) {
+      throw new BadRequestError("Years must be between 1900 and " + (currentYear + 10));
+    }
+    if (startYear > endYear) {
+      throw new BadRequestError("Start year must be before or equal to end year");
+    }
+
     const course = await prisma.course.findUnique({
       where: { id: courseId },
       select: { id: true },

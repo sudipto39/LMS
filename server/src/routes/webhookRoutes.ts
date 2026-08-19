@@ -13,7 +13,12 @@ const handleGiteaWebhook = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const signature = req.headers["x-gitea-signature"] as string;
+  const signature = req.headers["x-gitea-signature"] as string | undefined;
+
+  if (!signature || !req.body) {
+    res.status(401).json({ message: "Invalid signature" });
+    return;
+  }
 
   // HMAC-SHA256 verification using timingSafeEqual
   const expected = crypto
@@ -21,8 +26,9 @@ const handleGiteaWebhook = async (
     .update(req.body as Buffer)
     .digest("hex");
 
-  const expectedBuf = Buffer.from(`sha256=${expected}`, "utf8");
-  const actualBuf = Buffer.from(signature ?? "", "utf8");
+  const cleanSig = signature.startsWith("sha256=") ? signature.slice(7) : signature;
+  const expectedBuf = Buffer.from(expected, "utf8");
+  const actualBuf = Buffer.from(cleanSig, "utf8");
 
   const isValid =
     expectedBuf.length === actualBuf.length &&
@@ -72,23 +78,58 @@ const handleGiteaWebhook = async (
 
   if (commits.length === 0) return;
 
+  // Fetch active project milestones for potential auto-submission
+  const milestones = await prisma.milestone.findMany({
+    where: { projectId: project.id, isActive: true },
+    orderBy: { order: "asc" },
+  });
+
   await Promise.all(
-    commits.map((commit) =>
-      logActivity({
+    commits.map(async (commit) => {
+      // 1. Log push activity
+      await logActivity({
         type: "PUSH",
         payload: {
           hash: commit.id,
           message: commit.message,
           author: commit.author.name,
           timestamp: commit.timestamp,
-          added: commit.added.length,
-          modified: commit.modified.length,
-          removed: commit.removed.length,
+          added: commit.added ? commit.added.length : 0,
+          modified: commit.modified ? commit.modified.length : 0,
+          removed: commit.removed ? commit.removed.length : 0,
         },
         userId: project.ownerId,
         projectId: project.id,
-      })
-    )
+      });
+
+      // 2. Check for milestone references in commit message
+      const msg = commit.message.toLowerCase();
+      for (let i = 0; i < milestones.length; i++) {
+        const m = milestones[i];
+        if (!m) continue;
+        const matchIndex = msg.includes(`milestone ${i + 1}`) || msg.includes(`milestone #${i + 1}`);
+        const matchTitle = m.title && msg.includes(m.title.toLowerCase());
+
+        if ((matchIndex || matchTitle) && m.status === "IN_PROGRESS") {
+          await prisma.milestone.update({
+            where: { id: m.id },
+            data: {
+              status: "SUBMITTED",
+              submittedAt: new Date(),
+              submittedById: project.ownerId,
+            },
+          });
+
+          await logActivity({
+            type: "SUBMIT_MILESTONE",
+            payload: { milestoneTitle: m.title, viaWebhook: true },
+            userId: project.ownerId,
+            projectId: project.id,
+          });
+          break;
+        }
+      }
+    })
   );
 };
 

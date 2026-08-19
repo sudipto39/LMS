@@ -91,22 +91,19 @@ export const getMe = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const updateMe = catchAsync(async (req: Request, res: Response) => {
-  const { name, giteaUsername, phoneNumber, department } = req.body as {
+  const { name, phoneNumber, department } = req.body as {
     name?: string;
-    giteaUsername?: string;
     phoneNumber?: string;
     department?: string;
   };
 
   const updates: {
     name?: string;
-    giteaUsername?: string;
     phoneNumber?: string;
     department?: string;
   } = {};
 
   if (name) updates.name = name;
-  if (giteaUsername) updates.giteaUsername = giteaUsername;
   if (phoneNumber) updates.phoneNumber = phoneNumber;
   if (department) updates.department = department;
 

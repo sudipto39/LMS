@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { prisma } from "../config/db.js";
 import { catchAsync } from "../utils/catchAsync.js";
 import { requireParam } from "../utils/requireParam.js";
+import { ForbiddenError, NotFoundError } from "../utils/appError.js";
 
 const activityInclude = {
   user: { select: { id: true, name: true, role: true } },
@@ -24,6 +25,24 @@ export const getMyActivity = catchAsync(
 export const getProjectActivity = catchAsync(
   async (req: Request, res: Response) => {
     const projectId = requireParam(req.params["projectId"], "projectId");
+    const user = req.user!;
+
+    if (user.role !== "ADMIN") {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: { members: { select: { userId: true } } },
+      });
+      if (!project) throw new NotFoundError("Project");
+
+      const isOwner = project.ownerId === user.id;
+      const isSupervisor = project.supervisorId === user.id;
+      const isMember = project.members?.some((m) => m.userId === user.id) ?? false;
+
+      if (!isOwner && !isSupervisor && !isMember) {
+        throw new ForbiddenError("You do not have permission to view this project's activities");
+      }
+    }
+
     const activities = await prisma.activity.findMany({
       where: { projectId },
       include: activityInclude,

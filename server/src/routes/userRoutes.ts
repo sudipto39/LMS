@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { protect, restrictTo } from "../middlewares/authMiddleware.js";
+import { validate } from "../middlewares/validate.js";
+import { updateMeSchema } from "../schemas/userSchema.js";
 import {
   getMe,
   updateMe,
@@ -11,7 +13,7 @@ import {
 const router = Router();
 
 router.get("/me", protect, getMe);
-router.patch("/updateMe", protect, updateMe);
+router.patch("/updateMe", protect, validate(updateMeSchema), updateMe);
 router.get("/supervisors", protect, getAllSupervisors);
 router.get("/getAllUsers", protect, restrictTo("ADMIN"), getAllUsers);
 router.get("/:id", protect, restrictTo("ADMIN"), getUserById);
