@@ -85,7 +85,6 @@ const authLimiter = rateLimit({
   message: "Too many requests from this IP, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => isDev,
 });
 
 const apiLimiter = rateLimit({
@@ -93,7 +92,6 @@ const apiLimiter = rateLimit({
   max: isDev ? 10000 : 100,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => isDev,
 });
 
 app.use("/api/v1", apiLimiter);
