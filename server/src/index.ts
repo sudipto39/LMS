@@ -7,13 +7,7 @@ import { connectRedis, disconnectRedis } from "./config/redis.js";
 
 async function startServer() {
   try {
-    // 1. Connect to PostgreSQL
-    await connectDB();
-
-    // 2. Connect to Redis (non-fatal)
-    await connectRedis();
-
-    // 3. Start HTTP server (bind 0.0.0.0 for Cloud Run ingress)
+    // 1. Start HTTP server first so Cloud Run port health check passes immediately
     const server = app.listen(env.PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${env.PORT}`);
       console.log(`🌍 Environment: ${env.NODE_ENV}`);
@@ -26,6 +20,12 @@ async function startServer() {
       console.error("❌ Server failed to start:", err);
       process.exit(1);
     });
+
+    // 2. Connect to PostgreSQL
+    await connectDB();
+
+    // 3. Connect to Redis (non-fatal)
+    await connectRedis();
 
     // 4. Graceful shutdown
     const shutdown = async (signal: string) => {
