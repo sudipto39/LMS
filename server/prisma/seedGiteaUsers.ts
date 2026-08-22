@@ -3,8 +3,8 @@ dotenv.config();
 
 import axios from "axios";
 
-const GITEA_BASE = process.env["GITEA_BASE_URL"]!;
-const GITEA_TOKEN = process.env["GITEA_ADMIN_TOKEN"]!;
+const GITEA_BASE = process.env["GITEA_BASE_URL"] || "http://localhost:3000/api/v1";
+const GITEA_TOKEN = process.env["GITEA_ADMIN_TOKEN"] || "";
 
 const gitea = axios.create({
   baseURL: GITEA_BASE,
@@ -12,6 +12,7 @@ const gitea = axios.create({
     Authorization: `token ${GITEA_TOKEN}`,
     "Content-Type": "application/json",
   },
+  timeout: 5000,
 });
 
 interface GiteaUserPayload {
@@ -28,47 +29,55 @@ const createGiteaUser = async (payload: GiteaUserPayload) => {
     console.log(`✅ Gitea user created: ${payload.username}`);
     return res.data;
   } catch (err: unknown) {
-    if (axios.isAxiosError(err) && err.response?.status === 422) {
-      console.log(`⚠️  User already exists in Gitea: ${payload.username}`);
+    if (axios.isAxiosError(err)) {
+      if (err.response?.status === 422) {
+        console.log(`⚠️  User already exists in Gitea: ${payload.username}`);
+        return null;
+      }
+      console.warn(`⚠️  Gitea API returned ${err.response?.status} for ${payload.username}: ${err.message}`);
       return null;
     }
-    throw err;
+    console.warn(`⚠️  Failed to connect to Gitea for ${payload.username}:`, err);
+    return null;
   }
 };
 
 async function main() {
   console.log("🔧 Creating Gitea accounts for demo users...\n");
 
-  // Student
-  await createGiteaUser({
-    username: "student",
-    email: "student@lms.com",
-    password: "Student@1234",
-    must_change_password: false,
-    send_notify: false,
-  });
+  const users = [
+    // Supervisors
+    { username: "rajesh-sharma", email: "rajesh.sharma@lms.com", password: "Supervisor@1234" },
+    { username: "ananya-roy", email: "ananya.roy@lms.com", password: "Supervisor@1234" },
+    { username: "supervisor", email: "supervisor@lms.com", password: "Supervisor@1234" },
 
-  // Supervisor
-  await createGiteaUser({
-    username: "supervisor",
-    email: "supervisor@lms.com",
-    password: "Supervisor@1234",
-    must_change_password: false,
-    send_notify: false,
-  });
+    // Students
+    { username: "rahul-verma", email: "rahul.verma@lms.com", password: "Student@1234" },
+    { username: "priya-patel", email: "priya.patel@lms.com", password: "Student@1234" },
+    { username: "amit-kumar", email: "amit.kumar@lms.com", password: "Student@1234" },
+    { username: "sneha-das", email: "sneha.das@lms.com", password: "Student@1234" },
+    { username: "vikram-singh", email: "vikram.singh@lms.com", password: "Student@1234" },
+    { username: "neha-gupta", email: "neha.gupta@lms.com", password: "Student@1234" },
+    { username: "rohan-mehta", email: "rohan.mehta@lms.com", password: "Student@1234" },
+    { username: "tanvi-sharma", email: "tanvi.sharma@lms.com", password: "Student@1234" },
+    { username: "student", email: "student@lms.com", password: "Student@1234" },
 
-  // Admin
-  await createGiteaUser({
-    username: "admin-lms",
-    email: "admin@lms.com",
-    password: "Admin@1234",
-    must_change_password: false,
-    send_notify: false,
-  });
+    // Admin
+    { username: "admin-lms", email: "admin@lms.com", password: "Admin@1234" },
+  ];
 
-  console.log("\n✅ Done! Now updating giteaUsername in PostgreSQL...");
+  for (const user of users) {
+    await createGiteaUser({
+      username: user.username,
+      email: user.email,
+      password: user.password,
+      must_change_password: false,
+      send_notify: false,
+    });
+  }
 
-  // Update giteaUsername in DB
+  console.log("\n✅ Updating giteaUsername mapping in PostgreSQL...");
+
   const { PrismaClient } = await import("../src/generated/prisma/index.js");
   const { PrismaPg } = await import("@prisma/adapter-pg");
   const pg = await import("pg");
@@ -80,33 +89,22 @@ async function main() {
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });
 
-  await prisma.user.update({
-    where: { email: "student@lms.com" },
-    data: { giteaUsername: "student" },
-  });
-  console.log("✅ student@lms.com → giteaUsername: student");
-
-  await prisma.user.update({
-    where: { email: "supervisor@lms.com" },
-    data: { giteaUsername: "supervisor" },
-  });
-  console.log("✅ supervisor@lms.com → giteaUsername: supervisor");
-
-  await prisma.user.update({
-    where: { email: "admin@lms.com" },
-    data: { giteaUsername: "admin-lms" },
-  });
-  console.log("✅ admin@lms.com → giteaUsername: admin-lms");
+  for (const user of users) {
+    try {
+      await prisma.user.updateMany({
+        where: { email: user.email },
+        data: { giteaUsername: user.username },
+      });
+      console.log(`✅ ${user.email} → giteaUsername: ${user.username}`);
+    } catch (err) {
+      console.warn(`⚠️ Could not update user ${user.email} in DB:`, err);
+    }
+  }
 
   await prisma.$disconnect();
   await pool.end();
 
-  console.log("\n🎉 All done! Summary:");
-  console.log("─────────────────────────────────────────────");
-  console.log("📧 student@lms.com     → Gitea: student");
-  console.log("📧 supervisor@lms.com  → Gitea: supervisor");
-  console.log("📧 admin@lms.com       → Gitea: admin-lms");
-  console.log("─────────────────────────────────────────────");
+  console.log("\n🎉 Gitea seeding complete!");
 }
 
 main().catch((e) => {
