@@ -36,7 +36,7 @@ jobs:
       - name: Deploy Database Migrations
         run: npx prisma migrate deploy
         env:
-          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL || secrets.DATABASE_URL }}
 
   # Build Docker image and deploy to Cloud Run only after migrations succeed
   deploy-backend:
@@ -76,7 +76,7 @@ jobs:
             --allow-unauthenticated \
             --port 8080 \
             --set-env-vars "NODE_ENV=production" \
-            --set-env-vars "DATABASE_URL=${{ secrets.NEON_DATABASE_URL }}" \
+            --set-env-vars "DATABASE_URL=${{ secrets.NEON_DATABASE_URL || secrets.DATABASE_URL }}" \
             --set-env-vars "JWT_ACCESS_SECRET=${{ secrets.JWT_ACCESS_SECRET }}" \
             --set-env-vars "JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}" \
             --set-env-vars "JWT_ACCESS_EXPIRES_IN=15m" \
