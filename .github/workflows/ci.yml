@@ -9,7 +9,7 @@ on:
 jobs:
   # --------------- BACKEND ---------------
   backend:
-    name: Backend — Type-check & Build
+    name: Backend - Type-check & Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -20,10 +20,10 @@ jobs:
       JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET != '' && secrets.JWT_ACCESS_SECRET || 'test-access-secret-min-32-characters-long' }}
       JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET != '' && secrets.JWT_REFRESH_SECRET || 'test-refresh-secret-min-32-characters-long' }}
       CLIENT_URL: ${{ secrets.CLIENT_URL != '' && secrets.CLIENT_URL || 'http://localhost:5173' }}
-      GITEA_BASE_URL: ${{ secrets.GITEA_BASE_URL != '' && secrets.GITEA_BASE_URL || 'http://localhost:3000' }}
+      GITEA_BASE_URL: ${{ secrets.GITEA_BASE_URL != '' && secrets.GITEA_BASE_URL || 'http://localhost:3000/api/v1' }}
       GITEA_ADMIN_TOKEN: ${{ secrets.GITEA_ADMIN_TOKEN != '' && secrets.GITEA_ADMIN_TOKEN || 'dummy-token' }}
       GITEA_WEBHOOK_SECRET: ${{ secrets.GITEA_WEBHOOK_SECRET != '' && secrets.GITEA_WEBHOOK_SECRET || 'dummy-webhook-secret' }}
-      # AWS — dummy values so S3Client initializes without crashing during tests
+      # AWS - dummy values so S3Client initializes without crashing during tests
       AWS_REGION: ${{ secrets.AWS_REGION != '' && secrets.AWS_REGION || 'us-east-1' }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_ACCESS_KEY_ID || 'AKIADUMMYACCESSKEYID' }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_SECRET_ACCESS_KEY || 'dummySecretAccessKey1234567890123456789' }}
@@ -63,7 +63,7 @@ jobs:
 
   # --------------- FRONTEND ---------------
   frontend:
-    name: Frontend — Type-check & Build
+    name: Frontend - Type-check & Build
     runs-on: ubuntu-latest
     defaults:
       run:

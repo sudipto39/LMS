@@ -2,7 +2,7 @@
 
 /**
  * ============================================================================
- * GiteaForge / LMS Express Backend — Autocannon Stress & Load Benchmarking
+ * GiteaForge / LMS Express Backend ï¿½ Autocannon Stress & Load Benchmarking
  * ============================================================================
  * Usage:
  *   npm run test:stress
@@ -25,9 +25,9 @@ console.log("=".repeat(70) + "\n");
 
 async function runScenario(title, options) {
   console.log(`? Running Scenario: ${title}`);
-  console.log(`  • Connections: ${options.connections}`);
-  console.log(`  • Duration: ${options.duration}s`);
-  console.log(`  • Endpoint: ${options.url}`);
+  console.log(`  ï¿½ Connections: ${options.connections}`);
+  console.log(`  ï¿½ Duration: ${options.duration}s`);
+  console.log(`  ï¿½ Endpoint: ${options.url}`);
 
   return new Promise((resolve, reject) => {
     const instance = autocannon(
@@ -42,17 +42,17 @@ async function runScenario(title, options) {
         }
 
         console.log("\n?? Results:");
-        console.log(`  • Total Requests : ${result.requests.total}`);
-        console.log(`  • Avg Req/Sec    : ${result.requests.average.toFixed(1)} req/s`);
-        console.log(`  • Avg Latency    : ${result.latency.average.toFixed(2)} ms`);
-        console.log(`  • P50 Latency    : ${result.latency.p50} ms`);
-        console.log(`  • P90 Latency    : ${result.latency.p90} ms`);
-        console.log(`  • P99 Latency    : ${result.latency.p99} ms`);
-        console.log(`  • 1xx / 2xx / 3xx: ${result["1xx"] + result["2xx"] + result["3xx"]}`);
-        console.log(`  • 4xx (Client Err): ${result["4xx"]}`);
-        console.log(`  • 5xx (Server Err): ${result["5xx"]}`);
-        console.log(`  • Total Errors   : ${result.errors}`);
-        console.log(`  • Total Timeouts : ${result.timeouts}`);
+        console.log(`  ï¿½ Total Requests : ${result.requests.total}`);
+        console.log(`  ï¿½ Avg Req/Sec    : ${result.requests.average.toFixed(1)} req/s`);
+        console.log(`  ï¿½ Avg Latency    : ${result.latency.average.toFixed(2)} ms`);
+        console.log(`  ï¿½ P50 Latency    : ${result.latency.p50} ms`);
+        console.log(`  ï¿½ P90 Latency    : ${result.latency.p90} ms`);
+        console.log(`  ï¿½ P99 Latency    : ${result.latency.p99} ms`);
+        console.log(`  ï¿½ 1xx / 2xx / 3xx: ${result["1xx"] + result["2xx"] + result["3xx"]}`);
+        console.log(`  ï¿½ 4xx (Client Err): ${result["4xx"]}`);
+        console.log(`  ï¿½ 5xx (Server Err): ${result["5xx"]}`);
+        console.log(`  ï¿½ Total Errors   : ${result.errors}`);
+        console.log(`  ï¿½ Total Timeouts : ${result.timeouts}`);
         console.log("-".repeat(70) + "\n");
         resolve(result);
       }
@@ -65,7 +65,7 @@ async function runScenario(title, options) {
 async function runAllBenchmarks() {
   try {
     // Quick connectivity check
-    const check = await fetch(`${targetUrl}/health`).catch((err) => {
+    const check = await fetch(`${targetUrl}/health`).catch(() => {
       console.error(`\n? Target server is not reachable at ${targetUrl}/health!`);
       console.error(`Please ensure your backend server is running (npm run dev or npm start).\n`);
       process.exit(1);
