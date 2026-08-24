@@ -180,38 +180,86 @@ export const giteaService = {
       const encodedPath = cleanPath.split("/").map(encodeURIComponent).join("/");
       const base64Content = Buffer.from(content).toString("base64");
 
-      // 1. Ensure the repository exists on Gitea (self-healing if repo was not initialized)
+      console.log(`📝 updateRepoFile: owner=${owner}, repo=${repo}, filepath=${cleanPath}`);
+
+      // 1. Ensure the repository exists on Gitea (self-healing)
       let defaultBranch = "main";
       try {
         const repoRes = await gitea.get(`/repos/${owner}/${repo}`);
         defaultBranch = repoRes.data.default_branch || "main";
+        console.log(`✅ Repo ${owner}/${repo} exists, default branch: ${defaultBranch}`);
       } catch (err: unknown) {
         if (err instanceof AxiosError && err.response?.status === 404) {
-          // Repo doesn't exist on Gitea yet. Try auto-creating it for the owner
+          console.log(`⚠️ Repo ${owner}/${repo} not found on Gitea. Attempting auto-create...`);
+
+          // First ensure the Gitea user exists
           try {
-            const created = await giteaService.createRepo(owner, repo, "Auto-created project repository");
-            defaultBranch = created?.name ? "main" : defaultBranch;
-          } catch (createErr: unknown) {
-            // If user doesn't exist on Gitea, create user first
-            if (createErr instanceof AxiosError && createErr.response?.status === 404) {
+            await gitea.get(`/users/${owner}`);
+            console.log(`✅ Gitea user "${owner}" exists`);
+          } catch (userCheckErr: unknown) {
+            if (userCheckErr instanceof AxiosError && userCheckErr.response?.status === 404) {
+              console.log(`⚠️ Gitea user "${owner}" not found. Creating...`);
               try {
-                await giteaService.createGiteaUser(owner, `${owner}@lms.local`, "Student@1234");
-                await giteaService.createRepo(owner, repo, "Auto-created project repository");
-              } catch (userErr) {
-                console.error(`Failed to auto-create Gitea user/repo for ${owner}/${repo}:`, userErr);
+                await gitea.post("/admin/users", {
+                  username: owner,
+                  email: `${owner}@lms.local`,
+                  password: "Student@1234",
+                  must_change_password: false,
+                  send_notify: false,
+                });
+                console.log(`✅ Created Gitea user "${owner}"`);
+              } catch (createUserErr: unknown) {
+                // 422 = user already exists (race condition), that's fine
+                if (createUserErr instanceof AxiosError && createUserErr.response?.status === 422) {
+                  console.log(`ℹ️ Gitea user "${owner}" already exists (422)`);
+                } else {
+                  console.error(`❌ Failed to create Gitea user "${owner}":`, createUserErr);
+                }
               }
             }
           }
+
+          // Now create the repository
+          try {
+            const createRes = await gitea.post(`/admin/users/${owner}/repos`, {
+              name: repo,
+              description: "Auto-created project repository",
+              private: true,
+              auto_init: true,
+              default_branch: "main",
+            });
+            defaultBranch = createRes.data?.default_branch || "main";
+            console.log(`✅ Auto-created repo ${owner}/${repo}`);
+
+            // Give Gitea a moment to initialize the repo with auto_init
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          } catch (createRepoErr: unknown) {
+            if (createRepoErr instanceof AxiosError && createRepoErr.response?.status === 409) {
+              console.log(`ℹ️ Repo ${owner}/${repo} already exists (409 conflict)`);
+            } else {
+              console.error(`❌ Failed to auto-create repo ${owner}/${repo}:`, createRepoErr);
+              throw new AppError(
+                `Repository ${owner}/${repo} does not exist on Gitea and could not be auto-created. Please create it first.`,
+                404
+              );
+            }
+          }
+        } else {
+          // Non-404 error (e.g., Gitea offline)
+          throw err;
         }
       }
 
       // 2. Check if the file already exists to obtain its SHA
       let sha: string | undefined;
       try {
-        const existing = await gitea.get(`/repos/${owner}/${repo}/contents/${encodedPath}`);
+        const existing = await gitea.get(`/repos/${owner}/${repo}/contents/${encodedPath}`, {
+          params: { ref: defaultBranch },
+        });
         sha = existing.data?.sha;
+        console.log(`📄 File "${cleanPath}" exists (sha: ${sha?.substring(0, 7)})`);
       } catch {
-        // file does not exist yet
+        console.log(`📄 File "${cleanPath}" is new (will create)`);
       }
 
       // 3. Put or Post file to Gitea
@@ -222,6 +270,7 @@ export const giteaService = {
           sha,
           branch: defaultBranch,
         });
+        console.log(`✅ Updated file "${cleanPath}" in ${owner}/${repo}`);
         return res.data;
       } else {
         const res = await gitea.post(`/repos/${owner}/${repo}/contents/${encodedPath}`, {
@@ -229,6 +278,7 @@ export const giteaService = {
           message,
           branch: defaultBranch,
         });
+        console.log(`✅ Created file "${cleanPath}" in ${owner}/${repo}`);
         return res.data;
       }
     } catch (error) {

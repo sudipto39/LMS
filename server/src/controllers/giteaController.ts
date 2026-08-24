@@ -137,6 +137,9 @@ export const updateFile = catchAsync(
   async (req: Request, res: Response) => {
     const owner = requireParam(req.params["owner"], "owner");
     const repo = requireParam(req.params["repo"], "repo");
+
+    console.log(`📥 updateFile request: owner=${owner}, repo=${repo}, user=${req.user?.giteaUsername || req.user?.id}`);
+
     await verifyRepoAccess(req, owner, repo, true);
 
     const { filepath, content, message } = req.body as {
@@ -147,6 +150,9 @@ export const updateFile = catchAsync(
     if (!filepath || content === undefined) {
       throw new BadRequestError("Filepath and content are required");
     }
+
+    console.log(`📤 Pushing file "${filepath}" to ${owner}/${repo}`);
+
     const data = await giteaService.updateRepoFile(
       owner,
       repo,
