@@ -2678,7 +2678,7 @@ export function StudentProjectDetail({
                     if (res.ok) {
                       // Refresh files list
                       const filesRes = await fetch(
-                        `${API_URL}/v1/projects/${projectId}/files`,
+                        `${API_URL}/v1/projects/${activePid}/files`,
                         { headers: getAuthHeaders() },
                       );
                       const filesData = await filesRes.json();
