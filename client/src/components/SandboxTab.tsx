@@ -847,23 +847,30 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
 
     try {
       const token = tokenStore.get();
-      const currentFile = files.find((f) => f.path === selectedFilePath);
-      if (currentFile && currentFile.content) {
-        const res = await fetch(
-          `${API_URL}/v1/gitea/repos/${repoOwner}/${repoName}/files`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              filepath: currentFile.path,
-              content: currentFile.content,
-              message: commitMsg,
-            }),
-          }
-        );
+      const currentFile =
+        files.find((f) => f.path === selectedFilePath || f.name === selectedFilePath) ||
+        files.find((f) => !f.isFolder);
+
+      if (!currentFile) {
+        setGiteaErrorBanner("⚠️ No file selected to commit.");
+        return;
+      }
+
+      const res = await fetch(
+        `${API_URL}/v1/gitea/repos/${repoOwner}/${repoName}/files`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            filepath: currentFile.path.replace(/^\/+/, ""),
+            content: currentFile.content ?? "",
+            message: commitMsg,
+          }),
+        }
+      );
 
         if (res.ok) {
           setGiteaErrorBanner(null);
@@ -890,9 +897,8 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
             `ℹ️ Changes cached in local Sandbox.`,
           ]);
         }
-      }
-    } catch {
-      setGiteaErrorBanner(`⚠️ Gitea Server Offline: ${giteaHost} is unreachable. Changes saved in local Sandbox cache.`);
+      } catch {
+        setGiteaErrorBanner(`⚠️ Gitea Server Offline: ${giteaHost} is unreachable. Changes saved in local Sandbox cache.`);
       setTerminalLogs((prev) => [
         ...prev,
         `⚠️ Gitea Server at ${giteaHost} is OFFLINE or unreachable.`,
