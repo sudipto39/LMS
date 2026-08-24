@@ -406,6 +406,17 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
     return project?.repoName || project?.giteaRepoName || project?.title?.toLowerCase().replace(/\s+/g, "-") || "repo";
   }, [project]);
 
+  const canWrite = useMemo(() => {
+    if (!user) return false;
+    if (user.role === "ADMIN" || user.role?.toUpperCase() === "ADMIN") return true;
+    if (user.giteaUsername && repoOwner && user.giteaUsername.toLowerCase() === repoOwner.toLowerCase()) return true;
+    if (project?.ownerId && project.ownerId === user.id) return true;
+    if (project?.owner?.id && project.owner.id === user.id) return true;
+    if (project?.members?.some((m: any) => m.userId === user.id || m.id === user.id || m.user?.id === user.id)) return true;
+    if (!project?.id && !project?._id && user.giteaUsername) return true;
+    return false;
+  }, [user, repoOwner, project]);
+
   const giteaHost = useMemo(() => {
     if (project?.repoUrl) {
       try {
@@ -782,10 +793,19 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
         setPushSuccess("Synced with Gitea Server!");
         setTimeout(() => setPushSuccess(null), 4000);
       } else {
-        setGiteaErrorBanner(`⚠️ Gitea Repo Error: Cannot access ${giteaHost}/${repoOwner}/${repoName}. Local sandbox active.`);
+        const errData = await res.json().catch(() => ({}));
+        const errMsg =
+          errData.message ||
+          (res.status === 403
+            ? `Access forbidden: You do not have permission to access repository ${repoOwner}/${repoName}.`
+            : res.status === 404
+            ? `Repository ${repoOwner}/${repoName} was not found on Gitea.`
+            : `Cannot access repository ${repoOwner}/${repoName} on ${giteaHost}.`);
+        setGiteaErrorBanner(`⚠️ ${errMsg}`);
         setTerminalLogs((prev) => [
           ...prev,
-          `⚠️ Gitea repository ${giteaHost}/${repoOwner}/${repoName} unreachable. Using local Sandbox cache.`,
+          `⚠️ Gitea fetch failed (${res.status}): ${errMsg}`,
+          `ℹ️ Using local Sandbox cache.`,
         ]);
       }
     } catch {
@@ -802,6 +822,15 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
 
   // Commit & Push back to Gitea
   const handleCommitToGitea = async () => {
+    if (!canWrite) {
+      setGiteaErrorBanner(`⚠️ Permission Denied: You do not have write access to push commits to ${repoOwner}/${repoName}. (Only the project owner and group members can push commits).`);
+      setTerminalLogs((prev) => [
+        ...prev,
+        `⚠️ Git Push Denied: User @${user?.giteaUsername || user?.name || "student"} does not have commit permissions for repository ${repoOwner}/${repoName}.`,
+      ]);
+      return;
+    }
+
     const userMsg = window.prompt("Enter Git commit message:", "Updated via GiteaForge Sandbox");
     if (userMsg === null) return;
     const commitMsg = userMsg.trim() || "Updated via GiteaForge Sandbox";
@@ -846,11 +875,19 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
           setPushSuccess("Committed & Pushed to Gitea!");
           setTimeout(() => setPushSuccess(null), 4000);
         } else {
-          setGiteaErrorBanner(`⚠️ Gitea Server Error: Cannot push to ${giteaHost}/${repoOwner}/${repoName}.`);
+          const errData = await res.json().catch(() => ({}));
+          const errMsg =
+            errData.message ||
+            (res.status === 403
+              ? `You do not have permission to push changes to ${repoOwner}/${repoName}.`
+              : res.status === 404
+              ? `Repository ${repoOwner}/${repoName} was not found on Gitea.`
+              : `Cannot push to ${giteaHost}/${repoOwner}/${repoName}.`);
+          setGiteaErrorBanner(`⚠️ ${errMsg}`);
           setTerminalLogs((prev) => [
             ...prev,
-            `⚠️ Gitea repository ${giteaHost}/${repoOwner}/${repoName} unreachable or repo offline.`,
-            `ℹ️ Changes cached in local Sandbox. Start Gitea service to sync live commits.`,
+            `⚠️ Push failed (${res.status}): ${errMsg}`,
+            `ℹ️ Changes cached in local Sandbox.`,
           ]);
         }
       }
@@ -1103,15 +1140,23 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
               <option value="cpp">C++ 20 (Clang Wasm)</option>
             </select>
           </div>
-          {isSupervisor && (
+          {isSupervisor ? (
             <>
               <span className="text-[#30363d]">|</span>
               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-950/60 text-purple-300 border border-purple-800/60 rounded text-xs font-semibold">
                 <Eye className="h-3.5 w-3.5 text-purple-400" />
-                <span>Supervisor Live Review Mode</span>
+                <span>Supervisor Review Mode (Read-Only)</span>
               </div>
             </>
-          )}
+          ) : !canWrite ? (
+            <>
+              <span className="text-[#30363d]">|</span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-950/50 text-amber-300 border border-amber-800/50 rounded text-xs font-semibold">
+                <Lock className="h-3.5 w-3.5 text-amber-400" />
+                <span>Read-Only Viewer</span>
+              </div>
+            </>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -1131,11 +1176,15 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
           </button>
           <button
             onClick={handleCommitToGitea}
-            disabled={pushingGitea}
-            className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow transition disabled:opacity-50"
+            disabled={pushingGitea || !canWrite}
+            title={!canWrite ? "Read-only: You are not a collaborator on this repository" : "Commit & Push changes to Gitea"}
+            className={cn(
+              "px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 shadow transition disabled:opacity-50",
+              canWrite ? "bg-green-600 hover:bg-green-500 text-white" : "bg-neutral-800 text-neutral-400 cursor-not-allowed border border-neutral-700"
+            )}
           >
-            <UploadCloud className="h-3.5 w-3.5" />
-            {pushingGitea ? "Pushing..." : "Commit & Push to Gitea"}
+            {canWrite ? <UploadCloud className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+            {pushingGitea ? "Pushing..." : !canWrite ? "Read-Only (Push Locked)" : "Commit & Push to Gitea"}
           </button>
         </div>
       </div>

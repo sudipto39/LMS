@@ -175,6 +175,8 @@ export function useAuth() {
       // ignore logout errors
     }
     tokenStore.clear();
+    localStorage.removeItem("activeProjectId");
+    localStorage.removeItem("projectsUpdatedAt");
     clearAuth();
   }, [clearAuth]);
 

@@ -1744,7 +1744,7 @@ function RecentCommits({ owner, repo }: { owner: string; repo: string }) {
 }
 
 export function StudentProjectDetail({
-  onNavigate: _onNavigate,
+  onNavigate,
 }: {
   onNavigate: (page: Page) => void;
 }) {
@@ -1765,14 +1765,14 @@ export function StudentProjectDetail({
   const [memberIdentifier, setMemberIdentifier] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
 
-  const projectId = localStorage.getItem("activeProjectId");
+  const activePid = project?.id ?? project?._id;
 
   const handleAddMember = async () => {
-    if (!memberIdentifier) return;
+    if (!memberIdentifier || !activePid) return;
     setLoadingMembers(true);
     try {
       const token = tokenStore.get();
-      const res = await fetch(`${API_URL}/v1/projects/${projectId}/members`, {
+      const res = await fetch(`${API_URL}/v1/projects/${activePid}/members`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1800,10 +1800,11 @@ export function StudentProjectDetail({
   };
 
   const handleRemoveMember = async (userId: string) => {
+    if (!activePid) return;
     if (!window.confirm("Are you sure you want to remove this group member?")) return;
     try {
       const token = tokenStore.get();
-      const res = await fetch(`${API_URL}/v1/projects/${projectId}/members/${userId}`, {
+      const res = await fetch(`${API_URL}/v1/projects/${activePid}/members/${userId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1822,56 +1823,127 @@ export function StudentProjectDetail({
   };
 
   const fetchProjectDetail = useCallback(async () => {
+    setLoading(true);
     try {
       const token = tokenStore.get();
-      const [projectRes, milestoneRes, filesRes] = await Promise.all([
-        fetch(`${API_URL}/v1/projects/${projectId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_URL}/v1/projects/${projectId}/files`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      const headers = { Authorization: `Bearer ${token}` };
+
+      let currentPid = localStorage.getItem("activeProjectId");
+      let validProject: any = null;
+
+      // 1. Attempt to fetch activeProjectId if present
+      if (currentPid) {
+        try {
+          const projectRes = await fetch(`${API_URL}/v1/projects/${currentPid}`, { headers });
+          if (projectRes.ok) {
+            const projectData = await projectRes.json();
+            const p = projectData.data || projectData;
+            if (p && p.id && p.title) {
+              validProject = p;
+            }
+          }
+        } catch {
+          // Ignore and fallback to user's projects
+        }
+      }
+
+      // 2. If current activeProjectId is invalid, forbidden, or missing, fallback to student's own projects
+      if (!validProject || !validProject.id) {
+        try {
+          const myProjectsRes = await fetch(`${API_URL}/v1/projects/me`, { headers });
+          if (myProjectsRes.ok) {
+            const myProjectsData = await myProjectsRes.json();
+            const list = Array.isArray(myProjectsData.data) ? myProjectsData.data : [];
+            if (list.length > 0) {
+              currentPid = list[0].id ?? list[0]._id;
+              localStorage.setItem("activeProjectId", currentPid!);
+              // Fetch detailed project
+              const detailedRes = await fetch(`${API_URL}/v1/projects/${currentPid}`, { headers });
+              if (detailedRes.ok) {
+                const detailedData = await detailedRes.json();
+                validProject = detailedData.data || detailedData;
+              } else {
+                validProject = list[0];
+              }
+            } else {
+              localStorage.removeItem("activeProjectId");
+              setProject(null);
+              setMilestones([]);
+              setFiles([]);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to fetch student projects fallback:", err);
+        }
+      }
+
+      if (!validProject || !currentPid) {
+        localStorage.removeItem("activeProjectId");
+        setProject(null);
+        setMilestones([]);
+        setFiles([]);
+        setLoading(false);
+        return;
+      }
+
+      setProject(validProject);
+
+      // Fetch milestones and files in parallel for the valid project
+      const [milestoneRes, filesRes] = await Promise.all([
+        fetch(`${API_URL}/v1/projects/${currentPid}/milestones`, { headers }),
+        fetch(`${API_URL}/v1/projects/${currentPid}/files`, { headers }),
       ]);
-      const projectData = await projectRes.json();
-      setProject(projectData.data || projectData);
 
-      const milestoneData = await milestoneRes.json();
-      setMilestones(
-        Array.isArray(milestoneData.data)
-          ? milestoneData.data
-          : Array.isArray(milestoneData)
-            ? milestoneData
-            : [],
-      );
+      if (milestoneRes.ok) {
+        const milestoneData = await milestoneRes.json();
+        setMilestones(
+          Array.isArray(milestoneData.data)
+            ? milestoneData.data
+            : Array.isArray(milestoneData)
+              ? milestoneData
+              : [],
+        );
+      } else {
+        setMilestones([]);
+      }
 
-      const filesData = await filesRes.json();
-      setFiles(
-        Array.isArray(filesData.data)
-          ? filesData.data
-          : Array.isArray(filesData)
-            ? filesData
-            : [],
-      );
+      if (filesRes.ok) {
+        const filesData = await filesRes.json();
+        setFiles(
+          Array.isArray(filesData.data)
+            ? filesData.data
+            : Array.isArray(filesData)
+              ? filesData
+              : [],
+        );
+      } else {
+        setFiles([]);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("StudentProjectDetail load error:", err);
+      setProject(null);
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, []);
 
   useEffect(() => {
     fetchProjectDetail();
   }, [fetchProjectDetail]);
 
   const handleSubmitFinal = async () => {
+    if (!activePid) return;
     setSubmittingFinal(true);
     setSubmitFinalError("");
     try {
       const token = tokenStore.get();
-      const res = await fetch(`${API_URL}/v1/projects/${projectId}/submit-final`, {
+      const res = await fetch(`${API_URL}/v1/projects/${activePid}/submit-final`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1889,7 +1961,26 @@ export function StudentProjectDetail({
     }
   };
 
-  if (loading || !project) return <LoadingSpinner text="Loading project..." />;
+  if (loading) return <LoadingSpinner text="Loading project..." />;
+
+  if (!project || !project.id || !project.title) {
+    return (
+      <EmptyState
+        title="No Project Selected"
+        description="You don't have an active project yet or haven't been assigned to a repository."
+        action={
+          <div className="flex justify-center gap-3 mt-4">
+            <Button onClick={() => onNavigate("student-create-project")}>
+              <Plus className="h-4 w-4" /> Create New Project
+            </Button>
+            <Button variant="secondary" onClick={() => onNavigate("student-projects")}>
+              View All Projects
+            </Button>
+          </div>
+        }
+      />
+    );
+  }
 
   const tabs = [
     { id: "overview" as const, label: "Overview" },
@@ -3130,7 +3221,7 @@ export function SupervisorProjects({
    SUPERVISOR PROJECT DETAIL
    ═══════════════════════════════════════════════════ */
 export function SupervisorProjectDetail({
-  onNavigate: _onNavigate,
+  onNavigate,
 }: {
   onNavigate: (page: Page) => void;
 }) {
@@ -3165,6 +3256,7 @@ export function SupervisorProjectDetail({
 
   // Re-fetch project + milestones after approve/reject so progress updates immediately
   const refreshProjectAndMilestones = useCallback(async () => {
+    if (!projectId) return;
     const token = tokenStore.get();
     const headers = { Authorization: `Bearer ${token}` };
     const [projectRes, milestoneRes] = await Promise.all([
@@ -3185,6 +3277,10 @@ export function SupervisorProjectDetail({
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!projectId) {
+        setLoading(false);
+        return;
+      }
       try {
         const token = tokenStore.get();
         const headers = { Authorization: `Bearer ${token}` };
@@ -3192,14 +3288,11 @@ export function SupervisorProjectDetail({
         const [projectRes, milestoneRes, activityRes, filesRes, feedbackRes] =
           await Promise.all([
             fetch(`${API_URL}/v1/projects/${projectId}`, { headers }),
-            // milestones route is mounted at /api/v1 with path /projects/:id/milestones
             fetch(`${API_URL}/v1/projects/${projectId}/milestones`, {
               headers,
             }),
-            // correct activities route: /api/v1/activities/project/:projectId
             fetch(`${API_URL}/v1/activities/project/${projectId}`, { headers }),
             fetch(`${API_URL}/v1/projects/${projectId}/files`, { headers }),
-            // Feedback thread — loads messages from both student and supervisor
             fetch(`${API_URL}/v1/projects/${projectId}/feedback`, { headers }),
           ]);
 
@@ -3223,7 +3316,6 @@ export function SupervisorProjectDetail({
           setFiles(filesData.data || []);
         }
 
-        // Load the shared feedback thread (SUPERVISOR_FEEDBACK + STUDENT_FEEDBACK)
         if (feedbackRes.ok) {
           const feedbackData = await feedbackRes.json();
           setComments(feedbackData.data || []);
@@ -3232,6 +3324,7 @@ export function SupervisorProjectDetail({
         }
       } catch (err) {
         console.error("SupervisorProjectDetail load failed:", err);
+        setProject(null);
       } finally {
         setLoading(false);
       }
@@ -3239,7 +3332,23 @@ export function SupervisorProjectDetail({
     fetchData();
   }, [projectId]);
 
-  if (loading || !project) return <LoadingSpinner text="Loading project..." />;
+  if (loading) return <LoadingSpinner text="Loading project..." />;
+
+  if (!project || !project.id || !project.title) {
+    return (
+      <EmptyState
+        title="Project Not Found"
+        description="The selected project could not be found or you do not have permission to view it."
+        action={
+          <div className="flex justify-center gap-3 mt-4">
+            <Button onClick={() => onNavigate("supervisor-projects")}>
+              View Supervised Projects
+            </Button>
+          </div>
+        }
+      />
+    );
+  }
 
   const tabs = [
     { id: "summary" as const, label: "Summary" },

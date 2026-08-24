@@ -88,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         localStorage.removeItem("giteaforge_token");
+        localStorage.removeItem("activeProjectId");
+        localStorage.removeItem("projectsUpdatedAt");
         // No valid session — start fresh
         setState({
           user: null,
@@ -118,6 +120,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearAuth = useCallback(() => {
     localStorage.removeItem("giteaforge_token");
+    localStorage.removeItem("activeProjectId");
+    localStorage.removeItem("projectsUpdatedAt");
     setState({
       user: null,
       accessToken: null,
