@@ -32,6 +32,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:users": "tsx prisma/seedUsers.ts",
     "db:seed:gitea": "tsx prisma/seedGiteaUsers.ts",
+    "db:seed:repos": "tsx prisma/seedGiteaRepos.ts",
     "copy-prisma": "node -e \"const{cpSync}=require('fs');cpSync('src/generated','dist/generated',{recursive:true});\""
   },
   "devDependencies": {

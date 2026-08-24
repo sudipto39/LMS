@@ -847,58 +847,126 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
 
     try {
       const token = tokenStore.get();
-      const currentFile =
-        files.find((f) => f.path === selectedFilePath || f.name === selectedFilePath) ||
-        files.find((f) => !f.isFolder);
 
-      if (!currentFile) {
-        setGiteaErrorBanner("⚠️ No file selected to commit.");
+      // Read .gitignore if present in the workspace
+      const gitignoreFile = files.find(
+        (f) => !f.isFolder && (f.path === ".gitignore" || f.name === ".gitignore")
+      );
+      const gitignorePatterns = (gitignoreFile?.content || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"));
+
+      const isIgnored = (filePath: string) => {
+        const normalized = filePath.replace(/^\/+/, "");
+        // Standard ignored build/system paths
+        if (
+          normalized.startsWith("node_modules/") ||
+          normalized.startsWith("dist/") ||
+          normalized.startsWith("build/") ||
+          normalized.startsWith(".git/") ||
+          normalized.endsWith(".DS_Store") ||
+          normalized.endsWith("Thumbs.db")
+        ) {
+          return true;
+        }
+
+        // Custom .gitignore patterns
+        for (const pattern of gitignorePatterns) {
+          const cleanPattern = pattern.replace(/^\/+/, "").replace(/\/+$/, "");
+          if (!cleanPattern) continue;
+
+          if (cleanPattern.endsWith("/*")) {
+            const prefix = cleanPattern.slice(0, -2);
+            if (normalized.startsWith(prefix)) return true;
+          } else if (cleanPattern.startsWith("*.")) {
+            const ext = cleanPattern.slice(1);
+            if (normalized.endsWith(ext)) return true;
+          } else if (normalized === cleanPattern || normalized.startsWith(cleanPattern + "/")) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const workspaceFiles = files.filter(
+        (f) => !f.isFolder && f.path && !isIgnored(f.path)
+      );
+
+      if (workspaceFiles.length === 0) {
+        setGiteaErrorBanner("⚠️ No files in workspace to commit (or all files ignored by .gitignore).");
         return;
       }
 
-      const res = await fetch(
-        `${API_URL}/v1/gitea/repos/${repoOwner}/${repoName}/files`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            filepath: currentFile.path.replace(/^\/+/, ""),
-            content: currentFile.content ?? "",
-            message: commitMsg,
-          }),
-        }
-      );
+      let successCount = 0;
+      let lastError: string | null = null;
 
-        if (res.ok) {
-          setGiteaErrorBanner(null);
+      for (let i = 0; i < workspaceFiles.length; i++) {
+        const file = workspaceFiles[i];
+        const cleanPath = file.path.replace(/^\/+/, "");
+
+        try {
+          const res = await fetch(
+            `${API_URL}/v1/gitea/repos/${repoOwner}/${repoName}/files`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                filepath: cleanPath,
+                content: file.content ?? "",
+                message: commitMsg,
+              }),
+            }
+          );
+
+          if (res.ok) {
+            successCount++;
+            setTerminalLogs((prev) => [
+              ...prev,
+              `✓ [${i + 1}/${workspaceFiles.length}] Pushed ${cleanPath}`,
+            ]);
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            lastError =
+              errData.message ||
+              (res.status === 403
+                ? `Permission denied for ${repoOwner}/${repoName}`
+                : `Failed to push ${cleanPath} (${res.status})`);
+            setTerminalLogs((prev) => [
+              ...prev,
+              `⚠️ [${i + 1}/${workspaceFiles.length}] Failed to push ${cleanPath}: ${lastError}`,
+            ]);
+          }
+        } catch (fileErr) {
+          lastError = (fileErr as Error)?.message || "Network error";
           setTerminalLogs((prev) => [
             ...prev,
-            `✓ Successfully pushed to Gitea main branch (sha: ${Math.random().toString(36).substring(2, 9)})`,
-            `✓ Commit msg: "${commitMsg}"`,
-          ]);
-          setPushSuccess("Committed & Pushed to Gitea!");
-          setTimeout(() => setPushSuccess(null), 4000);
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          const errMsg =
-            errData.message ||
-            (res.status === 403
-              ? `You do not have permission to push changes to ${repoOwner}/${repoName}.`
-              : res.status === 404
-              ? `Repository ${repoOwner}/${repoName} was not found on Gitea.`
-              : `Cannot push to ${giteaHost}/${repoOwner}/${repoName}.`);
-          setGiteaErrorBanner(`⚠️ ${errMsg}`);
-          setTerminalLogs((prev) => [
-            ...prev,
-            `⚠️ Push failed (${res.status}): ${errMsg}`,
-            `ℹ️ Changes cached in local Sandbox.`,
+            `⚠️ [${i + 1}/${workspaceFiles.length}] Failed to push ${cleanPath}: ${lastError}`,
           ]);
         }
-      } catch {
-        setGiteaErrorBanner(`⚠️ Gitea Server Offline: ${giteaHost} is unreachable. Changes saved in local Sandbox cache.`);
+      }
+
+      if (successCount === workspaceFiles.length) {
+        setGiteaErrorBanner(null);
+        setTerminalLogs((prev) => [
+          ...prev,
+          `✓ Successfully pushed all ${successCount} files to Gitea main branch`,
+          `✓ Commit msg: "${commitMsg}"`,
+        ]);
+        setPushSuccess(`All ${successCount} files pushed to Gitea!`);
+        setTimeout(() => setPushSuccess(null), 4000);
+      } else if (successCount > 0) {
+        setGiteaErrorBanner(`⚠️ Pushed ${successCount}/${workspaceFiles.length} files. Some files failed: ${lastError}`);
+        setPushSuccess(`Partially pushed (${successCount}/${workspaceFiles.length} files)`);
+        setTimeout(() => setPushSuccess(null), 4000);
+      } else {
+        setGiteaErrorBanner(`⚠️ Push failed: ${lastError || "Could not push files."}`);
+      }
+    } catch {
+      setGiteaErrorBanner(`⚠️ Gitea Server Offline: ${giteaHost} is unreachable. Changes saved in local Sandbox cache.`);
       setTerminalLogs((prev) => [
         ...prev,
         `⚠️ Gitea Server at ${giteaHost} is OFFLINE or unreachable.`,
