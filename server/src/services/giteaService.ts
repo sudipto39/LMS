@@ -165,6 +165,9 @@ export const giteaService = {
       const res = await gitea.get(url);
       return res.data;
     } catch (error) {
+      if (error instanceof AxiosError && error.response?.status === 404 && !path) {
+        return [];
+      }
       return handleGiteaError(error, "getRepoContents");
     }
   },

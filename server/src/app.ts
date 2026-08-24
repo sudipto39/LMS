@@ -26,6 +26,7 @@ import executeRouter from "./routes/executeRoutes.js";
 export const app = express();
 
 // ─── Security ─────────────────────────────────────────────────────────────────
+// GiteaForge Backend API — v1.0.1 (Self-healing Gitea repo auto-provisioning enabled)
 app.use(helmet());
 if (env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
