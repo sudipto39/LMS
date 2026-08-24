@@ -55,7 +55,7 @@ import {
   exportGradesToExcel,
 } from "@/utils/excelExport";
 
-const GITEA_URL = getGiteaURL() || "https://gitea.example.com";
+const GITEA_URL = getGiteaURL();
 
 // const getAuthHeaders = (): HeadersInit => {
 //   const token = tokenStore.get();
@@ -2657,6 +2657,7 @@ export function StudentProjectDetail({
                     return;
                   }
 
+                  
                   setUploading(true);
                   try {
                     const formData = new FormData();

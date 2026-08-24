@@ -424,7 +424,7 @@ export default function SandboxTab({ project, milestones = [] }: SandboxTabProps
         return url.origin;
       } catch {}
     }
-    return `${window.location.protocol}//${window.location.hostname}:3000`;
+    return (import.meta.env.VITE_GITEA_URL as string) || "";
   }, [project]);
 
   const mockPreviewUrl = `https://${repoName}-${repoOwner}.webcontainer.io/`;
