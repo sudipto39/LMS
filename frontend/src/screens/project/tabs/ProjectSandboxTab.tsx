@@ -624,7 +624,7 @@ export const ProjectSandboxTab: React.FC<ProjectSandboxTabProps> = ({
       * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.35) transparent; }
     `;
 
-    const injectedStyle = `<style id="lms-injected-styles">\n${scrollbarStyles}\n${combinedCss}\n</style>`;
+    const injectedStyle = `<` + `style id="lms-injected-styles">\n${scrollbarStyles}\n${combinedCss}\n<` + `/style>`;
 
     if (fullHtml.includes("</head>")) {
       fullHtml = fullHtml.replace("</head>", `${injectedStyle}</head>`);
