@@ -136,15 +136,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <>
       <header
-        className="sticky top-0 z-30 h-[56px] sm:h-[60px] border-b backdrop-blur-xl flex items-center gap-2 sm:gap-3 px-3 sm:px-4"
+        className="sticky top-0 z-30 h-[56px] sm:h-[60px] border-b backdrop-blur-xl flex items-center gap-2 sm:gap-3 px-3 sm:px-4 transition-colors"
         style={{
-          background: dark ? "rgba(15,26,36,0.85)" : "rgba(255,255,255,0.85)",
+          background: dark ? "rgba(15,26,36,0.88)" : "rgba(255,255,255,0.88)",
           borderColor: "var(--bdr)",
+          boxShadow: dark ? "0 1px 0 0 rgba(255,255,255,0.04)" : "0 1px 2px rgba(0,0,0,0.03)",
         }}
       >
         <button
           onClick={() => setMobileOpen(true)}
-          className="lg:hidden h-9 w-9 grid place-items-center rounded-xl border flex-shrink-0 cursor-pointer"
+          className="lg:hidden h-9 w-9 grid place-items-center rounded-xl border flex-shrink-0 cursor-pointer transition-snappy hover:border-[var(--acc)]"
           style={{ borderColor: "var(--bdr)", background: "var(--srf)" }}
         >
           <Menu size={16} />
@@ -157,7 +158,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <span className="capitalize font-medium">{role.toLowerCase()}</span>
           <span style={{ color: "var(--bdr)" }}>/</span>
-          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#0e4a5e] text-white capitalize truncate">
+          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#0e4a5e] text-white capitalize truncate shadow-sm">
             {page}
           </span>
 
@@ -189,7 +190,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* ── DESKTOP GLOBAL SEARCH BAR ──────────────────────────────────── */}
         <div ref={searchContainerRef} className="relative hidden xl:block">
           <div
-            className="flex h-8 px-3 rounded-xl items-center gap-2 text-[12px] border transition-all duration-200"
+            className={`flex h-8 px-3 rounded-xl items-center gap-2 text-[12px] border transition-all duration-200 lum-border ${
+              isFocused
+                ? "ring-2 ring-cyan-500/20 border-[var(--acc)] shadow-[0_2px_14px_rgba(6,182,214,0.15)]"
+                : "hover:border-[var(--acc)]/60"
+            }`}
             style={{
               borderColor: isFocused ? "var(--acc)" : "var(--bdr)",
               background: "var(--srf2)",

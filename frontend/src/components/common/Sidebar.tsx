@@ -221,12 +221,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   setIsHovered(false);
                 }}
                 title={!isExpanded ? item.label : undefined}
-                className={`w-full flex items-center rounded-xl text-[13px] text-left transition-all cursor-pointer relative ${
+                className={`w-full flex items-center rounded-xl text-[13px] text-left transition-snappy cursor-pointer relative group ${
                   !isExpanded ? "justify-start lg:justify-center px-3 lg:px-0 py-2.5" : "gap-2.5 px-3 py-2.5"
                 } ${
                   active
-                    ? "bg-white text-[#0f2a33] font-semibold shadow-md"
-                    : "text-[#b0d4e0] hover:text-white hover:bg-white/10"
+                    ? "bg-white text-[#0f2a33] font-semibold shadow-[0_4px_16px_rgba(0,0,0,0.25)]"
+                    : "text-[#b0d4e0] hover:text-white hover:bg-white/[0.08] hover:translate-x-0.5"
                 }`}
               >
                 <item.Icon size={18} className={active ? "text-[#0891b2]" : ""} />

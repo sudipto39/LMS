@@ -134,8 +134,8 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[1680px] mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="w-full max-w-[1680px] mx-auto space-y-6 viewport-ambient-glow">
+      <div className="flex items-center justify-between relative z-10">
         <div>
           <h1 className="text-[24px] font-bold flex items-center gap-2">
             <LayoutDashboard size={22} style={{ color: "var(--acc)" }} />{" "}
@@ -157,8 +157,8 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
             type="button"
             onClick={() => fetchLiveDashboard(true)}
             disabled={loading}
-            className="h-8 px-3 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
-            style={{ borderColor: "var(--bdr)", color: "var(--t2)" }}
+            className="h-8 px-3 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-snappy hover:border-[var(--acc)] disabled:opacity-50 lum-border"
+            style={{ borderColor: "var(--bdr)", color: "var(--t2)", background: "var(--srf)" }}
             title="Fetch latest data from server"
           >
             <RotateCcw size={12} className={loading ? "animate-spin text-[#06b6d4]" : ""} />
@@ -167,47 +167,55 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 relative z-10">
         {[
           {
             k: "Assigned Projects",
             v: `${liveProjects.length}`,
             Icon: FolderKanban,
             c: "#0891b2",
+            aura: "aura-cyan",
+            glow: "glow-border-cyan",
           },
           {
             k: "Pending Reviews",
             v: `${pendingMilestones.length}`,
             Icon: ClipboardCheck,
             c: "#f59e0b",
+            aura: "aura-amber",
+            glow: "glow-border-amber",
           },
           {
             k: "Approved Milestones",
             v: `${approvedMilestones.length}`,
             Icon: CheckCircle2,
             c: "#22c55e",
+            aura: "aura-emerald",
+            glow: "glow-border-emerald",
           },
           {
             k: "Graded Projects",
             v: `${gradedProjects.length}`,
             Icon: Star,
             c: "#a855f7",
+            aura: "aura-blue",
+            glow: "glow-border-blue",
           },
         ].map((s) => (
-          <Card key={s.k} className="p-5">
+          <Card key={s.k} className={`p-5 hover-lift aura-container ${s.aura} ${s.glow} cursor-default`}>
             <div
-              className="h-10 w-10 rounded-xl grid place-items-center"
-              style={{ background: `${s.c}15`, color: s.c }}
+              className="h-10 w-10 rounded-xl grid place-items-center relative z-10 transition-snappy"
+              style={{ background: `${s.c}15`, color: s.c, boxShadow: `0 0 14px -3px ${s.c}25` }}
             >
               <s.Icon size={18} />
             </div>
             <div
-              className="text-[11px] uppercase tracking-widest font-bold mt-3"
+              className="text-[11px] uppercase tracking-widest font-bold mt-3 relative z-10"
               style={{ color: "var(--t2)" }}
             >
               {s.k}
             </div>
-            <div className="text-[26px] font-bold mt-1">{s.v}</div>
+            <div className="text-[26px] font-bold mt-1 relative z-10">{s.v}</div>
           </Card>
         ))}
       </div>
@@ -240,7 +248,7 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                 return (
                   <Card2
                     key={m.id}
-                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border transition hover:border-[#06b6d4]/40"
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover-lift glow-border-cyan transition-snappy"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
@@ -274,7 +282,7 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                       <button
                         type="button"
                         onClick={() => handleApproveLocal(m.id)}
-                        className="h-8 px-3.5 rounded-full bg-[#22c55e] hover:bg-[#16a34a] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 transition shadow-sm"
+                        className="h-8 px-3.5 rounded-full bg-[#22c55e] hover:bg-[#16a34a] active:scale-[0.98] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 transition-snappy shadow-[0_2px_10px_rgba(34,197,94,0.3)]"
                       >
                         <CheckCircle2 size={12} /> Approve
                       </button>
@@ -283,7 +291,7 @@ export const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({
                         onClick={() => {
                           if (targetProject) onOpenGradeModal(targetProject);
                         }}
-                        className="h-8 px-3.5 rounded-full bg-gradient-to-r from-[#06b6d4] to-[#2563eb] hover:opacity-95 text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 transition shadow-sm"
+                        className="h-8 px-3.5 rounded-full bg-gradient-to-r from-[#06b6d4] to-[#2563eb] hover:opacity-95 active:scale-[0.98] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 transition-snappy shadow-[0_2px_10px_rgba(6,182,214,0.3)]"
                       >
                         <Star size={12} /> Grade
                       </button>

@@ -137,8 +137,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const dayLabels = ["Mon", "", "Wed", "", "Fri", "", ""];
 
   return (
-    <div className="w-full max-w-[1680px] mx-auto space-y-6">
-      <div className="flex flex-wrap justify-between gap-3">
+    <div className="w-full max-w-[1680px] mx-auto space-y-6 viewport-ambient-glow">
+      <div className="flex flex-wrap justify-between gap-3 relative z-10">
         <div>
           <h1 className="text-[20px] sm:text-[24px] font-bold flex items-center gap-2">
             <LayoutDashboard size={20} style={{ color: "var(--acc)" }} />{" "}
@@ -154,7 +154,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       </div>
 
       {/* Metrics Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 relative z-10">
         {[
           {
             k: "Active Projects",
@@ -162,6 +162,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             d: "Phase 1 & 2",
             Icon: FolderKanban,
             color: "#0891b2",
+            aura: "aura-cyan",
+            glow: "glow-border-cyan",
           },
           {
             k: "In Progress",
@@ -169,6 +171,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             d: "Milestones",
             Icon: Clock,
             color: "#f59e0b",
+            aura: "aura-amber",
+            glow: "glow-border-amber",
           },
           {
             k: "Upcoming Deadline",
@@ -176,6 +180,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             d: upcomingDeadlineInfo.badgeText,
             Icon: Calendar,
             color: "#3b82f6",
+            aura: "aura-blue",
+            glow: "glow-border-blue",
           },
           {
             k: "Approved",
@@ -183,25 +189,27 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             d: "Completed",
             Icon: CheckCircle2,
             color: "#22c55e",
+            aura: "aura-emerald",
+            glow: "glow-border-emerald",
           },
         ].map((s) => (
-          <Card key={s.k} className="p-3.5 sm:p-5 hover:shadow-lg transition-all">
-            <div className="flex justify-between items-start gap-2">
+          <Card key={s.k} className={`p-3.5 sm:p-5 hover-lift aura-container ${s.aura} ${s.glow} cursor-default`}>
+            <div className="flex justify-between items-start gap-2 relative z-10">
               <div
-                className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl grid place-items-center flex-shrink-0"
-                style={{ background: `${s.color}15`, color: s.color }}
+                className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl grid place-items-center flex-shrink-0 transition-snappy"
+                style={{ background: `${s.color}15`, color: s.color, boxShadow: `0 0 14px -3px ${s.color}25` }}
               >
                 <s.Icon size={16} />
               </div>
-              <Pill>{s.d}</Pill>
+              <Pill color={s.color}>{s.d}</Pill>
             </div>
             <div
-              className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold mt-3 sm:mt-4 truncate"
+              className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold mt-3 sm:mt-4 truncate relative z-10"
               style={{ color: "var(--t2)" }}
             >
               {s.k}
             </div>
-            <div className="text-[20px] sm:text-[26px] font-bold leading-none mt-1 truncate">
+            <div className="text-[20px] sm:text-[26px] font-bold leading-none mt-1 truncate relative z-10">
               {s.v}
             </div>
           </Card>
@@ -209,7 +217,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       </div>
 
       {/* GIT COMMIT STREAK HEATMAP */}
-      <Card className="p-4 sm:p-5 overflow-hidden">
+      <Card className="p-4 sm:p-5 overflow-hidden hover-lift aura-container aura-orange glow-border-amber relative z-10">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2">
             <div
@@ -361,12 +369,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               activities.slice(0, 4).map((a) => (
                 <div
                   key={a.id}
-                  className="p-3.5 sm:p-4 rounded-xl border flex gap-3 transition hover:shadow-sm"
+                  className="p-3.5 sm:p-4 rounded-xl border flex gap-3 transition-snappy hover-lift hover:border-[var(--acc)]/60 lum-border"
                   style={{ borderColor: "var(--bdr)", background: "var(--srf2)" }}
                 >
                   <img
                     src={a.avatar}
-                    className="h-9 w-9 rounded-full object-cover flex-shrink-0"
+                    className="h-9 w-9 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10"
                     alt=""
                   />
                   <div className="flex-1 min-w-0">
@@ -427,7 +435,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <Card2
                   key={p.id}
                   onClick={() => onSelectProject(p.id)}
-                  className="p-3 cursor-pointer hover:shadow-sm transition"
+                  className="p-3 cursor-pointer hover-lift glow-border-cyan transition-snappy"
                 >
                   <div className="flex justify-between">
                     <span className="font-medium text-[12px] truncate">

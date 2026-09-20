@@ -13,8 +13,13 @@ export const Card = ({
   style?: React.CSSProperties;
 }) => (
   <div
-    className={`rounded-2xl border transition-all ${className}`}
-    style={{ background: "var(--srf)", borderColor: "var(--bdr)", ...style }}
+    className={`rounded-2xl border transition-snappy lum-border ${className}`}
+    style={{
+      background: "var(--srf)",
+      borderColor: "var(--bdr)",
+      boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.05)",
+      ...style,
+    }}
     onClick={onClick}
   >
     {children}
@@ -33,8 +38,13 @@ export const Card2 = ({
   style?: React.CSSProperties;
 }) => (
   <div
-    className={`rounded-xl border ${className}`}
-    style={{ background: "var(--srf2)", borderColor: "var(--bdr)", ...style }}
+    className={`rounded-xl border transition-snappy lum-border ${className}`}
+    style={{
+      background: "var(--srf2)",
+      borderColor: "var(--bdr)",
+      boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.04)",
+      ...style,
+    }}
     onClick={onClick}
   >
     {children}
@@ -44,14 +54,13 @@ export const Card2 = ({
 export const Inp = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
   <input
     {...props}
-    className={`w-full h-11 rounded-xl px-4 text-[13px] focus:outline-none focus:ring-2 border transition-all ${
+    className={`w-full h-11 rounded-xl px-4 text-[13px] focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-[var(--acc)] border transition-snappy lum-border ${
       props.className || ""
     }`}
     style={{
       background: "var(--srf2)",
       borderColor: "var(--bdr)",
       color: "var(--t1)",
-      ...({ "--tw-ring-color": "var(--acc)" } as any),
       ...props.style,
     }}
   />
@@ -77,7 +86,7 @@ export const Btn = ({
     disabled={disabled}
     onClick={onClick}
     style={style}
-    className={`h-10 px-5 rounded-full bg-gradient-to-r from-[#06b6d4] to-[#2563eb] text-white font-semibold text-[13px] shadow-[0_6px_20px_rgba(6,182,214,0.3)] hover:shadow-[0_8px_28px_rgba(6,182,214,0.45)] transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+    className={`h-10 px-5 rounded-full bg-gradient-to-r from-[#06b6d4] to-[#2563eb] text-white font-semibold text-[13px] shadow-[0_4px_16px_rgba(6,182,214,0.28)] hover:shadow-[0_6px_24px_rgba(6,182,214,0.42)] active:scale-[0.98] transition-snappy cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
   >
     {children}
   </button>
@@ -102,7 +111,7 @@ export const Btn2 = ({
     type={type}
     disabled={disabled}
     onClick={onClick}
-    className={`h-9 px-4 rounded-full border text-[12px] font-medium cursor-pointer flex items-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+    className={`h-9 px-4 rounded-full border text-[12px] font-medium cursor-pointer flex items-center gap-1.5 transition-snappy hover:border-[var(--acc)] active:scale-[0.98] lum-border disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
     style={{
       background: "var(--srf2)",
       borderColor: "var(--bdr)",
@@ -124,11 +133,12 @@ export const Pill = ({
   className?: string;
 }) => (
   <span
-    className={`text-[10px] px-2 py-0.5 rounded-full font-bold border inline-flex items-center gap-1 ${className}`}
+    className={`text-[10px] px-2 py-0.5 rounded-full font-bold border inline-flex items-center gap-1 transition-snappy ${className}`}
     style={{
       background: color ? `${color}15` : "var(--srf2)",
-      borderColor: color ? `${color}30` : "var(--bdr)",
+      borderColor: color ? `${color}35` : "var(--bdr)",
       color: color || "var(--t2)",
+      boxShadow: color ? `0 0 10px -3px ${color}20` : undefined,
     }}
   >
     {children}
