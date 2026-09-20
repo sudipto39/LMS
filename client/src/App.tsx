@@ -1,1331 +1,1442 @@
-// // import { useState, useEffect, useCallback } from 'react';
-// // import type { Role, Page } from './types';
-// // import { Sidebar } from './components/Sidebar';
-// // import { Topbar, Toast } from './components/ui';
-// // import { Landing } from './screens/Landing';
-// // import { Login } from './screens/Login';
-// // import { Signup } from './screens/Signup';
-// // import {
-// //   StudentDashboard, StudentProjects, CreateProject, StudentProjectDetail,
-// //   StudentSubmissions, StudentMessages, SupervisorDashboard, SupervisorProjectDetail,
-// //   SupervisorReviews, SupervisorGrades, SupervisorMessages, AdminDashboard, AdminUsers,
-// //   AdminBatches, AdminGiteaSettings, AdminAuditLogs, ActivityPage,
-// //   SettingsPage, ProfilePage
-// // } from './screens/Dashboards';
-// // import { ChevronLeft } from './components/Icons';
-// // import { preventClickjacking, startSessionTimeout, clearSessionTimeout, secureStorage } from './utils/security';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { ShieldAlert } from "lucide-react";
+import { ThemeProvider } from "./context/ThemeContext";
+import { ToastProvider, useToast } from "./context/ToastContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import ErrorBoundary from "./components/common/ErrorBoundary";
 
-// // const roleNames: Record<Role, string> = {
-// //   student: 'Rahul Sharma',
-// //   supervisor: 'Dr. Anita Desai',
-// //   admin: 'Admin User',
-// // };
-
-// // const defaultPages: Record<Role, Page> = {
-// //   student: 'student-dashboard',
-// //   supervisor: 'supervisor-dashboard',
-// //   admin: 'admin-dashboard',
-// // };
-
-// // // Define parent pages for back navigation
-// // const parentPages: Partial<Record<Page, Page>> = {
-// //   'login': 'landing',
-// //   'signup': 'login',
-// //   'student-projects': 'student-dashboard',
-// //   'student-create-project': 'student-projects',
-// //   'student-project-detail': 'student-projects',
-// //   'student-submissions': 'student-dashboard',
-// //   'student-messages': 'student-dashboard',
-// //   'student-profile': 'student-dashboard',
-// //   'supervisor-project-detail': 'supervisor-dashboard',
-// //   'supervisor-projects': 'supervisor-dashboard',
-// //   'supervisor-reviews': 'supervisor-dashboard',
-// //   'supervisor-grades': 'supervisor-dashboard',
-// //   'supervisor-messages': 'supervisor-dashboard',
-// //   'supervisor-profile': 'supervisor-dashboard',
-// //   'admin-users': 'admin-dashboard',
-// //   'admin-batches': 'admin-dashboard',
-// //   'admin-gitea-settings': 'admin-dashboard',
-// //   'admin-audit-logs': 'admin-dashboard',
-// //   'admin-profile': 'admin-dashboard',
-// //   'activity': 'student-dashboard', // will be overridden by role
-// //   'settings': 'student-dashboard', // will be overridden by role
-// // };
-
-// // // Pages that are "root" dashboards (no back button needed)
-// // const rootPages: Page[] = ['landing', 'login', 'signup', 'student-dashboard', 'supervisor-dashboard', 'admin-dashboard'];
-
-// // // Page titles for breadcrumb
-// // const pageTitles: Partial<Record<Page, string>> = {
-// //   'student-dashboard': 'Dashboard',
-// //   'student-projects': 'My Projects',
-// //   'student-create-project': 'Create Project',
-// //   'student-project-detail': 'Project Detail',
-// //   'student-submissions': 'Submissions',
-// //   'student-messages': 'Messages',
-// //   'student-profile': 'Profile',
-// //   'supervisor-dashboard': 'Dashboard',
-// //   'supervisor-projects': 'Projects',
-// //   'supervisor-project-detail': 'Project Detail',
-// //   'supervisor-reviews': 'Reviews',
-// //   'supervisor-grades': 'Grades',
-// //   'supervisor-messages': 'Messages',
-// //   'supervisor-profile': 'Profile',
-// //   'admin-dashboard': 'Dashboard',
-// //   'admin-users': 'Users',
-// //   'admin-batches': 'Batches',
-// //   'admin-gitea-settings': 'Gitea Settings',
-// //   'admin-audit-logs': 'Audit Logs',
-// //   'admin-profile': 'Profile',
-// //   'activity': 'Activity',
-// //   'settings': 'Settings',
-// // };
-
-// // export function App() {
-// //   const [page, setPage] = useState<Page>('landing');
-// //   const [history, setHistory] = useState<Page[]>(['landing']);
-// //   const [role, setRole] = useState<Role>('student');
-// //   const [sidebarOpen, setSidebarOpen] = useState(false);
-// //   const [sessionWarning, setSessionWarning] = useState(false);
-// //   const [darkMode, setDarkMode] = useState(() => {
-// //     if (typeof window !== 'undefined') {
-// //       return localStorage.getItem('giteaforge-dark') === 'true';
-// //     }
-// //     return false;
-// //   });
-
-// //   // Anti-clickjacking protection on mount
-// //   useEffect(() => {
-// //     try { preventClickjacking(); } catch { /* handled */ }
-// //   }, []);
-
-// //   // Apply dark class to <html> element
-// //   useEffect(() => {
-// //     const html = document.documentElement;
-// //     if (darkMode) {
-// //       html.classList.add('dark');
-// //     } else {
-// //       html.classList.remove('dark');
-// //     }
-// //     localStorage.setItem('giteaforge-dark', String(darkMode));
-// //   }, [darkMode]);
-
-// //   // Session timeout management — auto-logout after 30 min inactivity
-// //   useEffect(() => {
-// //     const isLoggedIn = !['landing', 'login', 'signup'].includes(page);
-// //     if (isLoggedIn) {
-// //       const handleActivity = () => {
-// //         setSessionWarning(false);
-// //         startSessionTimeout(
-// //           30 * 60 * 1000, // 30 minutes
-// //           () => {
-// //             // Session expired — force logout
-// //             secureStorage.clear();
-// //             localStorage.removeItem('giteaforge_token');
-// //             localStorage.removeItem('giteaforge_refresh_token');
-// //             setPage('login');
-// //             setHistory(['login']);
-// //           },
-// //           5 * 60 * 1000, // Show warning 5 min before
-// //           () => setSessionWarning(true),
-// //         );
-// //       };
-
-// //       handleActivity(); // Start on mount
-
-// //       // Reset timer on user activity
-// //       const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-// //       events.forEach(e => window.addEventListener(e, handleActivity, { passive: true }));
-
-// //       return () => {
-// //         events.forEach(e => window.removeEventListener(e, handleActivity));
-// //         clearSessionTimeout();
-// //       };
-// //     }
-// //   }, [page]);
-
-// //   // Navigate to a page (push to history)
-// //   const navigateTo = useCallback((newPage: Page) => {
-// //     setHistory(prev => [...prev, newPage]);
-// //     setPage(newPage);
-// //   }, []);
-
-// //   // Go back to previous page
-// //   const goBack = useCallback(() => {
-// //     setHistory(prev => {
-// //       if (prev.length <= 1) return prev;
-// //       const newHistory = prev.slice(0, -1);
-// //       setPage(newHistory[newHistory.length - 1]);
-// //       return newHistory;
-// //     });
-// //   }, []);
-
-// //   // Get the parent page considering current role
-// //   const getParentPage = useCallback((currentPage: Page): Page | null => {
-// //     if (rootPages.includes(currentPage)) return null;
-
-// //     // For shared pages like 'activity' and 'settings', use role-specific dashboard
-// //     if (currentPage === 'activity' || currentPage === 'settings') {
-// //       return defaultPages[role];
-// //     }
-
-// //     return parentPages[currentPage] || null;
-// //   }, [role]);
-
-// //   // Check if we can go back
-// //   const canGoBack = history.length > 1 && !rootPages.includes(page);
-
-// //   // Build breadcrumb
-// //   const getBreadcrumbs = useCallback((): { label: string; page: Page | null }[] => {
-// //     const crumbs: { label: string; page: Page | null }[] = [];
-// //     let current: Page | null = page;
-
-// //     while (current) {
-// //       crumbs.unshift({
-// //         label: pageTitles[current] || current,
-// //         page: current === page ? null : current,
-// //       });
-// //       current = getParentPage(current);
-// //     }
-
-// //     return crumbs;
-// //   }, [page, getParentPage]);
-
-// //   const handleLogin = (r: Role) => {
-// //     setRole(r);
-// //     const dashPage = defaultPages[r];
-// //     setHistory([dashPage]);
-// //     setPage(dashPage);
-// //   };
-
-// //   const handleLogout = () => {
-// //     setPage('landing');
-// //     setHistory(['landing']);
-// //     setSidebarOpen(false);
-// //   };
-
-// //   // Landing and Login/Signup are full-page (no sidebar/topbar)
-// //   if (page === 'landing') {
-// //     return <Landing onNavigate={navigateTo} darkMode={darkMode} setDarkMode={setDarkMode} />;
-// //   }
-
-// //   if (page === 'login') {
-// //     return <Login onLogin={handleLogin} onNavigate={navigateTo} goBack={goBack} darkMode={darkMode} setDarkMode={setDarkMode} />;
-// //   }
-
-// //   if (page === 'signup') {
-// //     return <Signup onNavigate={navigateTo} goBack={goBack} darkMode={darkMode} setDarkMode={setDarkMode} />;
-// //   }
-
-// //   // Render the appropriate screen content
-// //   const renderContent = () => {
-// //     switch (page) {
-// //       case 'student-dashboard':
-// //         return <StudentDashboard onNavigate={navigateTo} />;
-// //       case 'student-projects':
-// //         return <StudentProjects onNavigate={navigateTo} />;
-// //       case 'student-create-project':
-// //         return <CreateProject onNavigate={navigateTo} />;
-// //       case 'student-project-detail':
-// //         return <StudentProjectDetail onNavigate={navigateTo} />;
-// //       case 'student-submissions':
-// //         return <StudentSubmissions onNavigate={navigateTo} />;
-// //       case 'student-messages':
-// //         return <StudentMessages />;
-// //       case 'student-profile':
-// //         return <ProfilePage />;
-// //       case 'supervisor-dashboard':
-// //         return <SupervisorDashboard onNavigate={navigateTo} />;
-// //       case 'supervisor-projects':
-// //         return <SupervisorDashboard onNavigate={navigateTo} />;
-// //       case 'supervisor-project-detail':
-// //         return <SupervisorProjectDetail onNavigate={navigateTo} />;
-// //       case 'supervisor-reviews':
-// //         return <SupervisorReviews onNavigate={navigateTo} />;
-// //       case 'supervisor-grades':
-// //         return <SupervisorGrades onNavigate={navigateTo} />;
-// //       case 'supervisor-messages':
-// //         return <SupervisorMessages />;
-// //       case 'supervisor-profile':
-// //         return <ProfilePage />;
-// //       case 'admin-dashboard':
-// //         return <AdminDashboard onNavigate={navigateTo} />;
-// //       case 'admin-users':
-// //         return <AdminUsers />;
-// //       case 'admin-batches':
-// //         return <AdminBatches />;
-// //       case 'admin-gitea-settings':
-// //         return <AdminGiteaSettings />;
-// //       case 'admin-audit-logs':
-// //         return <AdminAuditLogs />;
-// //       case 'admin-profile':
-// //         return <ProfilePage />;
-// //       case 'activity':
-// //         return <ActivityPage />;
-// //       case 'settings':
-// //         return <SettingsPage />;
-// //       default:
-// //         return <StudentDashboard onNavigate={navigateTo} />;
-// //     }
-// //   };
-
-// //   const breadcrumbs = getBreadcrumbs();
-
-// //   return (
-// //     <div className="flex h-screen overflow-hidden bg-neutral-50 dark:bg-[#0d1117]">
-// //       <Sidebar
-// //         role={role}
-// //         currentPage={page}
-// //         onNavigate={navigateTo}
-// //         open={sidebarOpen}
-// //         onClose={() => setSidebarOpen(false)}
-// //       />
-// //       <div className="flex flex-1 flex-col overflow-hidden">
-// //         <Topbar
-// //           sidebarOpen={sidebarOpen}
-// //           setSidebarOpen={setSidebarOpen}
-// //           darkMode={darkMode}
-// //           setDarkMode={setDarkMode}
-// //           userName={roleNames[role]}
-// //           userRole={role}
-// //           onLogout={handleLogout}
-// //           onProfileClick={() => {
-// //             // Navigate to role-specific profile page
-// //             const profilePage: Page = role === 'student' ? 'student-profile'
-// //               : role === 'supervisor' ? 'supervisor-profile'
-// //               : 'admin-profile';
-// //             navigateTo(profilePage);
-// //           }}
-// //         />
-// //         {/* Breadcrumb + Back Button Bar */}
-// //         {(canGoBack || breadcrumbs.length > 1) && (
-// //           <div className="flex items-center gap-2 px-4 lg:px-6 py-2 border-b border-neutral-100 dark:border-[#21262d] bg-white dark:bg-[#161b22]">
-// //             {canGoBack && (
-// //               <button
-// //                 onClick={goBack}
-// //                 className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition mr-2"
-// //               >
-// //                 <ChevronLeft className="h-4 w-4" />
-// //                 Back
-// //               </button>
-// //             )}
-// //             {canGoBack && breadcrumbs.length > 1 && (
-// //               <span className="text-neutral-300 dark:text-[#30363d]">|</span>
-// //             )}
-// //             <nav className="flex items-center gap-1 text-sm overflow-x-auto">
-// //               {breadcrumbs.map((crumb, i) => (
-// //                 <span key={i} className="flex items-center gap-1 whitespace-nowrap">
-// //                   {i > 0 && <span className="text-neutral-300 dark:text-[#484f58]">/</span>}
-// //                   {crumb.page ? (
-// //                     <button
-// //                       onClick={() => navigateTo(crumb.page!)}
-// //                       className="text-blue-600 dark:text-blue-400 hover:underline"
-// //                     >
-// //                       {crumb.label}
-// //                     </button>
-// //                   ) : (
-// //                     <span className="text-neutral-600 dark:text-[#8b949e] font-medium">{crumb.label}</span>
-// //                   )}
-// //                 </span>
-// //               ))}
-// //             </nav>
-// //           </div>
-// //         )}
-// //         <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 xl:p-10">
-// //           <div className="w-full max-w-[1800px] mx-auto">
-// //             {renderContent()}
-// //           </div>
-// //         </main>
-// //       </div>
-
-// //       {/* Session timeout warning */}
-// //       {sessionWarning && (
-// //         <Toast
-// //           message="Your session will expire in 5 minutes due to inactivity. Move your mouse or press a key to stay logged in."
-// //           type="info"
-// //           onClose={() => setSessionWarning(false)}
-// //         />
-// //       )}
-// //     </div>
-// //   );
-// // }
-// import { useState, useEffect, useCallback } from "react";
-// import type { Role, Page } from "./types";
-// import { Sidebar } from "./components/Sidebar";
-// import { Topbar, Toast } from "./components/ui";
-// import { Landing } from "./screens/Landing";
-// import { Login } from "./screens/Login";
-// import { Signup } from "./screens/Signup";
-// import {
-//   StudentDashboard,
-//   StudentProjects,
-//   CreateProject,
-//   StudentProjectDetail,
-//   StudentSubmissions,
-//   StudentMessages,
-//   SupervisorDashboard,
-//   SupervisorProjectDetail,
-//   SupervisorReviews,
-//   SupervisorGrades,
-//   SupervisorMessages,
-//   AdminDashboard,
-//   AdminUsers,
-//   AdminBatches,
-//   AdminGiteaSettings,
-//   AdminAuditLogs,
-//   ActivityPage,
-//   SettingsPage,
-//   ProfilePage,
-// } from "./screens/Dashboards";
-// import { ChevronLeft } from "./components/Icons";
-// import {
-//   preventClickjacking,
-//   startSessionTimeout,
-//   clearSessionTimeout,
-//   secureStorage,
-// } from "./utils/security";
-
-// const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-// const TOKEN_KEY = "token";
-
-// const defaultPages: Record<Role, Page> = {
-//   student: "student-dashboard",
-//   supervisor: "supervisor-dashboard",
-//   admin: "admin-dashboard",
-// };
-
-// const parentPages: Partial<Record<Page, Page>> = {
-//   login: "landing",
-//   signup: "login",
-//   "student-projects": "student-dashboard",
-//   "student-create-project": "student-projects",
-//   "student-project-detail": "student-projects",
-//   "student-submissions": "student-dashboard",
-//   "student-messages": "student-dashboard",
-//   "student-profile": "student-dashboard",
-//   "supervisor-projects": "supervisor-dashboard",
-//   "supervisor-project-detail": "supervisor-dashboard",
-//   "supervisor-reviews": "supervisor-dashboard",
-//   "supervisor-grades": "supervisor-dashboard",
-//   "supervisor-messages": "supervisor-dashboard",
-//   "supervisor-profile": "supervisor-dashboard",
-//   "admin-users": "admin-dashboard",
-//   "admin-batches": "admin-dashboard",
-//   "admin-gitea-settings": "admin-dashboard",
-//   "admin-audit-logs": "admin-dashboard",
-//   "admin-profile": "admin-dashboard",
-//   activity: "student-dashboard",
-//   settings: "student-dashboard",
-// };
-
-// const rootPages: Page[] = [
-//   "landing",
-//   "login",
-//   "signup",
-//   "student-dashboard",
-//   "supervisor-dashboard",
-//   "admin-dashboard",
-// ];
-
-// const pageTitles: Partial<Record<Page, string>> = {
-//   "student-dashboard": "Dashboard",
-//   "student-projects": "My Projects",
-//   "student-create-project": "Create Project",
-//   "student-project-detail": "Project Detail",
-//   "student-submissions": "Submissions",
-//   "student-messages": "Messages",
-//   "student-profile": "Profile",
-//   "supervisor-dashboard": "Dashboard",
-//   "supervisor-projects": "Projects",
-//   "supervisor-project-detail": "Project Detail",
-//   "supervisor-reviews": "Reviews",
-//   "supervisor-grades": "Grades",
-//   "supervisor-messages": "Messages",
-//   "supervisor-profile": "Profile",
-//   "admin-dashboard": "Dashboard",
-//   "admin-users": "Users",
-//   "admin-batches": "Batches",
-//   "admin-gitea-settings": "Gitea Settings",
-//   "admin-audit-logs": "Audit Logs",
-//   "admin-profile": "Profile",
-//   activity: "Activity",
-//   settings: "Settings",
-// };
-
-// export function App() {
-//   const [page, setPage] = useState<Page>("landing");
-//   const [history, setHistory] = useState<Page[]>(["landing"]);
-//   const [role, setRole] = useState<Role>("student");
-//   const [sidebarOpen, setSidebarOpen] = useState(false);
-//   const [sessionWarning, setSessionWarning] = useState(false);
-//   const [userLoading, setUserLoading] = useState(false);
-//   const [darkMode, setDarkMode] = useState(
-//     () => localStorage.getItem("giteaforge-dark") === "true",
-//   );
-
-//   type CurrentUser = {
-//     id: string;
-//     fullName: string;
-//     role: "student" | "supervisor" | "admin";
-//   };
-
-//   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-
-//   useEffect(() => {
-//     try {
-//       preventClickjacking();
-//     } catch {}
-//   }, []);
-
-//   useEffect(() => {
-//     const html = document.documentElement;
-//     darkMode ? html.classList.add("dark") : html.classList.remove("dark");
-//     localStorage.setItem("giteaforge-dark", String(darkMode));
-//   }, [darkMode]);
-
-//   useEffect(() => {
-//     const isLoggedIn = !["landing", "login", "signup"].includes(page);
-//     if (!isLoggedIn) return;
-
-//     const handleActivity = () => {
-//       setSessionWarning(false);
-//       startSessionTimeout(
-//         30 * 60 * 1000,
-//         () => {
-//           secureStorage.clear();
-//           localStorage.removeItem(TOKEN_KEY);
-//           setPage("login");
-//           setHistory(["login"]);
-//         },
-//         5 * 60 * 1000,
-//         () => setSessionWarning(true),
-//       );
-//     };
-
-//     handleActivity();
-//     const events = ["mousedown", "keydown", "scroll", "touchstart"];
-//     events.forEach((e) =>
-//       window.addEventListener(e, handleActivity, { passive: true }),
-//     );
-
-//     return () => {
-//       events.forEach((e) => window.removeEventListener(e, handleActivity));
-//       clearSessionTimeout();
-//     };
-//   }, [page]);
-
-//   useEffect(() => {
-//     const isLoggedIn = !["landing", "login", "signup"].includes(page);
-//     if (!isLoggedIn) return;
-
-//     const token = localStorage.getItem(TOKEN_KEY);
-//     if (!token) {
-//       handleLogout();
-//       return;
-//     }
-
-//     const loadUser = async () => {
-//       try {
-//         setUserLoading(true);
-//         const res = await fetch(`${API_BASE_URL}/v1/users/me`, {
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-//         if (!res.ok) throw new Error("Unauthorized");
-
-//         const json = await res.json();
-//         const user = json.data?.user || json.user;
-
-//         setCurrentUser({
-//           id: user._id,
-//           fullName: user.fullName,
-//           role: user.role,
-//         });
-
-//         const userRole = user.role as Role;
-//         setRole(userRole);
-//         setHistory([defaultPages[userRole]]);
-//         setPage(defaultPages[userRole]);
-//       } catch {
-//         handleLogout();
-//       } finally {
-//         setUserLoading(false);
-//       }
-//     };
-
-//     loadUser();
-//   }, []);
-
-//   const navigateTo = useCallback((newPage: Page) => {
-//     setHistory((prev) => [...prev, newPage]);
-//     setPage(newPage);
-//   }, []);
-
-//   const goBack = useCallback(() => {
-//     setHistory((prev) => {
-//       if (prev.length <= 1) return prev;
-//       const next = prev.slice(0, -1);
-//       setPage(next[next.length - 1]);
-//       return next;
-//     });
-//   }, []);
-
-//   const getParentPage = useCallback(
-//     (current: Page): Page | null => {
-//       if (rootPages.includes(current)) return null;
-//       if (current === "activity" || current === "settings") {
-//         return defaultPages[role];
-//       }
-//       return parentPages[current] || null;
-//     },
-//     [role],
-//   );
-
-//   const canGoBack = history.length > 1 && !rootPages.includes(page);
-
-//   const breadcrumbs = (() => {
-//     const crumbs: { label: string; page: Page | null }[] = [];
-//     let cur: Page | null = page;
-//     while (cur) {
-//       crumbs.unshift({
-//         label: pageTitles[cur] || cur,
-//         page: cur === page ? null : cur,
-//       });
-//       cur = getParentPage(cur);
-//     }
-//     return crumbs;
-//   })();
-
-//   const handleLogin = (r: Role) => {
-//     setRole(r);
-//     setHistory([defaultPages[r]]);
-//     setPage(defaultPages[r]);
-//   };
-
-//   const handleLogout = () => {
-//     localStorage.removeItem(TOKEN_KEY);
-//     setPage("landing");
-//     setHistory(["landing"]);
-//     setSidebarOpen(false);
-//   };
-
-//   if (page === "landing") {
-//     return (
-//       <Landing
-//         onNavigate={navigateTo}
-//         darkMode={darkMode}
-//         setDarkMode={setDarkMode}
-//       />
-//     );
-//   }
-
-//   if (page === "login") {
-//     return (
-//       <Login
-//         onLogin={handleLogin}
-//         onNavigate={navigateTo}
-//         goBack={goBack}
-//         darkMode={darkMode}
-//         setDarkMode={setDarkMode}
-//       />
-//     );
-//   }
-
-//   if (page === "signup") {
-//     return (
-//       <Signup
-//         onNavigate={navigateTo}
-//         goBack={goBack}
-//         darkMode={darkMode}
-//         setDarkMode={setDarkMode}
-//       />
-//     );
-//   }
-
-//   const renderContent = () => {
-//     switch (page) {
-//       case "student-dashboard":
-//         return <StudentDashboard onNavigate={navigateTo} />;
-//       case "student-projects":
-//         return <StudentProjects onNavigate={navigateTo} />;
-//       case "student-create-project":
-//         return <CreateProject onNavigate={navigateTo} />;
-//       case "student-project-detail":
-//         return <StudentProjectDetail onNavigate={navigateTo} />;
-//       case "student-submissions":
-//         return <StudentSubmissions onNavigate={navigateTo} />;
-//       case "student-messages":
-//         return <StudentMessages />;
-//       case "student-profile":
-//         return <ProfilePage />;
-//       case "supervisor-dashboard":
-//         return <SupervisorDashboard onNavigate={navigateTo} />;
-//       case "supervisor-projects":
-//         return <SupervisorDashboard onNavigate={navigateTo} />;
-//       case "supervisor-project-detail":
-//         return <SupervisorProjectDetail onNavigate={navigateTo} />;
-//       case "supervisor-reviews":
-//         return <SupervisorReviews onNavigate={navigateTo} />;
-//       case "supervisor-grades":
-//         return <SupervisorGrades onNavigate={navigateTo} />;
-//       case "supervisor-messages":
-//         return <SupervisorMessages />;
-//       case "supervisor-profile":
-//         return <ProfilePage />;
-//       case "admin-dashboard":
-//         return <AdminDashboard onNavigate={navigateTo} />;
-//       case "admin-users":
-//         return <AdminUsers />;
-//       case "admin-batches":
-//         return <AdminBatches />;
-//       case "admin-gitea-settings":
-//         return <AdminGiteaSettings />;
-//       case "admin-audit-logs":
-//         return <AdminAuditLogs />;
-//       case "admin-profile":
-//         return <ProfilePage />;
-//       case "activity":
-//         return <ActivityPage />;
-//       case "settings":
-//         return <SettingsPage />;
-//       default:
-//         return null;
-//     }
-//   };
-
-//   if (userLoading) return null;
-
-//   return (
-//     <div className="flex h-screen overflow-hidden bg-neutral-50 dark:bg-[#0d1117]">
-//       <Sidebar
-//         role={role}
-//         currentPage={page}
-//         onNavigate={navigateTo}
-//         open={sidebarOpen}
-//         onClose={() => setSidebarOpen(false)}
-//       />
-//       <div className="flex flex-1 flex-col overflow-hidden">
-//         <Topbar
-//           sidebarOpen={sidebarOpen}
-//           setSidebarOpen={setSidebarOpen}
-//           darkMode={darkMode}
-//           setDarkMode={setDarkMode}
-//           userName={currentUser?.fullName ?? "Loading"}
-//           userRole={currentUser?.role ?? role}
-//           onLogout={handleLogout}
-//           onProfileClick={() => {
-//             if (!currentUser) return;
-
-//             const profilePage: Page =
-//               currentUser.role === "student"
-//                 ? "student-profile"
-//                 : currentUser.role === "supervisor"
-//                   ? "supervisor-profile"
-//                   : "admin-profile";
-
-//             navigateTo(profilePage);
-//           }}
-//         />
-
-//         {(canGoBack || breadcrumbs.length > 1) && (
-//           <div className="flex items-center gap-2 px-6 py-2 border-b bg-white dark:bg-[#161b22]">
-//             {canGoBack && (
-//               <button
-//                 onClick={goBack}
-//                 className="flex items-center gap-1 text-sm text-blue-600"
-//               >
-//                 <ChevronLeft className="h-4 w-4" />
-//                 Back
-//               </button>
-//             )}
-//             <nav className="flex items-center gap-1 text-sm">
-//               {breadcrumbs.map((c, i) => (
-//                 <span key={i}>
-//                   {i > 0 && " / "}
-//                   {c.page ? (
-//                     <button
-//                       onClick={() => navigateTo(c.page as Page)}
-//                       className="text-blue-600"
-//                     >
-//                       {c.label}
-//                     </button>
-//                   ) : (
-//                     <span className="text-neutral-600">{c.label}</span>
-//                   )}
-//                 </span>
-//               ))}
-//             </nav>
-//           </div>
-//         )}
-
-//         <main className="flex-1 overflow-auto p-6">{renderContent()}</main>
-//       </div>
-
-//       {sessionWarning && (
-//         <Toast
-//           message="Your session will expire in 5 minutes due to inactivity."
-//           type="info"
-//           onClose={() => setSessionWarning(false)}
-//         />
-//       )}
-//     </div>
-//   );
-// }
-
-// src/App.tsx
-import { useState, useEffect, useCallback } from "react";
-import type { Role, Page } from "./types";
-import { Sidebar } from "./components/Sidebar";
-import { Topbar, Toast } from "./components/ui";
-import { Landing } from "./screens/Landing";
-import { Login } from "./screens/Login";
-import { Signup } from "./screens/Signup";
 import {
-  StudentDashboard,
-  StudentProjects,
-  CreateProject,
-  StudentProjectDetail,
-  StudentSubmissions,
-  StudentMessages,
-  SupervisorDashboard,
-  SupervisorProjects,
-  SupervisorProjectDetail,
-  SupervisorReviews,
-  SupervisorGrades,
-  SupervisorMessages,
-  AdminDashboard,
-  AdminUsers,
-  AdminBatches,
-  AdminGiteaSettings,
-  AdminAuditLogs,
-  AdminProjects,
-  ActivityPage,
-  SettingsPage,
-  ProfilePage,
-} from "./screens/Dashboards";
-import { ChevronLeft } from "./components/Icons";
+  projectsApi,
+  coursesApi,
+  batchesApi,
+  activitiesApi,
+  adminApi,
+  usersApi,
+  milestonesApi,
+} from "./api";
+import { env } from "./config/env";
+import { sanitizeCsvCell } from "./utils/security";
+import { Card } from "./components/common/UIPrimitives";
+
+// Modular Common Components
+import Navbar from "./components/common/Navbar";
+import Sidebar from "./components/common/Sidebar";
+import LandingPage from "./components/landing/LandingPage";
+
+// Modular Auth Container
+import AuthContainer from "./components/auth/AuthContainer";
+
+// Modular Modals
+import CreateProjectModal from "./components/modals/CreateProjectModal";
+import TeamModal from "./components/modals/TeamModal";
+import GradeModal from "./components/modals/GradeModal";
+import ProjectSettingsModal from "./components/modals/ProjectSettingsModal";
+import CourseModal from "./components/modals/CourseModal";
+import BatchModal from "./components/modals/BatchModal";
+import UserModal from "./components/modals/UserModal";
+import DeleteUserModal from "./components/modals/DeleteUserModal";
+import AssignSupervisorModal from "./components/modals/AssignSupervisorModal";
+import CsvImportModal from "./components/modals/CsvImportModal";
+import CreateLabAssignmentModal from "./components/modals/CreateLabAssignmentModal";
+import BatchSubmissionsRosterModal from "./components/modals/BatchSubmissionsRosterModal";
+
+// Modular Screen Views
+import StudentDashboard from "./screens/StudentDashboard";
+import SupervisorDashboard from "./screens/SupervisorDashboard";
+import AdminDashboard from "./screens/AdminDashboard";
+import ProjectsScreen from "./screens/ProjectsScreen";
+import ProjectDetailScreen from "./screens/ProjectDetailScreen";
+import MilestonesScreen from "./screens/MilestonesScreen";
+import SubmissionsScreen from "./screens/SubmissionsScreen";
+import PendingReviewsScreen from "./screens/PendingReviewsScreen";
+import GradesScreen from "./screens/GradesScreen";
+import BatchesScreen from "./screens/BatchesScreen";
+import UsersScreen from "./screens/UsersScreen";
+import GiteaConfigScreen from "./screens/GiteaConfigScreen";
+import ActivityScreen from "./screens/ActivityScreen";
+import AuditLogsScreen from "./screens/AuditLogsScreen";
+import ProfileScreen from "./screens/ProfileScreen";
+import CodeSandboxScreen from "./screens/CodeSandboxScreen";
+import LabAssignmentsScreen, { DEMO_LAB_ASSIGNMENTS } from "./screens/LabAssignmentsScreen";
+import ProblemStatementsScreen from "./screens/ProblemStatementsScreen";
+import ProposeProblemStatementModal from "./components/modals/ProposeProblemStatementModal";
+import ReviewProblemStatementsModal from "./components/modals/ReviewProblemStatementsModal";
+import ReviewSupervisorRequestsModal from "./components/modals/ReviewSupervisorRequestsModal";
+import { problemStatementsApi, labsApi } from "./api";
+import type { ProblemStatement } from "./types";
+import { DEFAULT_PROBLEM_STATEMENTS } from "./data/mockData";
+export { DEFAULT_PROBLEM_STATEMENTS };
+
+// Excel Export Engine
 import {
-  preventClickjacking,
-  startSessionTimeout,
-  clearSessionTimeout,
-  secureStorage,
-} from "./utils/security";
-import { useAuth } from "./hooks/useAuth";
-import { tokenStore } from "./api/client";
-import { useAuthContext } from "./context/AuthContext";
+  exportStudentProjectsToExcel,
+  exportGroupProjectsToExcel,
+  exportGradesToExcel,
+  type StudentProjectRow,
+  type GradeRow,
+} from "./utils/excelExport";
+import type {
+  Project,
+  Milestone,
+  MilestoneAttachment,
+  Feedback,
+  Course,
+  Batch,
+  User,
+  ActivityItem,
+  AuditLogItem,
+  Role,
+  LabAssignment,
+} from "./types";
 
-// ─── Page metadata ────────────────────────────────────────────────────────────
-
-const defaultPages: Record<Role, Page> = {
-  STUDENT: "student-dashboard",
-  SUPERVISOR: "supervisor-dashboard",
-  ADMIN: "admin-dashboard",
-};
-
-const getSafePage = (targetPage: Page, user: any): Page => {
-  const publicPages = ["landing", "login", "signup"];
-  
-  if (!user) {
-    return publicPages.includes(targetPage) ? targetPage : "landing";
-  }
-
-  if (publicPages.includes(targetPage)) {
-    return defaultPages[user.role as Role] || "student-dashboard";
-  }
-
-  if (["activity", "settings"].includes(targetPage)) {
-    return targetPage;
-  }
-
-  if (user.role === "STUDENT" && targetPage.startsWith("student-")) return targetPage;
-  if (user.role === "SUPERVISOR" && targetPage.startsWith("supervisor-")) return targetPage;
-  if (user.role === "ADMIN" && targetPage.startsWith("admin-")) return targetPage;
-
-  return defaultPages[user.role as Role] || "student-dashboard";
-};
-
-const parentPages: Partial<Record<Page, Page>> = {
-  login: "landing",
-  signup: "login",
-  "student-projects": "student-dashboard",
-  "student-create-project": "student-projects",
-  "student-project-detail": "student-projects",
-  "student-submissions": "student-dashboard",
-  "student-messages": "student-dashboard",
-  "student-profile": "student-dashboard",
-  "supervisor-projects": "supervisor-dashboard",
-  "supervisor-project-detail": "supervisor-dashboard",
-  "supervisor-reviews": "supervisor-dashboard",
-  "supervisor-grades": "supervisor-dashboard",
-  "supervisor-messages": "supervisor-dashboard",
-  "supervisor-profile": "supervisor-dashboard",
-  "admin-users": "admin-dashboard",
-  "admin-batches": "admin-dashboard",
-  "admin-gitea-settings": "admin-dashboard",
-  "admin-audit-logs": "admin-dashboard",
-  "admin-projects": "admin-dashboard",
-  "admin-profile": "admin-dashboard",
-  activity: "student-dashboard",
-  settings: "student-dashboard",
-};
-
-const rootPages: Page[] = [
-  "landing",
-  "login",
-  "signup",
-  "student-dashboard",
-  "supervisor-dashboard",
-  "admin-dashboard",
-];
-
-const pageTitles: Partial<Record<Page, string>> = {
-  "student-dashboard": "Dashboard",
-  "student-projects": "My Projects",
-  "student-create-project": "Create Project",
-  "student-project-detail": "Project Detail",
-  "student-submissions": "Submissions",
-  "student-messages": "Messages",
-  "student-profile": "Profile",
-  "supervisor-dashboard": "Dashboard",
-  "supervisor-projects": "Projects",
-  "supervisor-project-detail": "Project Detail",
-  "supervisor-reviews": "Reviews",
-  "supervisor-grades": "Grades",
-  "supervisor-messages": "Messages",
-  "supervisor-profile": "Profile",
-  "admin-dashboard": "Dashboard",
-  "admin-users": "Users",
-  "admin-batches": "Batches",
-  "admin-gitea-settings": "Gitea Settings",
-  "admin-audit-logs": "Audit Logs",
-  "admin-projects": "Projects",
-  "admin-profile": "Profile",
-  activity: "Activity",
-  settings: "Settings",
-};
-
-// ─── App ──────────────────────────────────────────────────────────────────────
-
-export function App() {
-  const { user, isAuthenticated, isLoading, logout, role } = useAuth();
-  const { clearAuth } = useAuthContext();
-
-  const [page, setPage] = useState<Page>("landing");
-  const [history, setHistory] = useState<Page[]>(["landing"]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sessionWarning, setSessionWarning] = useState(false);
-  const [darkMode, setDarkMode] = useState(
-    () => localStorage.getItem("giteaforge-dark") === "true",
-  );
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // Anti-clickjacking
-  useEffect(() => {
-    try {
-      preventClickjacking();
-    } catch {
-      /* handled */
-    }
-  }, []);
-
-  // Dark mode
-  useEffect(() => {
-    const html = document.documentElement;
-    darkMode ? html.classList.add("dark") : html.classList.remove("dark");
-    localStorage.setItem("giteaforge-dark", String(darkMode));
-  }, [darkMode]);
-
-  // Listen for auth:logout event from axios interceptor
-  useEffect(() => {
-    let logoutInProgress = false;
-    const handleForceLogout = () => {
-      if (logoutInProgress) return; // ← prevent re-entry
-      logoutInProgress = true;
-
-      tokenStore.clear();
-      logout();
-      setPage("login");
-      setHistory(["login"]);
-      window.history.replaceState({ page: "login" }, "", "#/login");
-      clearAuth();
-    };
-    window.addEventListener("auth:logout", handleForceLogout);
-    return () => {
-      window.removeEventListener("auth:logout", handleForceLogout);
-      logoutInProgress = false;
-    };
-  }, [clearAuth]);
-
-  // Redirect to dashboard after login
-  useEffect(() => {
-    if (
-      isAuthenticated &&
-      user &&
-      ["landing", "login", "signup"].includes(page)
-    ) {
-      const dash = defaultPages[user.role];
-      setHistory([dash]);
-      setPage(dash);
-      window.history.replaceState({ page: dash }, "", `#/${dash}`);
-    }
-  }, [isAuthenticated, user, page]);
-
-  // Session timeout for authenticated users
-  useEffect(() => {
-    const isLoggedIn = !["landing", "login", "signup"].includes(page);
-    if (!isLoggedIn) return;
-
-    const handleActivity = () => {
-      setSessionWarning(false);
-      startSessionTimeout(
-        30 * 60 * 1000,
-        () => {
-          secureStorage.clear();
-          logout();
-          setPage("login");
-          setHistory(["login"]);
-        },
-        5 * 60 * 1000,
-        () => setSessionWarning(true),
-      );
-    };
-
-    handleActivity();
-    const events = ["mousedown", "keydown", "scroll", "touchstart"];
-    events.forEach((e) =>
-      window.addEventListener(e, handleActivity, { passive: true }),
+// ── Role Authorization Guard ──────────────────────────────────────────────────
+const RoleGuard = ({
+  allowed,
+  currentRole,
+  children,
+}: {
+  allowed: Role[];
+  currentRole: Role;
+  children: React.ReactNode;
+}) => {
+  if (!allowed.includes(currentRole)) {
+    return (
+      <Card className="p-8 text-center max-w-md mx-auto space-y-3 mt-10">
+        <div className="h-12 w-12 rounded-full grid place-items-center bg-[#ef4444]/10 text-[#ef4444] mx-auto">
+          <ShieldAlert size={24} />
+        </div>
+        <h3 className="font-bold text-[16px]">Access Restricted</h3>
+        <p className="text-[12px]" style={{ color: "var(--t2)" }}>
+          Your account role (
+          <span className="font-semibold capitalize">
+            {currentRole.toLowerCase()}
+          </span>
+          ) does not have authorization to view this section.
+        </p>
+      </Card>
     );
-    return () => {
-      events.forEach((e) => window.removeEventListener(e, handleActivity));
-      clearSessionTimeout();
-    };
-  }, [page, logout]);
+  }
+  return <>{children}</>;
+};
 
-  // Security guard: Validate active page against authenticated user role
-  useEffect(() => {
-    if (isLoading) return;
-    const resolved = getSafePage(page, user);
-    if (resolved !== page) {
-      setPage(resolved);
-      window.history.replaceState({ page: resolved }, "", `#/${resolved}`);
-    }
-  }, [page, user, isLoading]);
+function MainApp() {
+  const { user, role, isAuthenticated, isLoading, logout, exploreDemo, users, setUsers } =
+    useAuth();
+  const showToast = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      const state = event.state as { page?: Page } | null;
-      if (state?.page) {
-        setPage(state.page);
-        setHistory((prev) => {
-          const idx = prev.lastIndexOf(state.page!);
-          if (idx !== -1) {
-            return prev.slice(0, idx + 1);
-          }
-          return [...prev, state.page!];
-        });
+  // Navigation and Views State
+  const [authView, setAuthView] = useState<"landing" | "auth">("landing");
+  const [authInitialMode, setAuthInitialMode] = useState<"login" | "register">("login");
+  const [mobileOpen, setMobileOpen] = useState(false);
+  // Full sidebar menu bar as default
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+
+  const toggleSidebarCollapse = useCallback(() => {
+    setSidebarCollapsed((prev) => !prev);
+  }, []);
+  const [search, setSearch] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+
+  // Supported top-level route mapping
+  const VALID_PAGES: Record<string, string> = {
+    dashboard: "dashboard",
+    ideas: "ideas",
+    "problem-statements": "ideas",
+    projects: "projects",
+    milestones: "milestones",
+    submissions: "submissions",
+    pending: "pending",
+    reviews: "pending",
+    grades: "grades",
+    batches: "batches",
+    users: "users",
+    gitea: "gitea",
+    activity: "activity",
+    audit: "audit",
+    "audit-logs": "audit",
+    profile: "profile",
+    labs: "labs",
+    sandbox: "sandbox",
+  };
+
+  // Derive active project ID and page directly from URL — single source of truth, eliminates state tearing & page flicker
+  const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
+  const selectedProjectId = projectMatch ? projectMatch[1] : null;
+
+  const cleanPath = location.pathname.replace(/^\/+|\/+$/g, "");
+  const firstSegment = cleanPath.split("/")[0] || "dashboard";
+  const page = VALID_PAGES[firstSegment] || "dashboard";
+
+  const navigateToPage = useCallback(
+    (destPage: string) => {
+      const targetUrl = destPage === "dashboard" ? "/dashboard" : `/${destPage}`;
+      if (location.pathname !== targetUrl) {
+        navigate(targetUrl);
       }
-    };
-    window.addEventListener("popstate", handlePopState);
-
-    // Initial deep-linking hash extraction on mount
-    const initialHash = window.location.hash.replace(/^#\/?/, "") as Page;
-    const validPages: Page[] = [
-      "landing",
-      "login",
-      "signup",
-      "student-dashboard",
-      "student-projects",
-      "student-create-project",
-      "student-project-detail",
-      "student-submissions",
-      "student-messages",
-      "student-profile",
-      "supervisor-dashboard",
-      "supervisor-projects",
-      "supervisor-project-detail",
-      "supervisor-reviews",
-      "supervisor-grades",
-      "supervisor-messages",
-      "supervisor-profile",
-      "admin-dashboard",
-      "admin-users",
-      "admin-batches",
-      "admin-gitea-settings",
-      "admin-projects",
-      "admin-audit-logs",
-      "admin-profile",
-      "activity",
-      "settings",
-    ];
-
-    let startPage = page;
-    if (initialHash && validPages.includes(initialHash)) {
-      startPage = initialHash;
-      setPage(initialHash);
-      setHistory([initialHash]);
-    }
-
-    if (!window.history.state) {
-      window.history.replaceState({ page: startPage }, "", `#/${startPage}`);
-    }
-
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  const navigateTo = useCallback((newPage: Page) => {
-    setSearchQuery("");
-    setHistory((prev) => [...prev, newPage]);
-    setPage(newPage);
-    window.history.pushState({ page: newPage }, "", `#/${newPage}`);
-  }, []);
-
-  const goBack = useCallback(() => {
-    setSearchQuery("");
-    if (window.history.state && window.history.state.page) {
-      window.history.back();
-    } else {
-      setHistory((prev) => {
-        if (prev.length <= 1) return prev;
-        const next = prev.slice(0, -1);
-        setPage(next[next.length - 1]!);
-        return next;
-      });
-    }
-  }, []);
-
-  const getParentPage = useCallback(
-    (current: Page): Page | null => {
-      if (rootPages.includes(current)) return null;
-      if (current === "activity" || current === "settings") {
-        return user ? defaultPages[user.role] : "landing";
-      }
-      return parentPages[current] ?? null;
     },
-    [user],
+    [location.pathname, navigate]
   );
 
-  const canGoBack = history.length > 1 && !rootPages.includes(page);
+  const handleSelectProject = useCallback(
+    (id: string, tab: string = "overview") => {
+      const currentOrigin = location.pathname.startsWith("/projects/")
+        ? (location.state as any)?.from || "/projects"
+        : location.pathname + location.search;
 
-  const breadcrumbs = (() => {
-    const crumbs: { label: string; page: Page | null }[] = [];
-    let cur: Page | null = page;
-    while (cur) {
-      crumbs.unshift({
-        label: pageTitles[cur] ?? cur,
-        page: cur === page ? null : cur,
+      navigate(`/projects/${id}/${tab}`, {
+        state: { from: currentOrigin },
       });
-      cur = getParentPage(cur);
+    },
+    [location.pathname, location.search, location.state, navigate]
+  );
+
+  const handleBackFromProject = useCallback(() => {
+    const fromState = (location.state as any)?.from;
+    const isSafeRelativeUrl =
+      typeof fromState === "string" &&
+      fromState.startsWith("/") &&
+      !fromState.startsWith("//") &&
+      !fromState.includes("\\") &&
+      !fromState.toLowerCase().includes("javascript:");
+
+    if (isSafeRelativeUrl && !fromState.startsWith(`/projects/${selectedProjectId}`)) {
+      navigate(fromState);
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/projects");
     }
-    return crumbs;
-  })();
+  }, [location.state, navigate, selectedProjectId]);
 
-  const handleLogin = (r: Role) => {
-    const dash = defaultPages[r];
-    setHistory([dash]);
-    setPage(dash);
+
+
+  // Core Data State
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [problemStatements, setProblemStatements] = useState<ProblemStatement[]>(DEFAULT_PROBLEM_STATEMENTS);
+  const [labAssignments, setLabAssignments] = useState<LabAssignment[]>(DEMO_LAB_ASSIGNMENTS);
+
+  // Modals Visibility State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [showGradeModal, setShowGradeModal] = useState(false);
+  const [gradeModalProject, setGradeModalProject] = useState<Project | null>(null);
+  const [showProjectSettingsModal, setShowProjectSettingsModal] = useState(false);
+  const [showCourseModal, setShowCourseModal] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
+  const [showDeleteUserModal, setShowDeleteUserModal] = useState(false);
+  const [selectedUserForDelete, setSelectedUserForDelete] = useState<User | null>(null);
+  const [showAssignSupervisorModal, setShowAssignSupervisorModal] = useState(false);
+  const [showCsvImportModal, setShowCsvImportModal] = useState(false);
+  const [showCreateLabModal, setShowCreateLabModal] = useState(false);
+  const [initialSubjectForCreateLab, setInitialSubjectForCreateLab] = useState<string | undefined>(undefined);
+  const [showRosterModal, setShowRosterModal] = useState(false);
+  const [selectedAssignmentIdForRoster, setSelectedAssignmentIdForRoster] = useState<string | null>(null);
+  const [activeLabForSandbox, setActiveLabForSandbox] = useState<LabAssignment | null>(null);
+  const [showProposeIdeaModal, setShowProposeIdeaModal] = useState(false);
+  const [showReviewIdeasModal, setShowReviewIdeasModal] = useState(false);
+  const [showSupervisorRequestsModal, setShowSupervisorRequestsModal] = useState(false);
+  const [selectedProblemStatementForCreate, setSelectedProblemStatementForCreate] = useState<ProblemStatement | null>(null);
+  const [lastCreatedStatement, setLastCreatedStatement] = useState<ProblemStatement | null>(null);
+  const [catalogRefreshKey, setCatalogRefreshKey] = useState(0);
+  const [pendingIdeasCount, setPendingIdeasCount] = useState(0);
+  const [pendingSupervisorRequestsCount, setPendingSupervisorRequestsCount] = useState(0);
+
+  // Supervisors List
+  const supervisors = (users || []).filter((u) => u && u.role === "SUPERVISOR");
+
+  // Selected Active Project
+  const activeProject =
+    projects.find((p) => p.id === selectedProjectId) || projects[0] || null;
+
+  // ── Main Content Viewport Scroll Reference & Auto-Reset ────────────────────
+  const mainScrollRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [page, selectedProjectId]);
+
+  // ── Global Modal Body Scroll Lock (Prevents Background Movement) ─────────
+  const isAnyModalOpen =
+    showCreateModal ||
+    showTeamModal ||
+    showGradeModal ||
+    showProjectSettingsModal ||
+    showCourseModal ||
+    showBatchModal ||
+    showUserModal ||
+    showDeleteUserModal ||
+    showAssignSupervisorModal ||
+    showCsvImportModal ||
+    showCreateLabModal ||
+    showRosterModal ||
+    showProposeIdeaModal ||
+    showReviewIdeasModal ||
+    showSupervisorRequestsModal;
+
+  useEffect(() => {
+    if (isAnyModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      const originalPaddingRight = document.body.style.paddingRight;
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      document.body.style.overflow = "hidden";
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.paddingRight = originalPaddingRight;
+      };
+    }
+  }, [isAnyModalOpen]);
+
+  // ── Modular Project Loader (Callable on mount and after mutations) ─────────
+  const loadProjects = useCallback(async () => {
+    try {
+      let projList: any[] = [];
+      if (role === "STUDENT") {
+        const res = await projectsApi.getMyProjects();
+        if (res?.data) projList = res.data;
+      } else if (role === "SUPERVISOR") {
+        const res = await projectsApi.getSupervisedProjects();
+        if (res?.data) projList = res.data;
+      } else if (role === "ADMIN") {
+        const res = await projectsApi.getAllProjects();
+        if (res?.data) projList = res.data;
+      }
+
+      if (Array.isArray(projList)) {
+        const normalizedProjects: Project[] = projList.map((p: any) => {
+          const rawMilestones = Array.isArray(p.milestones) ? p.milestones : [];
+          const mappedMilestones: Milestone[] = rawMilestones.map((m: any, idx: number) => ({
+            id: m.id || `m-${p.id}-${idx}`,
+            projectId: p.id,
+            title: m.title,
+            description: m.description,
+            status: m.status || "PENDING",
+            order: typeof m.order === "number" ? m.order : idx + 1,
+            due: m.dueDate ? new Date(m.dueDate).toLocaleDateString() : m.due || "TBD",
+            submittedAt: m.submittedAt ? new Date(m.submittedAt).toLocaleDateString() : m.status === "APPROVED" || m.status === "SUBMITTED" ? "27/8/2026" : undefined,
+            files: Array.isArray(m.attachments) ? m.attachments.length : m.files || 0,
+            note: m.studentNotes || m.feedback || m.note || "Milestone deliverable",
+            attachments: Array.isArray(m.attachments)
+              ? m.attachments
+              : m.files > 0
+              ? [{ name: `${m.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-deliverable.pdf`, size: 2450000 }]
+              : [],
+          }));
+
+          const rawMembers = Array.isArray(p.members) ? p.members.map((m: any) => m.user || m).filter(Boolean) : [];
+          const rawTeam = Array.isArray(p.team) && p.team.length > 0 ? p.team : [];
+          const team = rawTeam.length > 0
+            ? rawTeam
+            : p.owner
+            ? [p.owner, ...rawMembers.filter((u: any) => u && u.id !== p.owner?.id)]
+            : rawMembers;
+
+          return {
+            ...p,
+            desc: p.desc || p.description || "",
+            description: p.description || p.desc || "",
+            techs: Array.isArray(p.techs)
+              ? p.techs
+              : Array.isArray(p.technologies)
+              ? p.technologies
+              : [],
+            technologies: Array.isArray(p.technologies)
+              ? p.technologies
+              : Array.isArray(p.techs)
+              ? p.techs
+              : [],
+            team,
+            milestones: mappedMilestones,
+            repoUrl: (() => {
+              const giteaRoot = env.GITEA_URL;
+              const raw = p.repoUrl || (p.repoName ? `${giteaRoot}/${p.owner?.giteaUsername || "user"}/${p.repoName}.git` : "gitea.univ.edu/project.git");
+              return raw.replace(/^http:\/\/(localhost|127\.0\.0\.1):3000/, giteaRoot);
+            })(),
+            supervisor:
+              typeof p.supervisor === "string" &&
+              p.supervisor !== "Unassigned" &&
+              p.supervisor !== "Pending Admin Allocation"
+                ? p.supervisor
+                : p.supervisor?.name
+                ? p.supervisor.name
+                : p.requestedSupervisor?.name
+                ? `${p.requestedSupervisor.name} (Requested)`
+                : p.supervisorRequestStatus === "PENDING"
+                ? "Advisor Requested (Pending Admin Approval)"
+                : "Unassigned",
+            supervisorId: p.supervisorId || p.supervisor?.id || "",
+            requestedSupervisor: p.requestedSupervisor,
+            requestedSupervisorId: p.requestedSupervisorId,
+            supervisorRequestStatus: p.supervisorRequestStatus,
+            supervisorRequestReason: p.supervisorRequestReason,
+            problemStatement: p.problemStatement,
+            problemStatementId: p.problemStatementId,
+            progress: typeof p.progress === "number" ? p.progress : 0,
+          };
+        });
+
+        setProjects(normalizedProjects);
+
+        if (normalizedProjects.length > 0) {
+          const allMils = normalizedProjects.flatMap((p: any) => p.milestones || []);
+          if (allMils.length > 0) {
+            setMilestones(allMils);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load projects for role:", role, err);
+    }
+  }, [role]);
+
+  // ── Admin Pending Queues Sync ──────────────────────────────────────────────
+  const loadAdminQueues = useCallback(async () => {
+    if (role !== "ADMIN") return;
+    try {
+      const [pendingIdeasRes, supervisorReqRes] = await Promise.allSettled([
+        problemStatementsApi.getPendingAdmin(),
+        adminApi.getSupervisorRequests(),
+      ]);
+      if (pendingIdeasRes.status === "fulfilled" && pendingIdeasRes.value?.data) {
+        setPendingIdeasCount(pendingIdeasRes.value.data.length);
+      }
+      if (supervisorReqRes.status === "fulfilled" && supervisorReqRes.value?.data) {
+        setPendingSupervisorRequestsCount(supervisorReqRes.value.data.length);
+      }
+    } catch {
+      // Keeps graceful defaults
+    }
+  }, [role]);
+
+  // ── Auto-Sync Live Data When Navigating Pages ──────────────────────────────
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadProjects();
+      if (role === "ADMIN") {
+        loadAdminQueues();
+      }
+    }
+  }, [page, isAuthenticated, role, loadProjects, loadAdminQueues]);
+
+  // ── Live Backend Data Sync (Mount & Auth) ──────────────────────────────────
+  useEffect(() => {
+    const loadLiveData = async () => {
+      // 1. Courses & Batches
+      try {
+        const [courseRes, batchRes] = await Promise.allSettled([
+          coursesApi.getAllCourses(),
+          batchesApi.getAllBatches(),
+        ]);
+        if (courseRes.status === "fulfilled" && courseRes.value?.data) {
+          setCourses(courseRes.value.data);
+        }
+        if (batchRes.status === "fulfilled" && batchRes.value?.data) {
+          setBatches(batchRes.value.data);
+        }
+      } catch {
+        // Keeps graceful defaults
+      }
+
+      // 2. Projects & Milestones by Role
+      await loadProjects();
+
+      // 3. Live Activities (Role Specific)
+      try {
+        let actRes: any;
+        if (role === "ADMIN") {
+          actRes = await activitiesApi.getAdminActivities();
+        } else if (role === "SUPERVISOR") {
+          actRes = await activitiesApi.getSupervisorActivities();
+        } else {
+          actRes = await activitiesApi.getMyActivities();
+        }
+        if (actRes?.data && Array.isArray(actRes.data) && actRes.data.length > 0) {
+          setActivities(actRes.data);
+        }
+      } catch (err) {
+        console.warn("Could not load activities:", err);
+      }
+
+      // 4. Live Users & Audit Logs (Admin) or Supervisors List (Non-Admin)
+      if (role === "ADMIN") {
+        try {
+          const [audRes, usersRes] = await Promise.allSettled([
+            adminApi.getAuditLogs(),
+            adminApi.getAllUsers(),
+          ]);
+          if (audRes.status === "fulfilled" && audRes.value?.data && Array.isArray(audRes.value.data) && audRes.value.data.length > 0) {
+            const liveLogs: AuditLogItem[] = audRes.value.data.map((l: any) => ({
+              id: l.id,
+              time: l.createdAt || l.time
+                ? new Date(l.createdAt || l.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "Just now",
+              user:
+                typeof l.user === "object" && l.user !== null
+                  ? l.user.name || "System"
+                  : typeof l.user === "string"
+                  ? l.user
+                  : "System",
+              action: l.action || l.type || "SYSTEM_EVENT",
+              desc: l.desc || l.description || "System activity recorded",
+            }));
+            setAuditLogs(liveLogs);
+          }
+          if (usersRes.status === "fulfilled" && usersRes.value?.data && Array.isArray(usersRes.value.data) && usersRes.value.data.length > 0) {
+            const liveUsers: User[] = usersRes.value.data.map((u: any) => ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              role: u.role,
+              avatar:
+                u.avatar ||
+                `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                  u.name || u.email || "User"
+                )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+              dept: u.dept || u.department || "CSE",
+              idNo: u.idNo || u.universityId || "CS1001",
+              batch: u.batch || (u.role === "STUDENT" ? "General Batch" : "Academic Staff"),
+              phoneNumber: u.phoneNumber || "",
+              universityId: u.universityId || u.idNo || "",
+            }));
+            setUsers(liveUsers);
+          }
+
+          // Problem Statements & Supervisor Requests Queues
+          try {
+            const [pendingIdeasRes, supervisorReqRes] = await Promise.allSettled([
+              problemStatementsApi.getPendingAdmin(),
+              adminApi.getSupervisorRequests(),
+            ]);
+            if (pendingIdeasRes.status === "fulfilled" && pendingIdeasRes.value?.data) {
+              setPendingIdeasCount(pendingIdeasRes.value.data.length);
+            }
+            if (supervisorReqRes.status === "fulfilled" && supervisorReqRes.value?.data) {
+              setPendingSupervisorRequestsCount(supervisorReqRes.value.data.length);
+            }
+          } catch {
+            // Keeps graceful defaults
+          }
+        } catch (err) {
+          console.warn("Could not load admin users/audit logs:", err);
+        }
+      } else {
+        try {
+          const supRes = await usersApi.getSupervisors();
+          if (supRes?.data && Array.isArray(supRes.data) && supRes.data.length > 0) {
+            setUsers((prev) => {
+              const liveSups: User[] = supRes.data!.map((s: any) => ({
+                id: s.id,
+                name: s.name,
+                email: s.email,
+                role: "SUPERVISOR" as const,
+                avatar:
+                  s.avatar ||
+                  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                    s.name || s.email || "Supervisor"
+                  )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+                dept: s.dept || s.department || "CSE",
+                idNo: s.idNo || s.universityId || "FAC-100",
+                batch: "Academic Staff",
+              }));
+              const nonSups = prev.filter((u) => u.role !== "SUPERVISOR");
+              return [...liveSups, ...nonSups];
+            });
+          }
+        } catch (err) {
+          console.warn("Could not load supervisors:", err);
+        }
+      }
+
+      // 5. Problem Statements & Lab Assignments for Global Omni-Search
+      try {
+        const [psRes, labsRes] = await Promise.allSettled([
+          problemStatementsApi.getCatalog(),
+          labsApi.getLabAssignments(),
+        ]);
+        if (psRes.status === "fulfilled") {
+          const val: any = psRes.value;
+          const list = Array.isArray(val) ? val : val?.data;
+          if (Array.isArray(list) && list.length > 0) {
+            setProblemStatements(list);
+          }
+        }
+        if (labsRes.status === "fulfilled") {
+          const val: any = labsRes.value;
+          const list = Array.isArray(val) ? val : val?.data;
+          if (Array.isArray(list) && list.length > 0) {
+            setLabAssignments(list);
+          }
+        }
+      } catch {
+        // Keeps graceful defaults
+      }
+    };
+
+    loadLiveData();
+  }, [isAuthenticated, role]);
+
+  // ── Excel Export Handlers ──────────────────────────────────────────────────
+  const buildStudentRows = (projectList: Project[]): StudentProjectRow[] => {
+    return projectList.map((p) => {
+      const linkedBatch = batches.find((b) => b.id === p.batchId);
+      const teamArr = p.team || [];
+      const studentName = teamArr[0]?.name || "Student";
+      const universityId = teamArr[0]?.idNo || (teamArr[0] as any)?.universityId || "CS1001";
+      const department = teamArr[0]?.dept || (teamArr[0] as any)?.department || "CSE";
+      const pMilestones = milestones.filter((m) => m.projectId === p.id);
+      const approvedCount = pMilestones.filter((m) => m.status === "APPROVED").length;
+
+      return {
+        studentName,
+        universityId,
+        department,
+        projectTitle: p.title,
+        technologies: (p.techs || p.technologies || []).join(", "),
+        status: p.status,
+        progress: p.progress || 0,
+        supervisor: p.supervisor || "Unassigned",
+        batch: linkedBatch ? linkedBatch.name : p.batch || "General",
+        startDate: "2026-08-01",
+        endDate: "2026-12-15",
+        milestonesTotal: pMilestones.length || 4,
+        milestonesApproved: approvedCount,
+      };
+    });
   };
 
-  const handleLogout = async () => {
-    await logout();
-    setPage("landing");
-    setHistory(["landing"]);
-    setSidebarOpen(false);
+  const handleExportStudentsExcel = () => {
+    const rows = buildStudentRows(projects);
+    exportStudentProjectsToExcel(rows);
+    showToast("Exported student projects to Excel (.xls)");
   };
 
-  // ─── Loading screen ──────────────────────────────────────────────────────
+  const handleExportGroupsExcel = () => {
+    const rows = buildStudentRows(projects);
+    exportGroupProjectsToExcel(rows);
+    showToast("Exported group projects by batch (.xls)");
+  };
+
+  const handleExportGradesExcel = () => {
+    const gradeRows: GradeRow[] = projects.map((p) => ({
+      studentName: (p.team || [])[0]?.name || "Student",
+      projectTitle: p.title,
+      score: p.grade === "A+" ? 95 : p.grade === "A" ? 88 : p.grade === "B+" ? 78 : 85,
+      grade: p.grade || "A",
+      status: p.status,
+      supervisorFeedback: p.feedback || "Approved with distinction.",
+      gradedAt: new Date().toISOString().slice(0, 10),
+      codeQuality: 92,
+      documentation: 90,
+      presentation: 94,
+      innovation: 88,
+      teamwork: 95,
+    }));
+    exportGradesToExcel(gradeRows);
+    showToast("Exported capstone grades scorecard (.xls)");
+  };
+
+  const handleExportCsv = () => {
+    const headers = [
+      "ID",
+      "Title",
+      "Status",
+      "Progress",
+      "Supervisor",
+      "Technologies",
+    ];
+    const rows = projects.map((p) =>
+      [
+        sanitizeCsvCell(p.id),
+        sanitizeCsvCell(p.title),
+        sanitizeCsvCell(p.status),
+        sanitizeCsvCell(`${p.progress || 0}%`),
+        sanitizeCsvCell(p.supervisor || "Unassigned"),
+        sanitizeCsvCell((p.techs || p.technologies || []).join(";")),
+      ].join(",")
+    );
+
+    const csvData = [headers.map(sanitizeCsvCell).join(","), ...rows].join(
+      "\r\n"
+    );
+    const blob = new Blob(["\uFEFF" + csvData], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `giteaforge_projects_${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast("Exported projects securely to CSV ✅");
+  };
+
+  // ── Milestone Actions ──────────────────────────────────────────────────────
+  const handleStartMilestone = (id: string) => {
+    setMilestones((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, status: "IN_PROGRESS" } : m))
+    );
+    showToast("Milestone started");
+  };
+
+  const handleSubmitMilestone = (id: string, notes: string, fileCount: number, uploadedAttachments?: MilestoneAttachment[]) => {
+    setMilestones((prev) =>
+      prev.map((m) =>
+        m.id === id
+          ? {
+              ...m,
+              status: "SUBMITTED",
+              note: notes || m.note,
+              files: fileCount,
+              submittedAt: new Date().toLocaleDateString(),
+              attachments: uploadedAttachments || m.attachments || [],
+            }
+          : m
+      )
+    );
+    setActivities((prev) => [
+      {
+        id: `act-${Date.now()}`,
+        type: "milestone",
+        scope: "personal",
+        msg: "submitted deliverables for",
+        time: "Just now",
+        user: user?.name || "Student",
+        avatar:
+          user?.avatar ||
+          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+            user?.name || "Student"
+          )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+        project: activeProject?.title || "Capstone Project",
+        detail: `Attached ${fileCount} file(s): ${notes || "Milestone deliverables"}`,
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleApproveMilestone = async (id: string) => {
+    try {
+      await milestonesApi.approveMilestone(id);
+    } catch {
+      // Graceful local sync
+    }
+    setMilestones((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, status: "APPROVED" } : m))
+    );
+    setAuditLogs((prev) => [
+      {
+        id: `aud-${Date.now()}`,
+        time: new Date().toLocaleTimeString(),
+        user: user?.name || "Supervisor",
+        action: "MILESTONE_APPROVE",
+        desc: `Approved milestone on project`,
+      },
+      ...prev,
+    ]);
+    showToast("Milestone approved ✅");
+  };
+
+  const handleRejectMilestone = async (id: string, reason: string) => {
+    try {
+      await milestonesApi.rejectMilestone(id, reason);
+    } catch {
+      // Graceful local sync
+    }
+    setMilestones((prev) =>
+      prev.map((m) =>
+        m.id === id ? { ...m, status: "REJECTED", note: reason } : m
+      )
+    );
+    showToast("Milestone marked as REJECTED with feedback remarks");
+  };
+
+  // ── Feedback Actions ───────────────────────────────────────────────────────
+  const handleAddFeedback = (text: string) => {
+    const newFb: Feedback = {
+      id: `fb-${Date.now()}`,
+      projectId: activeProject?.id || "",
+      author: user?.name || "User",
+      avatar:
+        user?.avatar ||
+        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+          user?.name || "User"
+        )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+      role: role,
+      content: text,
+      time: "Just now",
+      resolved: false,
+    };
+    setFeedbacks((prev) => [newFb, ...prev]);
+    showToast("Feedback posted to project board");
+  };
+
+  const handleReplyFeedback = (feedbackId: string, text: string) => {
+    setFeedbacks((prev) =>
+      prev.map((fb) =>
+        fb.id === feedbackId
+          ? {
+              ...fb,
+              replies: [
+                ...(fb.replies || []),
+                {
+                  id: `rep-${Date.now()}`,
+                  author: user?.name || "User",
+                  avatar:
+                    user?.avatar ||
+                    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                      user?.name || "User"
+                    )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+                  role: role,
+                  content: text,
+                  time: "Just now",
+                },
+              ],
+            }
+          : fb
+      )
+    );
+    showToast("Reply added to thread");
+  };
+
+  const handleToggleResolveFeedback = (feedbackId: string) => {
+    setFeedbacks((prev) =>
+      prev.map((fb) =>
+        fb.id === feedbackId ? { ...fb, resolved: !fb.resolved } : fb
+      )
+    );
+    showToast("Feedback thread status updated");
+  };
+
+  // ── If Session is Restoring, show sleek loading indicator ──────────────────
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-[#0d1117]">
-        <div className="flex flex-col items-center gap-3">
-          <svg
-            className="animate-spin h-8 w-8 text-neutral-400"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-              fill="none"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-            />
-          </svg>
-          <p className="text-sm text-neutral-500 dark:text-[#8b949e]">
-            Loading...
-          </p>
-        </div>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-3"
+        style={{ background: "var(--bg, #0b1117)", color: "var(--t1, #f0f6fc)" }}
+      >
+        <div className="h-9 w-9 rounded-full border-2 border-[#06b6d4] border-t-transparent animate-spin" />
+        <span className="text-[13px] font-semibold text-[#8aafbb]">Loading GiteaForge...</span>
       </div>
     );
   }
 
-  // ─── Public pages ─────────────────────────────────────────────────────────
-  if (page === "landing") {
-    return (
-      <Landing
-        onNavigate={navigateTo}
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-      />
-    );
-  }
-
-  if (page === "login") {
-    return (
-      <Login
-        onLogin={handleLogin}
-        onNavigate={navigateTo}
-        goBack={goBack}
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-      />
-    );
-  }
-
-  if (page === "signup") {
-    return (
-      <Signup
-        onNavigate={navigateTo}
-        goBack={goBack}
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-      />
-    );
-  }
-
-  // ─── Authenticated pages ──────────────────────────────────────────────────
-  const renderContent = () => {
-    switch (page) {
-      case "student-dashboard":
-        return <StudentDashboard onNavigate={navigateTo} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
-      case "student-projects":
-        return <StudentProjects onNavigate={navigateTo} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
-      case "student-create-project":
-        return <CreateProject onNavigate={navigateTo} />;
-      case "student-project-detail":
-        return <StudentProjectDetail onNavigate={navigateTo} />;
-      case "student-submissions":
-        return <StudentSubmissions onNavigate={navigateTo} />;
-      case "student-messages":
-        return <StudentMessages />;
-      case "student-profile":
-        return <ProfilePage />;
-      case "supervisor-dashboard":
-        return <SupervisorDashboard onNavigate={navigateTo} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
-      case "supervisor-projects":
-        return <SupervisorProjects onNavigate={navigateTo} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
-      case "supervisor-project-detail":
-        return <SupervisorProjectDetail onNavigate={navigateTo} />;
-      case "supervisor-reviews":
-        return <SupervisorReviews onNavigate={navigateTo} />;
-      case "supervisor-grades":
-        return <SupervisorGrades onNavigate={navigateTo} />;
-      case "supervisor-messages":
-        return <SupervisorMessages />;
-      case "supervisor-profile":
-        return <ProfilePage />;
-      case "admin-dashboard":
-        return <AdminDashboard onNavigate={navigateTo} />;
-      case "admin-users":
-        return <AdminUsers searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
-      case "admin-batches":
-        return <AdminBatches />;
-      case "admin-gitea-settings":
-        return <AdminGiteaSettings />;
-      case "admin-projects":
-        return <AdminProjects searchQuery={searchQuery} setSearchQuery={setSearchQuery} />;
-      case "admin-audit-logs":
-        return <AdminAuditLogs />;
-      case "admin-profile":
-        return <ProfilePage />;
-      case "activity":
-        return <ActivityPage />;
-      case "settings":
-        return <SettingsPage />;
-      default:
-        return null;
+  // ── If Not Authenticated, show Landing or Auth Container ───────────────────
+  if (!isAuthenticated) {
+    if (authView === "landing") {
+      return (
+        <LandingPage
+          onSignIn={() => {
+            setAuthInitialMode("login");
+            setAuthView("auth");
+          }}
+          onGetStarted={() => {
+            setAuthInitialMode("register");
+            setAuthView("auth");
+          }}
+          onExploreDemo={(demoRole) => {
+            exploreDemo(demoRole);
+          }}
+        />
+      );
     }
-  };
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-neutral-50 dark:bg-[#0d1117]">
-      <Sidebar
-        role={user?.role ?? "STUDENT"}
-        currentPage={page}
-        onNavigate={navigateTo}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+    return (
+      <AuthContainer
+        initialMode={authInitialMode}
+        onReturnToLanding={() => setAuthView("landing")}
+        courses={courses}
+        batches={batches}
+        onAuthComplete={() => {
+          navigateToPage("dashboard");
+        }}
       />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-          darkMode={darkMode}
-          setDarkMode={setDarkMode}
-          userName={user?.name ?? ""}
-          userRole={role}
-          onLogout={handleLogout}
-          searchValue={searchQuery}
-          onSearchChange={setSearchQuery}
-          onProfileClick={() => {
-            if (!user) return;
-            const profilePage: Page =
-              user.role === "STUDENT"
-                ? "student-profile"
-                : user.role === "SUPERVISOR"
-                  ? "supervisor-profile"
-                  : "admin-profile";
-            navigateTo(profilePage);
+    );
+  }
+
+  // ── Authenticated App Shell ────────────────────────────────────────────────
+  return (
+    <div
+      className="h-screen w-full text-[13px] flex overflow-hidden"
+      style={{ background: "var(--bg)", color: "var(--t1)" }}
+    >
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'); *{font-family:Inter,sans-serif} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}`}</style>
+
+      {/* Sidebar */}
+      <Sidebar
+        page={page}
+        setPage={(p) => navigateToPage(p)}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+        projectCount={projects.length}
+        inProgressMilestoneCount={
+          milestones.filter((m) => m.status === "IN_PROGRESS").length
+        }
+        pendingReviewCount={
+          milestones.filter((m) => m.status === "SUBMITTED").length
+        }
+        userCount={users.length}
+        batchCount={batches.length}
+        onSignOut={logout}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebarCollapse}
+      />
+
+      {/* Main Content Area */}
+      <div
+        className={`flex-1 flex flex-col h-full min-w-0 transition-all duration-300 ${
+          sidebarCollapsed ? "lg:pl-[72px]" : "lg:pl-[260px]"
+        } overflow-hidden`}
+      >
+        <Navbar
+          page={selectedProjectId ? "Project Detail" : page}
+          setPage={(p) => navigateToPage(p)}
+          search={search}
+          setSearch={setSearch}
+          showSearch={showSearch}
+          setShowSearch={setShowSearch}
+          setMobileOpen={setMobileOpen}
+          projects={projects}
+          milestones={milestones}
+          users={users}
+          problemStatements={problemStatements}
+          labAssignments={labAssignments}
+          batches={batches}
+          courses={courses}
+          onSelectProject={(id) => handleSelectProject(id)}
+          onSelectLab={(lab) => {
+            setActiveLabForSandbox(lab);
+            navigateToPage("sandbox");
+          }}
+          onSelectProblemStatement={(statement) => {
+            setSelectedProblemStatementForCreate(statement);
+            navigateToPage("ideas");
           }}
         />
 
-        {(canGoBack || breadcrumbs.length > 1) && (
-          <div className="flex items-center gap-2 px-6 py-2 border-b bg-white dark:bg-[#161b22]">
-            {canGoBack && (
-              <button
-                onClick={goBack}
-                className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Back
-              </button>
-            )}
-            <nav className="flex items-center gap-1 text-sm">
-              {breadcrumbs.map((c, i) => (
-                <span key={i}>
-                  {i > 0 && " / "}
-                  {c.page ? (
-                    <button
-                      onClick={() => navigateTo(c.page as Page)}
-                      className="text-blue-600 dark:text-blue-400"
-                    >
-                      {c.label}
-                    </button>
-                  ) : (
-                    <span className="text-neutral-600 dark:text-[#8b949e]">
-                      {c.label}
-                    </span>
-                  )}
-                </span>
-              ))}
-            </nav>
-          </div>
-        )}
+        <main
+          ref={mainScrollRef}
+          className="flex-1 p-3 sm:p-5 lg:p-6 pb-20 md:pb-6 overflow-y-auto scroll-smooth overscroll-contain touch-pan-y"
+        >
+          {/* PROJECT DETAIL SCREEN */}
+          {selectedProjectId && activeProject ? (
+            <ErrorBoundary name="Project View">
+              <ProjectDetailScreen
+                project={activeProject}
+                milestones={milestones.filter((m) => m.projectId === activeProject.id)}
+                feedbacks={feedbacks.filter((f) => f.projectId === activeProject.id)}
+                files={(activeProject as any).files || []}
+                onBack={handleBackFromProject}
+                onOpenTeamModal={() => setShowTeamModal(true)}
+                onOpenGradeModal={() => {
+                  setGradeModalProject(activeProject);
+                  setShowGradeModal(true);
+                }}
+                onOpenSettingsModal={() => setShowProjectSettingsModal(true)}
+                onStartMilestone={handleStartMilestone}
+                onApproveMilestone={handleApproveMilestone}
+                onRejectMilestone={handleRejectMilestone}
+                onAddFeedback={handleAddFeedback}
+                onReplyFeedback={handleReplyFeedback}
+                onToggleResolveFeedback={handleToggleResolveFeedback}
+                onNavigate={(dest) => navigateToPage(dest)}
+              />
+            </ErrorBoundary>
+          ) : (
+            <>
+              {/* DASHBOARDS */}
+              {page === "dashboard" && role === "STUDENT" && (
+                <StudentDashboard
+                  projects={projects}
+                  milestones={milestones}
+                  activities={activities}
+                  onOpenCreateModal={() => setShowCreateModal(true)}
+                  onSelectProject={(id) => handleSelectProject(id)}
+                  onNavigate={(dest) => navigateToPage(dest)}
+                />
+              )}
 
-        <main className="flex-1 overflow-auto p-6">{renderContent()}</main>
+              {page === "dashboard" && role === "SUPERVISOR" && (
+                <SupervisorDashboard
+                  projects={projects}
+                  milestones={milestones}
+                  activities={activities}
+                  onApproveMilestone={handleApproveMilestone}
+                  onOpenGradeModal={(proj) => {
+                    setGradeModalProject(proj);
+                    setShowGradeModal(true);
+                  }}
+                  onOpenProposeModal={() => setShowProposeIdeaModal(true)}
+                  onNavigate={(dest) => navigateToPage(dest)}
+                />
+              )}
+
+              {page === "dashboard" && role === "ADMIN" && (
+                <AdminDashboard
+                  users={users}
+                  projects={projects}
+                  batches={batches}
+                  courses={courses}
+                  auditLogs={auditLogs}
+                  onExportCsv={handleExportCsv}
+                  onOpenCsvModal={() => setShowCsvImportModal(true)}
+                  onOpenAssignModal={() => setShowAssignSupervisorModal(true)}
+                  onOpenCreateLab={() => setShowCreateLabModal(true)}
+                  onOpenReviewIdeasModal={() => setShowReviewIdeasModal(true)}
+                  onOpenSupervisorRequestsModal={() => setShowSupervisorRequestsModal(true)}
+                  pendingIdeasCount={pendingIdeasCount}
+                  pendingSupervisorRequestsCount={pendingSupervisorRequestsCount}
+                  onNavigate={(dest) => navigateToPage(dest)}
+                />
+              )}
+
+              {/* PROBLEM STATEMENTS & HACKATHON IDEA BANK SCREEN */}
+              {page === "ideas" && (
+                <ProblemStatementsScreen
+                  onSelectStatementForProject={(statement) => {
+                    setSelectedProblemStatementForCreate(statement);
+                    setShowCreateModal(true);
+                  }}
+                  onOpenProposeModal={() => setShowProposeIdeaModal(true)}
+                  lastCreatedStatement={lastCreatedStatement}
+                  userProjects={projects}
+                  catalogRefreshKey={catalogRefreshKey}
+                  externalSearchQuery={search}
+                />
+              )}
+
+              {/* PROJECTS SCREEN */}
+              {page === "projects" && (
+                <ProjectsScreen
+                  projects={projects}
+                  onSelectProject={(id) => handleSelectProject(id)}
+                  onOpenCreateModal={() => setShowCreateModal(true)}
+                  onExportStudentsExcel={handleExportStudentsExcel}
+                  onExportGroupsExcel={handleExportGroupsExcel}
+                  onExportGradesExcel={handleExportGradesExcel}
+                  onExportCsv={handleExportCsv}
+                  onOpenSupervisorRequestsModal={() => setShowSupervisorRequestsModal(true)}
+                  searchQuery={search}
+                />
+              )}
+
+              {/* MILESTONES SCREEN */}
+              {page === "milestones" && (
+                <RoleGuard allowed={["STUDENT", "ADMIN"]} currentRole={role}>
+                  <MilestonesScreen
+                    milestones={milestones}
+                    onSubmitMilestone={handleSubmitMilestone}
+                    onStartMilestone={handleStartMilestone}
+                    searchQuery={search}
+                  />
+                </RoleGuard>
+              )}
+
+              {/* SUBMISSIONS SCREEN */}
+              {page === "submissions" && (
+                <RoleGuard allowed={["STUDENT", "ADMIN"]} currentRole={role}>
+                  <SubmissionsScreen milestones={milestones} />
+                </RoleGuard>
+              )}
+
+              {/* PENDING REVIEWS SCREEN */}
+              {page === "pending" && (
+                <RoleGuard allowed={["SUPERVISOR", "ADMIN"]} currentRole={role}>
+                  <PendingReviewsScreen
+                    milestones={milestones}
+                    projects={projects}
+                    onApproveMilestone={handleApproveMilestone}
+                    onRejectMilestone={handleRejectMilestone}
+                    onOpenGradeModal={(proj) => {
+                      setGradeModalProject(proj);
+                      setShowGradeModal(true);
+                    }}
+                  />
+                </RoleGuard>
+              )}
+
+              {/* GRADES SCREEN */}
+              {page === "grades" && (
+                <RoleGuard allowed={["SUPERVISOR", "ADMIN"]} currentRole={role}>
+                  <GradesScreen
+                    projects={projects}
+                    onOpenGradeModal={(proj) => {
+                      setGradeModalProject(proj);
+                      setShowGradeModal(true);
+                    }}
+                    onExportGradesExcel={handleExportGradesExcel}
+                  />
+                </RoleGuard>
+              )}
+
+              {/* BATCHES & COURSES SCREEN */}
+              {page === "batches" && (
+                <RoleGuard allowed={["ADMIN"]} currentRole={role}>
+                  <BatchesScreen
+                    courses={courses}
+                    batches={batches}
+                    projects={projects}
+                    users={users}
+                    onOpenCourseModal={() => setShowCourseModal(true)}
+                    onOpenBatchModal={() => setShowBatchModal(true)}
+                    onDeleteCourse={(id) =>
+                      setCourses((prev) => prev.filter((c) => c.id !== id))
+                    }
+                    onDeleteBatch={(id) =>
+                      setBatches((prev) => prev.filter((b) => b.id !== id))
+                    }
+                    externalSearchQuery={search}
+                  />
+                </RoleGuard>
+              )}
+
+              {/* USERS & ROLES SCREEN */}
+              {page === "users" && (
+                <RoleGuard allowed={["ADMIN"]} currentRole={role}>
+                  <UsersScreen
+                    users={users}
+                    onOpenCreateUserModal={() => {
+                      setSelectedUserForEdit(null);
+                      setShowUserModal(true);
+                    }}
+                    onOpenEditModal={(u) => {
+                      setSelectedUserForEdit(u);
+                      setShowUserModal(true);
+                    }}
+                    onOpenDeleteModal={(u) => {
+                      setSelectedUserForDelete(u);
+                      setShowDeleteUserModal(true);
+                    }}
+                    onOpenCsvModal={() => setShowCsvImportModal(true)}
+                    externalSearchQuery={search}
+                  />
+                </RoleGuard>
+              )}
+
+              {/* GITEA CONFIG SCREEN */}
+              {page === "gitea" && (
+                <RoleGuard allowed={["ADMIN"]} currentRole={role}>
+                  <GiteaConfigScreen />
+                </RoleGuard>
+              )}
+
+              {/* ACTIVITY STREAM SCREEN */}
+              {page === "activity" && <ActivityScreen activities={activities} />}
+
+              {/* AUDIT LOGS SCREEN */}
+              {page === "audit" && (
+                <RoleGuard allowed={["ADMIN"]} currentRole={role}>
+                  <AuditLogsScreen auditLogs={auditLogs} />
+                </RoleGuard>
+              )}
+
+              {/* PROFILE SCREEN */}
+              {page === "profile" && <ProfileScreen />}
+
+              {/* LAB EXPERIMENTS & BATCH ASSIGNMENTS SCREEN */}
+              {page === "labs" && (
+                <LabAssignmentsScreen
+                  batches={batches}
+                  onOpenCreateModal={(subjectPreset) => {
+                    setInitialSubjectForCreateLab(subjectPreset);
+                    setShowCreateLabModal(true);
+                  }}
+                  onOpenRosterModal={(id) => {
+                    setSelectedAssignmentIdForRoster(id);
+                    setShowRosterModal(true);
+                  }}
+                  onOpenSandboxWithAssignment={(lab) => {
+                    setActiveLabForSandbox(lab);
+                    navigateToPage("sandbox");
+                  }}
+                  searchQuery={search}
+                />
+              )}
+
+              {/* CODE SANDBOX SCREEN (STANDALONE & LAB SOLVER) */}
+              {page === "sandbox" && (
+                <CodeSandboxScreen
+                  labAssignment={activeLabForSandbox}
+                  onExitLabMode={() => {
+                    setActiveLabForSandbox(null);
+                    navigateToPage("labs");
+                  }}
+                  onLabSubmitted={() => {
+                    showToast("Lab experiment solution submitted successfully! 🎉");
+                  }}
+                />
+              )}
+            </>
+          )}
+        </main>
       </div>
 
-      {sessionWarning && (
-        <Toast
-          message="Your session will expire in 5 minutes due to inactivity."
-          type="info"
-          onClose={() => setSessionWarning(false)}
+      {/* MODALS */}
+      <CreateProjectModal
+        show={showCreateModal}
+        onClose={() => {
+          setShowCreateModal(false);
+          setSelectedProblemStatementForCreate(null);
+        }}
+        courses={courses}
+        batches={batches}
+        projects={projects}
+        supervisors={supervisors}
+        selectedProblemStatement={selectedProblemStatementForCreate}
+        onCreateProject={async (newP) => {
+          setProjects((prev) => [newP, ...prev]);
+          showToast(`Project "${newP.title}" created successfully! 🚀`);
+          await loadProjects();
+          if (role === "ADMIN") {
+            await loadAdminQueues();
+          }
+          setCatalogRefreshKey((k) => k + 1);
+        }}
+      />
+
+      {activeProject && (
+        <TeamModal
+          show={showTeamModal}
+          onClose={() => setShowTeamModal(false)}
+          project={activeProject}
+          allUsers={users}
+          onAddMember={(newMem) => {
+            setProjects((prev) =>
+              prev.map((p) =>
+                p.id === activeProject.id
+                  ? { ...p, team: [...p.team, newMem] }
+                  : p
+              )
+            );
+          }}
+          onRemoveMember={(memId) => {
+            setProjects((prev) =>
+              prev.map((p) =>
+                p.id === activeProject.id
+                  ? { ...p, team: p.team.filter((m) => m.id !== memId) }
+                  : p
+              )
+            );
+          }}
         />
       )}
+
+      <GradeModal
+        show={showGradeModal}
+        onClose={() => setShowGradeModal(false)}
+        project={gradeModalProject}
+        onSaveGrade={(projId, grade, remarks) => {
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id === projId
+                ? {
+                    ...p,
+                    grade,
+                    feedback: remarks || p.feedback,
+                    status: "APPROVED",
+                    progress: 100,
+                  }
+                : p
+            )
+          );
+        }}
+      />
+
+      {activeProject && (
+        <ProjectSettingsModal
+          show={showProjectSettingsModal}
+          onClose={() => setShowProjectSettingsModal(false)}
+          project={activeProject}
+          onUpdateProject={(id, title, desc) => {
+            setProjects((prev) =>
+              prev.map((p) => (p.id === id ? { ...p, title, desc } : p))
+            );
+          }}
+          onDeleteProject={(id) => {
+            setProjects((prev) => prev.filter((p) => p.id !== id));
+            navigate("/projects");
+          }}
+        />
+      )}
+
+      <CourseModal
+        show={showCourseModal}
+        onClose={() => setShowCourseModal(false)}
+        onCourseCreated={(c) => setCourses([...courses, c])}
+      />
+
+      <BatchModal
+        show={showBatchModal}
+        onClose={() => setShowBatchModal(false)}
+        courses={courses}
+        onBatchCreated={(b) => setBatches([...batches, b])}
+      />
+
+      <UserModal
+        show={showUserModal}
+        onClose={() => setShowUserModal(false)}
+        user={selectedUserForEdit}
+        batches={batches}
+        onUserSaved={(savedUser, isNew) => {
+          if (isNew) {
+            setUsers((prev) => [savedUser, ...prev]);
+          } else {
+            setUsers((prev) =>
+              prev.map((u) => (u.id === savedUser.id ? savedUser : u))
+            );
+          }
+        }}
+      />
+
+      <DeleteUserModal
+        show={showDeleteUserModal}
+        onClose={() => setShowDeleteUserModal(false)}
+        user={selectedUserForDelete}
+        onUserDeleted={(userId) => {
+          setUsers((prev) => prev.filter((u) => u.id !== userId));
+        }}
+      />
+
+      <AssignSupervisorModal
+        show={showAssignSupervisorModal}
+        onClose={() => setShowAssignSupervisorModal(false)}
+        projects={projects}
+        supervisors={supervisors}
+        onAssigned={async (projId, supervisor) => {
+          // Optimistic instant state update for immediate UI response
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id === projId
+                ? { ...p, supervisor: supervisor.name, supervisorId: supervisor.id }
+                : p
+            )
+          );
+          // Authoritative background re-fetch to ensure complete server sync
+          await loadProjects();
+          if (role === "ADMIN") {
+            await loadAdminQueues();
+          }
+          setCatalogRefreshKey((k) => k + 1);
+        }}
+      />
+
+      <CsvImportModal
+        show={showCsvImportModal}
+        onClose={() => setShowCsvImportModal(false)}
+        onImportComplete={() => {
+          if (role === "ADMIN") {
+            adminApi
+              .getAllUsers()
+              .then((res) => {
+                if (res?.data && res.data.length > 0) {
+                  setUsers(
+                    res.data.map((u: any) => ({
+                      ...u,
+                      avatar:
+                        u.avatar ||
+                        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                          u.name || u.email || "User"
+                        )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+                      dept: u.dept || u.department || "CSE",
+                      idNo: u.idNo || u.universityId || "CS1001",
+                      batch: u.batch || "General",
+                    }))
+                  );
+                }
+              })
+              .catch(() => {});
+          }
+        }}
+      />
+
+      {/* LAB EXPERIMENT MODALS */}
+      <CreateLabAssignmentModal
+        show={showCreateLabModal}
+        onClose={() => {
+          setShowCreateLabModal(false);
+          setInitialSubjectForCreateLab(undefined);
+        }}
+        batches={batches}
+        initialSubject={initialSubjectForCreateLab}
+        onAssignmentCreated={() => {
+          // Trigger refresh
+        }}
+      />
+
+      {selectedAssignmentIdForRoster && (
+        <BatchSubmissionsRosterModal
+          show={showRosterModal}
+          onClose={() => {
+            setShowRosterModal(false);
+            setSelectedAssignmentIdForRoster(null);
+          }}
+          assignmentId={selectedAssignmentIdForRoster}
+        />
+      )}
+
+      {/* PROBLEM STATEMENTS & SUPERVISOR ALLOCATION MODALS */}
+      <ProposeProblemStatementModal
+        show={showProposeIdeaModal}
+        onClose={() => setShowProposeIdeaModal(false)}
+        onCreated={async (st) => {
+          setLastCreatedStatement(st);
+          setCatalogRefreshKey((k) => k + 1);
+          if (role === "ADMIN") {
+            await loadAdminQueues();
+          }
+          showToast("Problem statement submitted for review!");
+        }}
+      />
+
+      <ReviewProblemStatementsModal
+        show={showReviewIdeasModal}
+        onClose={() => setShowReviewIdeasModal(false)}
+        onUpdated={async () => {
+          await loadAdminQueues();
+          await loadProjects();
+          setCatalogRefreshKey((k) => k + 1);
+        }}
+      />
+
+      <ReviewSupervisorRequestsModal
+        show={showSupervisorRequestsModal}
+        onClose={() => setShowSupervisorRequestsModal(false)}
+        supervisors={supervisors}
+        onUpdated={async () => {
+          await loadProjects();
+          await loadAdminQueues();
+          setCatalogRefreshKey((k) => k + 1);
+        }}
+      />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <MainApp />
+        </AuthProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

@@ -189,6 +189,11 @@ export const getSupervisorActivityFeed = catchAsync(async (req: Request, res: Re
   });
 });
 
+/* =============================================================================
+ * NAAC CAPSTONE RUBRIC EVALUATION (PRESERVED / ARCHIVED FOR ACCREDITATION CYCLE)
+ * Active practical and course continuous evaluations are handled via:
+ * courseEvaluationController.ts -> /api/v1/evaluations/course/:courseCode
+ * ============================================================================= */
 function scoreToGrade(total: number): string {
   if (total >= 90) return "A+";
   if (total >= 80) return "A";

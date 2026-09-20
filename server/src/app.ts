@@ -30,6 +30,7 @@ import uploadRouter from "./routes/uploadRoutes.js";
 import executeRouter from "./routes/executeRoutes.js";
 import labAssignmentRouter from "./routes/labAssignmentRoutes.js";
 import problemStatementRouter from "./routes/problemStatementRoutes.js";
+import courseEvaluationRouter from "./routes/courseEvaluationRoutes.js";
 
 export const app = express();
 
@@ -180,11 +181,9 @@ app.use((req, res, next) => {
   const cookieCsrf = req.cookies?.["csrfToken"];
   const headerCsrf = req.headers["x-csrf-token"];
 
-  // Enforce CSRF token verification whenever browser cookies are present
-  const hasBrowserCookies = Boolean(cookieCsrf || req.cookies?.["refreshToken"]);
-  if (hasBrowserCookies) {
+  // Enforce CSRF token verification whenever csrfToken cookie is present
+  if (cookieCsrf) {
     if (
-      !cookieCsrf ||
       !headerCsrf ||
       typeof headerCsrf !== "string" ||
       !safeCompare(cookieCsrf, headerCsrf)
@@ -194,6 +193,17 @@ app.use((req, res, next) => {
         message: "Invalid or missing CSRF token",
       });
     }
+  } else if (req.cookies?.["refreshToken"]) {
+    // If refreshToken cookie exists but csrfToken was not yet issued (e.g. legacy session),
+    // issue the csrfToken now so subsequent requests can use it.
+    const freshCsrf = crypto.randomBytes(24).toString("hex");
+    res.cookie("csrfToken", freshCsrf, {
+      httpOnly: false,
+      secure: env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    });
+    res.setHeader("X-CSRF-Token", freshCsrf);
   }
   next();
 });
@@ -213,6 +223,7 @@ app.use("/api/v1/uploads", uploadRouter);
 app.use("/api/v1/execute", executeRouter);
 app.use("/api/v1/lab-assignments", labAssignmentRouter);
 app.use("/api/v1/problem-statements", problemStatementRouter);
+app.use("/api/v1/evaluations", courseEvaluationRouter);
 
 // ─── Health check caching & coalescing ───────────────────────────────────────
 interface HealthStatus {

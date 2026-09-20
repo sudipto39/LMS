@@ -12,13 +12,17 @@ import { redis } from "../config/redis.js";
 
 export const protect: RequestHandler = catchAsync(
   async (req: Request, _res: Response, next: NextFunction) => {
-    // 1. Extract token from Authorization header only
+    // 1. Extract token from Authorization header or query parameter (for direct file downloads/previews)
+    let token: string | undefined;
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      throw new UnauthorizedError("You are not logged in");
+    if (authHeader?.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    } else if (typeof req.query["token"] === "string" && req.query["token"]) {
+      token = req.query["token"];
+    } else if (req.cookies && typeof req.cookies["accessToken"] === "string" && req.cookies["accessToken"]) {
+      token = req.cookies["accessToken"];
     }
 
-    const token = authHeader.split(" ")[1];
     if (!token) throw new UnauthorizedError("You are not logged in");
 
     // 2. Verify token — throws if expired or invalid
@@ -46,6 +50,8 @@ export const protect: RequestHandler = catchAsync(
       where: { id: decoded.id },
       select: {
         id: true,
+        name: true,
+        email: true,
         role: true,
         isEmailVerified: true,
         giteaUsername: true,

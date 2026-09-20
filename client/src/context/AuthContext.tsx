@@ -7,157 +7,328 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import type { User, Role } from "../types";
-import { tokenStore } from "../api/client";
+import type { User, Role, LoginPayload, RegisterPayload, VerifyEmailPayload } from "../types";
+import { tokenStore, getErrorMessage } from "../api/client";
+import { authApi } from "../api";
+import env from "../config/env";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export const initialMockUsers: User[] = [];
 
 interface AuthState {
   user: User | null;
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  role: Role;
 }
 
 interface AuthContextValue extends AuthState {
-  setAuth: (user: User, token: string) => void;
-  clearAuth: () => void;
-  updateToken: (token: string) => void;
-  updateUser: (user: User) => void;
+  login: (payload: LoginPayload, selectedRole?: Role) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<{ userId?: string }>;
+  verifyEmail: (payload: VerifyEmailPayload) => Promise<void>;
+  logout: () => Promise<void>;
+  setRole: (role: Role) => void;
+  updateUser: (user: Partial<User>) => void;
+  exploreDemo: (role: Role) => void;
+  users: User[];
+  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
 }
-
-// ─── Context ──────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [users, setUsers] = useState<User[]>([]);
   const [state, setState] = useState<AuthState>({
     user: null,
     accessToken: null,
     isAuthenticated: false,
     isLoading: true,
+    role: "STUDENT",
   });
 
-  // On mount — try to restore session (check localStorage first, fall back to refresh token cookie)
+  // ── Session Restoration on Mount ───────────────────────────────────────────
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        let token = localStorage.getItem("giteaforge_token");
+        // Attempt silent refresh via HTTP-only cookie
+        const res = await fetch(`${env.API_BASE_URL}/v1/auth/refresh-token`, {
+          method: "POST",
+          credentials: "include",
+        });
 
-        // If no token in localStorage, try cookie-based silent refresh
-        if (!token) {
-          const res = await fetch(
-            `${import.meta.env.VITE_API_BASE_URL}/v1/auth/refresh-token`,
-            {
-              method: "POST",
+        if (res.ok) {
+          const json = await res.json();
+          const token = json.accessToken as string;
+          if (token) {
+            tokenStore.set(token);
+            const userRes = await fetch(`${env.API_BASE_URL}/v1/users/me`, {
+              headers: { Authorization: `Bearer ${token}` },
               credentials: "include",
-            }
-          );
-          if (res.ok) {
-            const json = await res.json();
-            token = json.accessToken as string;
-            if (token) {
-              localStorage.setItem("giteaforge_token", token);
+            });
+            if (userRes.ok) {
+              const userJson = await userRes.json();
+              const fetchedUser = userJson.data as User;
+              const mappedUser: User = {
+                ...fetchedUser,
+                avatar:
+                  fetchedUser.avatar ||
+                  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                    fetchedUser.name || fetchedUser.email || "User"
+                  )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+                dept: fetchedUser.dept || fetchedUser.department || "CSE",
+                idNo: fetchedUser.idNo || fetchedUser.universityId || "CS1001",
+              };
+              setState({
+                user: mappedUser,
+                accessToken: token,
+                isAuthenticated: true,
+                isLoading: false,
+                role: mappedUser.role || "STUDENT",
+              });
+              return;
             }
           }
         }
-
-        if (!token) throw new Error("No session token found");
-
-        // Fetch user profile with the token
-        const userRes = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL}/v1/users/me`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            credentials: "include",
-          }
-        );
-
-        if (!userRes.ok) throw new Error("Failed to fetch user");
-
-        const userJson = await userRes.json();
-        const user = userJson.data as User;
-
-        setState({
-          user,
-          accessToken: token,
-          isAuthenticated: true,
-          isLoading: false,
-        });
-      } catch (err) {
-        localStorage.removeItem("giteaforge_token");
-        localStorage.removeItem("activeProjectId");
-        localStorage.removeItem("projectsUpdatedAt");
-        // No valid session — start fresh
+        throw new Error("No active server session");
+      } catch {
         setState({
           user: null,
           accessToken: null,
           isAuthenticated: false,
           isLoading: false,
+          role: "STUDENT",
         });
       }
     };
 
     restoreSession();
+
+    // Listen for custom logout events from API client
+    const handleRemoteLogout = () => {
+      tokenStore.clear();
+      sessionStorage.removeItem("giteaforge_demo_auth");
+      setState({
+        user: null,
+        accessToken: null,
+        isAuthenticated: false,
+        isLoading: false,
+        role: "STUDENT",
+      });
+    };
+
+    window.addEventListener("auth:logout", handleRemoteLogout);
+    return () => window.removeEventListener("auth:logout", handleRemoteLogout);
   }, []);
 
-  // Sync state.accessToken with tokenStore so Axios/Fetch API can authenticate requests
+  // ── Sync in-memory tokenStore ──────────────────────────────────────────────
   useEffect(() => {
     tokenStore.set(state.accessToken);
   }, [state.accessToken]);
 
-  const setAuth = useCallback((user: User, token: string) => {
-    localStorage.setItem("giteaforge_token", token);
-    setState({
-      user,
-      accessToken: token,
-      isAuthenticated: true,
-      isLoading: false,
-    });
+  // ── Login (Strict Production Mode) ──────────────────────────────────────────
+  const login = useCallback(
+    async (payload: LoginPayload, selectedRole: Role = "STUDENT") => {
+      try {
+        const res = await authApi.login(payload);
+        if (res.accessToken) {
+          tokenStore.set(res.accessToken);
+          let userObj = res.data?.user;
+          if (!userObj) {
+            const meRes = await authApi.getMe();
+            userObj = meRes.data;
+          }
+          if (userObj) {
+            const mappedUser: User = {
+              ...userObj,
+              avatar:
+                userObj.avatar ||
+                `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                  userObj.name || userObj.email || "User"
+                )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+              dept: userObj.dept || (userObj as any).department || "CSE",
+              idNo: userObj.idNo || userObj.universityId || "CS1001",
+              giteaUsername:
+                userObj.giteaUsername ||
+                (userObj.name
+                  ? userObj.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+                  : undefined),
+            };
+            setState({
+              user: mappedUser,
+              accessToken: res.accessToken,
+              isAuthenticated: true,
+              isLoading: false,
+              role: mappedUser.role || selectedRole,
+            });
+            return;
+          }
+        }
+        throw new Error("Authentication failed: No token received from server");
+      } catch (err: any) {
+        const msg = getErrorMessage(err);
+        throw new Error(msg || "Invalid email or password");
+      }
+    },
+    []
+  );
+
+  // ── Register (Strict Production Mode) ───────────────────────────────────────
+  const register = useCallback(async (payload: RegisterPayload) => {
+    try {
+      const res = await authApi.register(payload);
+      return { userId: res.data?.userId };
+    } catch (err: any) {
+      const msg = getErrorMessage(err);
+      throw new Error(msg || "Registration failed");
+    }
   }, []);
 
-  const clearAuth = useCallback(() => {
-    localStorage.removeItem("giteaforge_token");
-    localStorage.removeItem("activeProjectId");
-    localStorage.removeItem("projectsUpdatedAt");
+  // ── Verify Email (Strict Production Mode) ───────────────────────────────────
+  const verifyEmail = useCallback(
+    async (payload: VerifyEmailPayload) => {
+      try {
+        const res = await authApi.verifyEmail(payload);
+        if (res.accessToken) {
+          tokenStore.set(res.accessToken);
+          const meRes = await authApi.getMe();
+          const userObj = meRes.data;
+          if (userObj) {
+            const mappedUser: User = {
+              ...userObj,
+              avatar:
+                userObj.avatar ||
+                `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                  userObj.name || userObj.email || "User"
+                )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+              dept: userObj.dept || (userObj as any).department || "CSE",
+              idNo: userObj.idNo || userObj.universityId || "CS1001",
+            };
+            setState({
+              user: mappedUser,
+              accessToken: res.accessToken,
+              isAuthenticated: true,
+              isLoading: false,
+              role: mappedUser.role || "STUDENT",
+            });
+            return;
+          }
+        }
+      } catch (err: any) {
+        const msg = getErrorMessage(err);
+        throw new Error(msg || "Verification failed");
+      }
+    },
+    []
+  );
+
+  // ── Logout ─────────────────────────────────────────────────────────────────
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // ignore
+    }
+    tokenStore.clear();
+    sessionStorage.removeItem("giteaforge_demo_auth");
+    sessionStorage.removeItem("giteaforge_role");
     setState({
       user: null,
       accessToken: null,
       isAuthenticated: false,
       isLoading: false,
+      role: "STUDENT",
     });
   }, []);
 
-  const updateToken = useCallback((token: string) => {
-    localStorage.setItem("giteaforge_token", token);
-    setState((prev) => ({ ...prev, accessToken: token }));
-  }, []);
+  const getFallbackDemoUser = (r: Role): User => ({
+    id: `demo_${r.toLowerCase()}`,
+    name:
+      r === "ADMIN"
+        ? "Demo Administrator"
+        : r === "SUPERVISOR"
+        ? "Prof. Alan Turing (Supervisor)"
+        : "Alex Chen (Student)",
+    email: `demo.${r.toLowerCase()}@giteaforge.local`,
+    role: r,
+    avatar: `https://api.dicebear.com/7.x/initials/svg?seed=Demo${r}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+    dept: "Computer Science & Engineering",
+    batch: "Batch 2024–2028",
+    idNo: r === "STUDENT" ? "GF-2024-DEMO" : "GF-FACULTY-01",
+  });
 
-  const updateUser = useCallback((user: User) => {
-    setState((prev) => ({ ...prev, user }));
-  }, []);
+  // ── Set Role & Explore Demo ────────────────────────────────────────────────
+  const setRole = useCallback(
+    (role: Role) => {
+      // When authenticated, role is strictly locked to the verified user account
+      if (state.isAuthenticated && state.user?.role) {
+        return;
+      }
+      sessionStorage.setItem("giteaforge_role", role);
+      const targetUser =
+        users.find((u) => u.role === role) ||
+        users[0] ||
+        getFallbackDemoUser(role);
+      setState((prev) => ({
+        ...prev,
+        role,
+        user: targetUser,
+      }));
+    },
+    [users, state.isAuthenticated, state.user?.role]
+  );
+
+  const exploreDemo = useCallback(
+    (role: Role) => {
+      sessionStorage.setItem("giteaforge_demo_auth", "true");
+      sessionStorage.setItem("giteaforge_role", role);
+      const targetUser =
+        users.find((u) => u.role === role) ||
+        users[0] ||
+        getFallbackDemoUser(role);
+      setState({
+        user: targetUser,
+        accessToken: null,
+        isAuthenticated: true,
+        isLoading: false,
+        role,
+      });
+    },
+    [users]
+  );
+
+  const updateUser = useCallback((updated: Partial<User>) => {
+    setState((prev) => {
+      if (!prev.user) return prev;
+      const newUser = { ...prev.user, ...updated };
+      return { ...prev, user: newUser };
+    });
+    setUsers((prev) =>
+      prev.map((u) => (u.id === state.user?.id ? { ...u, ...updated } : u))
+    );
+  }, [state.user]);
 
   return (
     <AuthContext.Provider
-      value={{ ...state, setAuth, clearAuth, updateToken, updateUser }}
+      value={{
+        ...state,
+        login,
+        register,
+        verifyEmail,
+        logout,
+        setRole,
+        updateUser,
+        exploreDemo,
+        users,
+        setUsers,
+      }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
-export function useAuthContext(): AuthContextValue {
+export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuthContext must be used inside AuthProvider");
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
-}
-
-// ─── Role helper ──────────────────────────────────────────────────────────────
-
-export function getRoleAsLower(role: Role): "student" | "supervisor" | "admin" {
-  return role.toLowerCase() as "student" | "supervisor" | "admin";
 }

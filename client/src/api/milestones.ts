@@ -1,68 +1,76 @@
 // src/api/milestones.ts
 import client from "./client";
-import type { Milestone, PaginatedResponse } from "../types";
+import type { Milestone, ApiResponse } from "../types";
 
-const PROJECTS_BASE = "/v1/projects";
-const MILESTONES_BASE = "/v1/milestones";
-
-export interface CreateMilestonePayload {
-  title: string;
-  description?: string;
-  dueDate?: string;
-  order?: number;
-}
-
-export interface ReviewMilestonePayload {
-  feedback?: string;
-}
-
-const milestonesAPI = {
-  getByProject: (projectId: string) =>
-    client.get<PaginatedResponse<Milestone>>(
-      `${PROJECTS_BASE}/${projectId}/milestones`
-    ),
-
-  create: (projectId: string, payload: CreateMilestonePayload) =>
-    client.post<{ status: string; data: Milestone }>(
-      `${PROJECTS_BASE}/${projectId}/milestones`,
-      payload
-    ),
-
-  submit: (
-    milestoneId: string,
-    payload?: { studentNotes?: string },
-    files?: FileList
-  ) => {
-    if (files && files.length > 0) {
-      const form = new FormData();
-      if (payload?.studentNotes) form.append("studentNotes", payload.studentNotes);
-      Array.from(files).forEach((f) => form.append("files", f));
-      return client.patch<{ status: string; data: Milestone }>(
-        `${MILESTONES_BASE}/${milestoneId}/submit`,
-        form,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
-    }
-    return client.patch<{ status: string; data: Milestone }>(
-      `${MILESTONES_BASE}/${milestoneId}/submit`,
-      payload ?? {}
-    );
+export const milestonesApi = {
+  getProjectMilestones: async (projectId: string): Promise<ApiResponse<Milestone[]>> => {
+    const res = await client.get<ApiResponse<Milestone[]>>(`/v1/projects/${projectId}/milestones`);
+    return res.data;
   },
 
-  approve: (milestoneId: string, payload?: ReviewMilestonePayload) =>
-    client.patch<{ status: string; data: Milestone }>(
-      `${MILESTONES_BASE}/${milestoneId}/approve`,
-      payload ?? {}
-    ),
+  createMilestone: async (
+    projectId: string,
+    payload: { title: string; dueDate?: string; order?: number }
+  ): Promise<ApiResponse<Milestone>> => {
+    const res = await client.post<ApiResponse<Milestone>>(
+      `/v1/projects/${projectId}/milestones`,
+      payload
+    );
+    return res.data;
+  },
 
-  reject: (milestoneId: string, payload?: ReviewMilestonePayload) =>
-    client.patch<{ status: string; data: Milestone }>(
-      `${MILESTONES_BASE}/${milestoneId}/reject`,
-      payload ?? {}
-    ),
+  updateMilestone: async (
+    id: string,
+    payload: { title?: string; description?: string; dueDate?: string }
+  ): Promise<ApiResponse<Milestone>> => {
+    const res = await client.patch<ApiResponse<Milestone>>(`/v1/milestones/${id}`, payload);
+    return res.data;
+  },
 
-  getMySubmissions: () =>
-    client.get<PaginatedResponse<Milestone>>("/v1/me/submissions"),
+  deleteMilestone: async (id: string): Promise<ApiResponse<null>> => {
+    const res = await client.delete<ApiResponse<null>>(`/v1/milestones/${id}`);
+    return res.data;
+  },
+
+  startMilestone: async (id: string): Promise<ApiResponse<Milestone>> => {
+    const res = await client.patch<ApiResponse<Milestone>>(`/v1/milestones/${id}/start`);
+    return res.data;
+  },
+
+  submitMilestone: async (
+    id: string,
+    formData: FormData
+  ): Promise<ApiResponse<Milestone>> => {
+    const res = await client.patch<ApiResponse<Milestone>>(
+      `/v1/milestones/${id}/submit`,
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      }
+    );
+    return res.data;
+  },
+
+  approveMilestone: async (id: string): Promise<ApiResponse<Milestone>> => {
+    const res = await client.patch<ApiResponse<Milestone>>(`/v1/milestones/${id}/approve`);
+    return res.data;
+  },
+
+  rejectMilestone: async (
+    id: string,
+    remarks?: string
+  ): Promise<ApiResponse<Milestone>> => {
+    const res = await client.patch<ApiResponse<Milestone>>(
+      `/v1/milestones/${id}/reject`,
+      { remarks }
+    );
+    return res.data;
+  },
+
+  getMySubmissions: async (): Promise<ApiResponse<Milestone[]>> => {
+    const res = await client.get<ApiResponse<Milestone[]>>("/v1/me/submissions");
+    return res.data;
+  },
 };
 
-export default milestonesAPI;
+export default milestonesApi;

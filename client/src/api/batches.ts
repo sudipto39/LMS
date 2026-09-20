@@ -1,37 +1,44 @@
 // src/api/batches.ts
 import client from "./client";
-import type { Course, Batch } from "../types";
+import type { Batch, CreateBatchPayload, ApiResponse, User } from "../types";
 
 const BASE = "/v1/batches";
 
-const batchesAPI = {
-  // ─── Public (no auth — used in registration dropdowns) ───────────────────
+export const batchesApi = {
+  getAllBatches: async (): Promise<ApiResponse<Batch[]>> => {
+    const res = await client.get<ApiResponse<Batch[]>>(BASE);
+    return res.data;
+  },
 
-  getCourses: () =>
-    client.get<{ status: string; count: number; data: Course[] }>(
-      `${BASE}/courses`
-    ),
+  createBatch: async (payload: CreateBatchPayload): Promise<ApiResponse<Batch>> => {
+    const res = await client.post<ApiResponse<Batch>>(BASE, payload);
+    return res.data;
+  },
 
-  getBatchesByCourse: (courseId: string) =>
-    client.get<{ status: string; count: number; data: Batch[] }>(
-      `${BASE}/courses/${courseId}/batches`
-    ),
+  deleteBatch: async (id: string): Promise<ApiResponse<null>> => {
+    const res = await client.delete<ApiResponse<null>>(`${BASE}/${id}`);
+    return res.data;
+  },
 
-  // ─── Admin only ───────────────────────────────────────────────────────────
+  getBatchesByCourse: async (courseId: string): Promise<ApiResponse<Batch[]>> => {
+    const res = await client.get<ApiResponse<Batch[]>>(`${BASE}/courses/${courseId}/batches`);
+    return res.data;
+  },
 
-  getAllBatches: () =>
-    client.get<{ status: string; count: number; data: Batch[] }>(BASE),
+  getBatchStudents: async (batchId: string): Promise<ApiResponse<User[]>> => {
+    const res = await client.get<ApiResponse<User[]>>(`${BASE}/${batchId}/students`);
+    return res.data;
+  },
 
-  createBatch: (data: {
-    name: string;
-    courseId: string;
-    startYear: number;
-    endYear: number;
-  }) =>
-    client.post<{ status: string; data: Batch }>(BASE, data),
+  enrollStudent: async (batchId: string, userId: string): Promise<ApiResponse<any>> => {
+    const res = await client.post<ApiResponse<any>>(`${BASE}/${batchId}/students`, { userId });
+    return res.data;
+  },
 
-  deleteBatch: (id: string) =>
-    client.delete(`${BASE}/${id}`),
+  removeStudent: async (batchId: string, userId: string): Promise<ApiResponse<null>> => {
+    const res = await client.delete<ApiResponse<null>>(`${BASE}/${batchId}/students/${userId}`);
+    return res.data;
+  },
 };
 
-export default batchesAPI;
+export default batchesApi;

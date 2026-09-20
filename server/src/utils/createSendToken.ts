@@ -160,6 +160,17 @@ export const createSendToken = async (
     maxAge: REFRESH_TTL_SECONDS * 1000,
   });
 
+  // Issue double-submit CSRF token (readable by JavaScript)
+  const csrfToken = crypto.randomBytes(24).toString("hex");
+  res.cookie("csrfToken", csrfToken, {
+    httpOnly: false,
+    secure: env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: REFRESH_TTL_SECONDS * 1000,
+  });
+  res.setHeader("X-CSRF-Token", csrfToken);
+
   res.status(statusCode).json({
     status: "success",
     accessToken,

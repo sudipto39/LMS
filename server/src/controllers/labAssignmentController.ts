@@ -594,8 +594,17 @@ export const getAssignmentSubmissionsRoster = catchAsync(
     const assignment = await prisma.labAssignment.findUnique({
       where: { id },
       include: {
+        creator: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            department: true,
+          },
+        },
         batch: {
           include: {
+            course: true,
             enrollments: {
               include: {
                 user: {
@@ -667,6 +676,44 @@ export const getAssignmentSubmissionsRoster = catchAsync(
           ) / 10
         : 0;
 
+    // Dynamically calculate session, semester, and official register metadata
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    const isEven = currentMonth >= 1 && currentMonth <= 6;
+    const session = `${isEven ? "EVEN SEM MAY" : "ODD SEM NOV"} ${currentYear}`;
+
+    let semester = "";
+    const startYear = assignment.batch?.startYear;
+    if (startYear) {
+      const yearDiff = currentYear - startYear;
+      const semNum = Math.max(1, Math.min(8, isEven ? yearDiff * 2 : yearDiff * 2 + 1));
+      const roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
+      semester = roman[semNum - 1] || "";
+    }
+
+    const programme =
+      assignment.batch?.course?.title ||
+      assignment.batch?.course?.description ||
+      assignment.batch?.name ||
+      "";
+
+    const courseName =
+      assignment.subject ||
+      assignment.batch?.course?.title ||
+      assignment.title;
+
+    const courseCode = assignment.batch?.course?.code || "";
+    const instructor = assignment.creator?.name || req.user?.name || "";
+
+    const metadata = {
+      programme,
+      semester,
+      courseName,
+      courseCode,
+      instructor,
+      session,
+    };
+
     res.status(200).json({
       status: "success",
       data: {
@@ -683,7 +730,9 @@ export const getAssignmentSubmissionsRoster = catchAsync(
           totalPoints: assignment.totalPoints,
           dueDate: assignment.dueDate,
           batch: assignment.batch,
+          creator: assignment.creator,
         },
+        metadata,
         stats: {
           totalStudents,
           submittedCount,
@@ -700,15 +749,34 @@ export const getAssignmentSubmissionsRoster = catchAsync(
 export const gradeSubmission = catchAsync(
   async (req: Request, res: Response) => {
     const submissionId = requireParam(req.params["submissionId"], "submissionId");
-    const { score, manualScoreAdjust, supervisorFeedback } = req.body as {
+    const {
+      score,
+      manualScoreAdjust,
+      supervisorFeedback,
+      notebookScore,
+      performanceScore,
+      vivaScore,
+    } = req.body as {
       score?: number;
       manualScoreAdjust?: number;
       supervisorFeedback?: string;
+      notebookScore?: number;
+      performanceScore?: number;
+      vivaScore?: number;
     };
 
     const submission = await prisma.labSubmission.findUnique({
       where: { id: submissionId },
-      include: { assignment: true, student: true },
+      include: {
+        assignment: {
+          include: {
+            batch: {
+              include: { course: true },
+            },
+          },
+        },
+        student: true,
+      },
     });
 
     if (!submission) {
@@ -735,8 +803,112 @@ export const gradeSubmission = catchAsync(
           manualScoreAdjust: Number(manualScoreAdjust),
         } : {}),
         ...(supervisorFeedback !== undefined ? { supervisorFeedback } : {}),
+        ...(notebookScore !== undefined ? { notebookScore: Number(notebookScore) } : {}),
+        ...(performanceScore !== undefined ? { performanceScore: Number(performanceScore) } : {}),
+        ...(vivaScore !== undefined ? { vivaScore: Number(vivaScore) } : {}),
       },
     });
+
+    // Sync with university continuous practical evaluation register in DB
+    try {
+      if (notebookScore !== undefined || performanceScore !== undefined || vivaScore !== undefined) {
+        const studentId = submission.studentId;
+        const courseCode =
+          submission.assignment.batch?.course?.code ||
+          submission.assignment.batch?.name ||
+          "";
+
+        if (courseCode) {
+          const expMatch = submission.assignment.title.match(/(?:Lab|Exp|Experiment)\s*#?\s*(\d+)/i);
+          const rawExp = expMatch?.[1];
+          const expNum = rawExp ? Math.max(1, Math.min(10, parseInt(rawExp, 10))) : 1;
+
+          const existingEval = await prisma.labContinuousEvaluation.findUnique({
+            where: {
+              studentId_courseCode: {
+                studentId,
+                courseCode,
+              },
+            },
+          });
+
+          const currentExps: Array<{ exp: number; notebook: number; performance: number }> =
+            existingEval && Array.isArray(existingEval.experiments)
+              ? (existingEval.experiments as any)
+              : Array.from({ length: 10 }, (_, i) => ({ exp: i + 1, notebook: 0, performance: 0 }));
+
+          const expIndex = currentExps.findIndex((e) => e.exp === expNum);
+          const targetExp = expIndex >= 0 ? currentExps[expIndex] : undefined;
+          if (targetExp && expIndex >= 0) {
+            currentExps[expIndex] = {
+              exp: expNum,
+              notebook: notebookScore !== undefined ? Number(notebookScore) : targetExp.notebook,
+              performance: performanceScore !== undefined ? Number(performanceScore) : targetExp.performance,
+            };
+          } else {
+            currentExps.push({
+              exp: expNum,
+              notebook: notebookScore !== undefined ? Number(notebookScore) : 0,
+              performance: performanceScore !== undefined ? Number(performanceScore) : 0,
+            });
+          }
+
+          const experimentsTotal = Math.min(
+            40,
+            currentExps.reduce((sum, e) => sum + (Number(e.notebook) || 0) + (Number(e.performance) || 0), 0)
+          );
+
+          const internalViva =
+            vivaScore !== undefined
+              ? Math.max(0, Math.min(10, Number(vivaScore)))
+              : existingEval?.internalViva || 0;
+
+          const totalInternal = Math.min(50, experimentsTotal + internalViva);
+          const endSemLabTest = existingEval?.endSemLabTest || 0;
+          const endSemViva = existingEval?.endSemViva || 0;
+          const totalEndSem = Math.min(50, endSemLabTest + endSemViva);
+          const finalMarks = Math.min(100, totalInternal + totalEndSem);
+
+          await prisma.labContinuousEvaluation.upsert({
+            where: {
+              studentId_courseCode: {
+                studentId,
+                courseCode,
+              },
+            },
+            create: {
+              studentId,
+              courseCode,
+              courseName: submission.assignment.subject || submission.assignment.title,
+              programme:
+                submission.assignment.batch?.course?.title ||
+                submission.student.department ||
+                "",
+              batchId: submission.assignment.batchId,
+              evaluatorId: req.user!.id,
+              experiments: currentExps,
+              experimentsTotal,
+              internalViva,
+              totalInternal,
+              endSemLabTest,
+              endSemViva,
+              totalEndSem,
+              finalMarks,
+            },
+            update: {
+              experiments: currentExps,
+              experimentsTotal,
+              internalViva,
+              totalInternal,
+              finalMarks,
+              evaluatorId: req.user!.id,
+            },
+          });
+        }
+      }
+    } catch {
+      // Non-blocking sync
+    }
 
     res.status(200).json({ status: "success", data: updated });
   }

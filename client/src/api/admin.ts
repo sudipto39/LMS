@@ -1,223 +1,129 @@
-// /**
-//  * ============================================
-//  * Admin API Service
-//  * ============================================
-//  * Batches, courses, audit logs, dashboard stats
-//  *
-//  * BACKEND ROUTE FILE: routes/admin.js
-//  * BACKEND CONTROLLER: controllers/adminController.js
-//  */
-
-// import client from './client';
-
-// // ── Types ──
-
-// export interface Batch {
-//   _id: string;
-//   name: string;
-//   year: number;
-//   course: string;
-//   department: string;
-//   studentCount: number;
-//   supervisors: { _id: string; name: string }[];
-//   isActive: boolean;
-//   createdAt: string;
-// }
-
-// export interface Course {
-//   _id: string;
-//   code: string;
-//   name: string;
-//   department: string;
-//   credits: number;
-//   isActive: boolean;
-// }
-
-// export interface AuditLog {
-//   _id: string;
-//   action: string;           // e.g. 'user.login', 'project.create', 'repo.push'
-//   userId: { _id: string; name: string; role: string };
-//   targetType?: string;       // 'project', 'user', 'repo'
-//   targetId?: string;
-//   details?: string;
-//   ip?: string;
-//   timestamp: string;
-// }
-
-// export interface DashboardStats {
-//   totalStudents: number;
-//   totalSupervisors: number;
-//   totalProjects: number;
-//   activeProjects: number;
-//   submittedProjects: number;
-//   approvedProjects: number;
-//   reposCreated: number;
-//   giteaStatus: 'connected' | 'disconnected' | 'error';
-// }
-
-// // ── API Methods ──
-
-// const adminAPI = {
-//   // ─── Dashboard ───
-
-//   /**
-//    * GET /api/v1/admin/stats
-//    * Returns: DashboardStats
-//    */
-//   getDashboardStats: () =>
-//     client.get<DashboardStats>('/v1/admin/stats'),
-
-//   /**
-//    * GET /api/v1/admin/projects
-//    * Get all projects (admin only)
-//    */
-//   getAllProjects: () =>
-//     client.get('/v1/admin/projects'),
-
-//   /**
-//    * PATCH /api/v1/admin/projects/:id/assign-supervisor
-//    * Assign supervisor to a project
-//    * Body: { supervisorId }
-//    */
-//   assignSupervisor: (projectId: string, supervisorId: string) =>
-//     client.patch(`/v1/admin/projects/${projectId}/assign-supervisor`, { supervisorId }),
-
-//   // ─── Batches ───
-
-//   /**
-//    * GET /api/v1/admin/batches
-//    */
-//   getBatches: () =>
-//     client.get<Batch[]>('/v1/admin/batches'),
-
-//   /**
-//    * POST /api/v1/admin/batches
-//    */
-//   createBatch: (data: Partial<Batch>) =>
-//     client.post<Batch>('/v1/admin/batches', data),
-
-//   /**
-//    * PATCH /api/v1/admin/batches/:id
-//    */
-//   updateBatch: (id: string, data: Partial<Batch>) =>
-//     client.patch<Batch>(`/v1/admin/batches/${id}`, data),
-
-//   /**
-//    * DELETE /api/v1/admin/batches/:id
-//    */
-//   deleteBatch: (id: string) =>
-//     client.delete(`/v1/admin/batches/${id}`),
-
-
-//   /**
-//    * POST /api/v1/admin/batches/:id/assign-students
-//    * Body: { studentIds: string[] }
-//    */
-//   assignStudents: (batchId: string, studentIds: string[]) =>
-//     client.post(`/v1/admin/batches/${batchId}/assign-students`, { studentIds }),
-
-//   // ─── Courses ───
-
-//   /**
-//    * GET /api/v1/admin/courses
-//    */
-//   getCourses: () =>
-//     client.get<Course[]>('/v1/admin/courses'),
-
-//   /**
-//    * POST /api/v1/admin/courses
-//    */
-//   createCourse: (data: Partial<Course>) =>
-//     client.post<Course>('/v1/admin/courses', data),
-
-//   /**
-//    * PATCH /api/v1/admin/courses/:id
-//    */
-//   updateCourse: (id: string, data: Partial<Course>) =>
-//     client.patch<Course>(`/v1/admin/courses/${id}`, data),
-
-//   // ─── Audit Logs ───
-
-//   /**
-//    * GET /api/v1/admin/audit-logs
-//    * Query: { action?, userId?, targetType?, startDate?, endDate?, page, limit }
-//    */
-//   getAuditLogs: (params?: {
-//     action?: string;
-//     userId?: string;
-//     targetType?: string;
-//     startDate?: string;
-//     endDate?: string;
-//     page?: number;
-//     limit?: number;
-//   }) =>
-//     client.get<{ data: AuditLog[]; total: number }>('/v1/admin/audit-logs', { params }),
-// };
-
-// export default adminAPI;
-
 // src/api/admin.ts
 import client from "./client";
-import type { AdminStats, User, Project, Course, Batch } from "../types";
+import type {
+  User,
+  AuditLogItem,
+  GiteaServerConfig,
+  SupervisorAllocationRequest,
+  ApiResponse,
+} from "../types";
 
-const ADMIN = "/v1/admin";
-const COURSES = "/v1/courses";
-const BATCHES = "/v1/batches";
+const BASE = "/v1/admin";
 
-const adminAPI = {
-  // ─── Stats ────────────────────────────────────────────────────────────────
-  getStats: () =>
-    client.get<{ status: string; data: AdminStats }>(`${ADMIN}/stats`),
+export interface AdminStats {
+  totalUsers: number;
+  totalStudents: number;
+  totalSupervisors: number;
+  totalProjects: number;
+  activeBatches: number;
+  totalCourses: number;
+}
 
-  // ─── Projects ─────────────────────────────────────────────────────────────
-  getAllProjects: (params?: { supervisorId?: string; ownerId?: string }) =>
-    client.get<{ status: string; count: number; data: Project[] }>(
-      `${ADMIN}/projects`,
-      { params }
-    ),
+export const adminApi = {
+  getStats: async (): Promise<ApiResponse<AdminStats>> => {
+    const res = await client.get<ApiResponse<AdminStats>>(`${BASE}/stats`);
+    return res.data;
+  },
 
-  assignSupervisor: (projectId: string, supervisorId: string) =>
-    client.patch(`${ADMIN}/projects/${projectId}/assign-supervisor`, {
-      supervisorId,
-    }),
+  getAllUsers: async (): Promise<ApiResponse<User[]>> => {
+    const res = await client.get<ApiResponse<User[]>>(`${BASE}/users`);
+    return res.data;
+  },
 
-  // ─── Users ────────────────────────────────────────────────────────────────
-  getAllUsers: () =>
-    client.get<{ status: string; count: number; data: User[] }>(
-      "/v1/users/getAllUsers"
-    ),
-
-  // ─── Courses ──────────────────────────────────────────────────────────────
-  getAllCourses: () =>
-    client.get<{ status: string; count: number; data: Course[] }>(
-      `${COURSES}/allcourses`
-    ),
-
-  createCourse: (data: {
-    title: string;
-    code?: string;
-    school?: string;
-    durationYears?: number;
-    description?: string;
-  }) => client.post<{ status: string; data: Course }>(`${COURSES}/create`, data),
-
-  updateCourse: (id: string, data: Partial<Course>) =>
-    client.patch<{ status: string; data: Course }>(`${COURSES}/${id}`, data),
-
-  deleteCourse: (id: string) => client.delete(`${COURSES}/${id}`),
-
-  // ─── Batches ──────────────────────────────────────────────────────────────
-  getAllBatches: () =>
-    client.get<{ status: string; count: number; data: Batch[] }>(BATCHES),
-
-  createBatch: (data: {
+  createUser: async (payload: {
     name: string;
-    courseId: string;
-    startYear: number;
-    endYear: number;
-  }) => client.post<{ status: string; data: Batch }>(BATCHES, data),
+    email: string;
+    role?: "STUDENT" | "SUPERVISOR" | "ADMIN";
+    department?: string;
+    universityId?: string;
+    phoneNumber?: string;
+    password?: string;
+    batchId?: string;
+  }): Promise<ApiResponse<User>> => {
+    const res = await client.post<ApiResponse<User>>(`${BASE}/users`, payload);
+    return res.data;
+  },
 
-  deleteBatch: (id: string) => client.delete(`${BATCHES}/${id}`),
+  updateUser: async (id: string, payload: Partial<User>): Promise<ApiResponse<User>> => {
+    const res = await client.patch<ApiResponse<User>>(`${BASE}/users/${id}`, payload);
+    return res.data;
+  },
+
+  deleteUser: async (id: string): Promise<ApiResponse<null>> => {
+    const res = await client.delete<ApiResponse<null>>(`${BASE}/users/${id}`);
+    return res.data;
+  },
+
+  importUsersCsv: async (formData: FormData): Promise<ApiResponse<{ importedCount: number }>> => {
+    const res = await client.post<ApiResponse<{ importedCount: number }>>(
+      `${BASE}/users/import-csv`,
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      }
+    );
+    return res.data;
+  },
+
+  getAuditLogs: async (): Promise<ApiResponse<AuditLogItem[]>> => {
+    const res = await client.get<ApiResponse<AuditLogItem[]>>(`${BASE}/audit-logs`);
+    return res.data;
+  },
+
+  getGiteaConfig: async (): Promise<ApiResponse<GiteaServerConfig>> => {
+    const res = await client.get<ApiResponse<GiteaServerConfig>>(`${BASE}/gitea/config`);
+    return res.data;
+  },
+
+  updateGiteaConfig: async (payload: Partial<GiteaServerConfig>): Promise<ApiResponse<GiteaServerConfig>> => {
+    const res = await client.post<ApiResponse<GiteaServerConfig>>(`${BASE}/gitea/config`, payload);
+    return res.data;
+  },
+
+  testGiteaConnection: async (payload?: { url?: string; token?: string }): Promise<ApiResponse<{
+    connected: boolean;
+    latencyMs: number;
+    version?: string;
+    message?: string;
+  }>> => {
+    const res = await client.post<ApiResponse<{
+      connected: boolean;
+      latencyMs: number;
+      version?: string;
+      message?: string;
+    }>>(`${BASE}/gitea/test`, payload || {});
+    return res.data;
+  },
+
+  assignSupervisor: async (projectId: string, supervisorId: string): Promise<ApiResponse<null>> => {
+    const res = await client.patch<ApiResponse<null>>(
+      `${BASE}/projects/${projectId}/assign-supervisor`,
+      { supervisorId }
+    );
+    return res.data;
+  },
+
+  getSupervisorRequests: async (): Promise<ApiResponse<SupervisorAllocationRequest[]>> => {
+    const res = await client.get<ApiResponse<SupervisorAllocationRequest[]>>(`${BASE}/supervisor-requests`);
+    return res.data;
+  },
+
+  reviewSupervisorRequest: async (
+    projectId: string,
+    status: "APPROVED" | "REJECTED",
+    assignedSupervisorId?: string,
+    adminNote?: string
+  ): Promise<ApiResponse<any>> => {
+    const res = await client.patch<ApiResponse<any>>(
+      `${BASE}/projects/${projectId}/supervisor-request`,
+      {
+        status,
+        assignedSupervisorId,
+        adminNote,
+      }
+    );
+    return res.data;
+  },
 };
 
-export default adminAPI;
+export default adminApi;

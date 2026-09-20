@@ -5,6 +5,8 @@ declare global {
     interface Request {
       user?: {
         id: string;
+        name?: string;
+        email?: string;
         role: Role;
         isEmailVerified: boolean;
         giteaUsername?: string | null;

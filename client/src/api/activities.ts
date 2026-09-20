@@ -1,23 +1,43 @@
 // src/api/activities.ts
 import client from "./client";
-import type { ActivityItem, PaginatedResponse } from "../types";
+import type { ActivityItem, ApiResponse } from "../types";
 
-const BASE = "/v1/activities";
+export interface CommitHeatmapData {
+  currentStreak: number;
+  longestStreak: number;
+  totalCommits: number;
+  bestDay?: number;
+  weeks: Array<{
+    weekIndex: number;
+    days: Array<{ date: string; count: number; level: number }>;
+  }>;
+}
 
-const activitiesAPI = {
-  getMyActivity: () =>
-    client.get<PaginatedResponse<ActivityItem>>(`${BASE}/me`),
+export const activitiesApi = {
+  getMyActivities: async (): Promise<ApiResponse<ActivityItem[]>> => {
+    const res = await client.get<ApiResponse<ActivityItem[]>>("/v1/activities/me");
+    return res.data;
+  },
 
-  getProjectActivity: (projectId: string) =>
-    client.get<PaginatedResponse<ActivityItem>>(
-      `${BASE}/project/${projectId}`
-    ),
+  getAdminActivities: async (): Promise<ApiResponse<ActivityItem[]>> => {
+    const res = await client.get<ApiResponse<ActivityItem[]>>("/v1/activities/admin");
+    return res.data;
+  },
 
-  getSupervisorActivity: () =>
-    client.get<PaginatedResponse<ActivityItem>>(`${BASE}/supervisor`),
+  getSupervisorActivities: async (): Promise<ApiResponse<ActivityItem[]>> => {
+    const res = await client.get<ApiResponse<ActivityItem[]>>("/v1/activities/supervisor");
+    return res.data;
+  },
 
-  getAdminActivity: () =>
-    client.get<PaginatedResponse<ActivityItem>>(`${BASE}/admin`),
+  getProjectActivities: async (projectId: string): Promise<ApiResponse<ActivityItem[]>> => {
+    const res = await client.get<ApiResponse<ActivityItem[]>>(`/v1/activities/project/${projectId}`);
+    return res.data;
+  },
+
+  getCommitHeatmap: async (): Promise<ApiResponse<CommitHeatmapData>> => {
+    const res = await client.get<ApiResponse<CommitHeatmapData>>("/v1/activities/heatmap");
+    return res.data;
+  },
 };
 
-export default activitiesAPI;
+export default activitiesApi;

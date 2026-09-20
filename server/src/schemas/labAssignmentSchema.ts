@@ -75,6 +75,9 @@ export const gradeSubmissionSchema = z.object({
     score: z.number().optional(),
     manualScoreAdjust: z.number().optional(),
     supervisorFeedback: z.string().optional(),
+    notebookScore: z.number().min(0).max(2).optional(),
+    performanceScore: z.number().min(0).max(2).optional(),
+    vivaScore: z.number().min(0).max(10).optional(),
   }),
 });
 

@@ -1,43 +1,54 @@
 // src/api/supervisors.ts
 import client from "./client";
-import type { User, PaginatedResponse, Milestone } from "../types";
-import type { Project } from "../types";
+import type { Project, Milestone, ApiResponse } from "../types";
 
 const BASE = "/v1/supervisors";
 
-export interface ReviewMilestonePayload {
-  status: "APPROVED" | "REJECTED";
-  feedback?: string;
+export interface SupervisorDashboardMetrics {
+  totalProjects: number;
+  pendingReviews: number;
+  approvedDeliverables: number;
+  averageReviewTimeHours: number;
 }
 
-const supervisorsAPI = {
-  getAllSupervisors: () =>
-    client.get<PaginatedResponse<User>>(`${BASE}/allsupervisors`),
+export const supervisorsApi = {
+  getDashboardMetrics: async (): Promise<ApiResponse<SupervisorDashboardMetrics>> => {
+    const res = await client.get<ApiResponse<SupervisorDashboardMetrics>>(`${BASE}/dashboard`);
+    return res.data;
+  },
 
-  getDashboard: () =>
-    client.get<{
-      status: string;
-      data: {
-        totalProjects: number;
-        pendingMilestones: number;
-        recentActivity: unknown[];
-      };
-    }>(`${BASE}/dashboard`),
+  getSupervisedProjects: async (): Promise<ApiResponse<Project[]>> => {
+    const res = await client.get<ApiResponse<Project[]>>(`${BASE}/projects`);
+    return res.data;
+  },
 
-  getAssignedProjects: () =>
-    client.get<PaginatedResponse<Project>>(`${BASE}/projects`),
+  getPendingMilestones: async (): Promise<ApiResponse<Milestone[]>> => {
+    const res = await client.get<ApiResponse<Milestone[]>>(`${BASE}/milestones/pending`);
+    return res.data;
+  },
 
-  getPendingMilestones: () =>
-    client.get<PaginatedResponse<Milestone>>(`${BASE}/milestones/pending`),
+  reviewMilestone: async (
+    id: string,
+    remarks: string,
+    approved: boolean
+  ): Promise<ApiResponse<Milestone>> => {
+    const res = await client.patch<ApiResponse<Milestone>>(
+      `${BASE}/milestones/${id}/review`,
+      { remarks, approved }
+    );
+    return res.data;
+  },
 
-  reviewMilestone: (milestoneId: string, payload: ReviewMilestonePayload) =>
-    client.patch<{ status: string; data: Milestone }>(
-      `${BASE}/milestones/${milestoneId}/review`,
+  gradeProject: async (
+    id: string,
+    payload: { grade: string; feedback?: string; score?: number }
+  ): Promise<ApiResponse<Project>> => {
+    const res = await client.patch<ApiResponse<Project>>(
+      `${BASE}/projects/${id}/grade`,
       payload
-    ),
-
-  getActivityFeed: () =>
-    client.get(`${BASE}/activity`),
+    );
+    return res.data;
+  },
 };
 
-export default supervisorsAPI;
+export default supervisorsApi;

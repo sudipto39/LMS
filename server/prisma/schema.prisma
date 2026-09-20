@@ -36,6 +36,8 @@ model User {
   createdProblemStatements  ProblemStatement[] @relation("IdeaCreator")
   reviewedProblemStatements ProblemStatement[] @relation("IdeaReviewer")
   requestedSupervisions     Project[]          @relation("RequestedSupervisor")
+  labEvaluationsReceived    LabContinuousEvaluation[] @relation("StudentContinuousEvaluations")
+  labEvaluationsGiven       LabContinuousEvaluation[] @relation("SupervisorContinuousEvaluations")
 
   @@map("users")
 }
@@ -52,6 +54,7 @@ model Batch {
   course         Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
   projects       Project[]
   labAssignments LabAssignment[]
+  labContinuousEvaluations LabContinuousEvaluation[]
 
   @@map("batches")
 }
@@ -349,6 +352,11 @@ model LabSubmission {
   supervisorFeedback String?          @db.Text
   manualScoreAdjust  Float?
 
+  // University Practical Rubric (Excel Marks Distribution)
+  notebookScore      Float?           // Max 2 marks (Note Book / Lab Record)
+  performanceScore   Float?           // Max 2 marks (Practical Performance)
+  vivaScore          Float?           // Max 10 marks (Viva Voce Portion)
+
   attemptNumber      Int              @default(1)
   submittedAt        DateTime         @default(now())
 
@@ -383,3 +391,49 @@ model ProblemStatement {
   @@index([creatorId])
   @@map("problem_statements")
 }
+
+// =============================================================================
+// UNIVERSITY CONTINUOUS PRACTICAL EVALUATION REGISTER (100 MARKS)
+// =============================================================================
+model LabContinuousEvaluation {
+  id                String   @id @default(cuid())
+  studentId         String
+  courseCode        String   @default("CSEL30701MJ")
+  courseName        String   @default("Cybercrime Investigation and Forensics")
+  semester          String   @default("VII")
+  programme         String   @default("CSE CS")
+  batchId           String?
+  evaluatorId       String?
+
+  // 10 Experiments: Each with noteBook & pracPerf marks (total max 40)
+  // Format: [{ exp: 1, notebook: 2, performance: 2 }, ...]
+  experiments       Json     @default("[]")
+  experimentsTotal  Float    @default(0) // Max 40 (Sum of Note Book + Prac Perf across 10 experiments)
+
+  // Internal Viva Voce (out of 10)
+  internalViva      Float    @default(0)
+  // Total Internal (experimentsTotal + internalViva, Max 50)
+  totalInternal     Float    @default(0)
+
+  // End Semester Examination (out of 50)
+  endSemLabTest     Float    @default(0) // Lab Test and/or Mini Project (Max 30)
+  endSemViva        Float    @default(0) // Viva Voce (Max 20)
+  totalEndSem       Float    @default(0) // endSemLabTest + endSemViva (Max 50)
+
+  // Final Marks out of 100 (totalInternal + totalEndSem)
+  finalMarks        Float    @default(0)
+
+  remarks           String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  student           User     @relation("StudentContinuousEvaluations", fields: [studentId], references: [id], onDelete: Cascade)
+  evaluator         User?    @relation("SupervisorContinuousEvaluations", fields: [evaluatorId], references: [id], onDelete: SetNull)
+  batch             Batch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, courseCode])
+  @@index([courseCode])
+  @@index([batchId])
+  @@map("lab_continuous_evaluations")
+}
+

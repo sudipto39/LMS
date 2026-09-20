@@ -52,10 +52,14 @@ router.get(
         ? await prisma.labSubmission.findFirst({
             where: {
               fileUrl: { contains: fileUrlPart },
-              OR: [
-                { studentId: user.id },
-                { assignment: { creatorId: user.id } },
-              ],
+              ...(user.role === "SUPERVISOR"
+                ? {}
+                : {
+                    OR: [
+                      { studentId: user.id },
+                      { assignment: { creatorId: user.id } },
+                    ],
+                  }),
             },
             select: { id: true },
           })
@@ -97,11 +101,16 @@ router.get(
       ".txt": "text/plain",
     };
 
-    const isSafeImage = [".png", ".jpg", ".jpeg"].includes(ext);
-    const disposition = isSafeImage ? "inline" : "attachment";
+    const isInlineType = [".png", ".jpg", ".jpeg", ".pdf"].includes(ext);
+    const forceDownload = req.query["download"] === "true";
+    const disposition = forceDownload ? "attachment" : isInlineType ? "inline" : "attachment";
 
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    if (ext === ".pdf") {
+      res.setHeader("Content-Security-Policy", "default-src 'self' 'unsafe-inline' blob: data:; object-src 'self' blob:; frame-ancestors 'self'");
+    } else if (!isInlineType) {
+      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    }
     res.setHeader("Content-Type", mimeMap[ext] || "application/octet-stream");
     res.setHeader("Content-Disposition", `${disposition}; filename="${safeFilename}"`);
     res.sendFile(filePath);
