@@ -8,7 +8,10 @@ import {
   revokeRefreshToken,
   verifyRefreshToken,
   signAccessToken,
+  signRefreshToken,
+  storeRefreshToken,
   getStoredRefreshToken,
+  matchesRefreshToken,
 } from "../utils/createSendToken.js";
 import { env } from "../config/env.js";
 import { prisma } from "../config/db.js";
@@ -66,7 +69,9 @@ export const refreshToken = catchAsync(
     }
 
     const stored = await getStoredRefreshToken(decoded.id);
-    if (!stored || stored !== token) {
+    if (!stored || !matchesRefreshToken(stored, token)) {
+      // Reuse of revoked/invalid token detected: invalidate active session
+      await revokeRefreshToken(decoded.id);
       next(new AppError("Refresh token revoked or invalid", 401));
       return;
     }
@@ -81,7 +86,18 @@ export const refreshToken = catchAsync(
       return;
     }
 
+    // Refresh Token Rotation (RTR): issue new access token & new refresh token
     const accessToken = signAccessToken(user.id, user.role);
+    const newRefreshToken = signRefreshToken(user.id);
+    await storeRefreshToken(user.id, newRefreshToken);
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     res.status(200).json({ status: "success", accessToken });
   }
 );
@@ -108,7 +124,7 @@ export const logout = catchAsync(async (req: Request, res: Response) => {
   res.cookie("refreshToken", "", {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
-    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+    sameSite: "lax",
     expires: new Date(0),
   });
 

@@ -1,5 +1,5 @@
 // src/services/judge0Service.ts
-import axios, { AxiosError } from "axios";
+import axios from "axios";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/appError.js";
 
@@ -14,6 +14,7 @@ export const JUDGE0_LANGUAGE_MAP: Record<string, number> = {
   typescript: 74, // TypeScript
   go: 60,         // Go
   rust: 73,       // Rust
+  r: 80,          // R (4.0.0 / GNU R)
 };
 
 export interface FilePayload {
@@ -38,6 +39,7 @@ export interface Judge0Response {
   stderr: string;
   compileOutput: string;
   message: string;
+  output?: string;
   status: {
     id: number; // 3 = Accepted, 4 = Wrong Answer, 5 = Time Limit Exceeded, 6 = Compilation Error, 7-12 = Runtime Error
     description: string;
@@ -55,7 +57,7 @@ const judge0Client = axios.create({
       ? { Authorization: `Bearer ${env.JUDGE0_AUTH_TOKEN}` }
       : {}),
   },
-  timeout: 20000,
+  timeout: 2500,
 });
 
 /**
@@ -172,11 +174,19 @@ export const judge0Service = {
       const statusDescription = data.status?.description ?? "Completed";
       const exitCode = statusId === 3 ? 0 : 1;
 
+      const outputText =
+        data.stdout ||
+        data.compile_output ||
+        data.stderr ||
+        data.message ||
+        "";
+
       return {
         stdout: data.stdout || "",
         stderr: data.stderr || "",
         compileOutput: data.compile_output || "",
         message: data.message || "",
+        output: outputText,
         status: {
           id: statusId,
           description: statusDescription,
@@ -185,13 +195,12 @@ export const judge0Service = {
         memory: data.memory ? Math.round(data.memory / 1024) : null,
         exitCode,
       };
-    } catch (error) {
-      if (error instanceof AxiosError) {
-        const msg = error.response?.data?.error || error.message || "Judge0 server unavailable";
-        console.error("❌ Judge0 API Error:", msg);
-        throw new AppError(`Code Execution Engine offline: ${msg}`, 503);
-      }
-      throw new AppError("Failed to execute code on Judge0 server", 500);
+    } catch (err: any) {
+      const errMsg = err?.message || "Service connection failed";
+      throw new AppError(
+        `Code Execution Engine is currently unavailable (${errMsg}). Please ensure Judge0 sandbox is running.`,
+        503
+      );
     }
   },
 

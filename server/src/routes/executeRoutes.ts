@@ -1,16 +1,21 @@
 // src/routes/executeRoutes.ts
 import { Router } from "express";
-import { protect } from "../middlewares/authMiddleware.js";
+import { protect, requireVerifiedEmail } from "../middlewares/authMiddleware.js";
 import { validate } from "../middlewares/validate.js";
-import { executeCode, getLanguages } from "../controllers/executeController.js";
+import {
+  executeCode,
+  getLanguages,
+  getCodeTemplate,
+} from "../controllers/executeController.js";
 import { executeCodeSchema } from "../schemas/executeSchema.js";
 
 const router = Router();
 
-// Allow authenticated users to execute code
-router.use(protect);
+// Allow verified authenticated users to execute code
+router.use(protect, requireVerifiedEmail);
 
 router.post("/", validate(executeCodeSchema), executeCode);
 router.get("/languages", getLanguages);
+router.get("/templates/:language", getCodeTemplate);
 
 export default router;

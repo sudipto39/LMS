@@ -1,18 +1,13 @@
 // prisma/seedUsers.ts
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
-dotenv.config();
 
-import { PrismaClient } from "../src/generated/prisma/index.js";
-import { PrismaPg } from "@prisma/adapter-pg";
-import pg from "pg";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
+
+import { prisma, disconnectDB } from "../src/config/db.js";
 import bcrypt from "bcrypt";
-
-const pool = new pg.Pool({
-  connectionString: process.env["DATABASE_URL"],
-});
-
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("🌱 Seeding demo users, supervisors, projects, and group collaborations...\n");
@@ -52,10 +47,14 @@ async function main() {
 
   console.log(`📦 Using Batch: ${batch.name} (ID: ${batch.id})\n`);
 
-  // Password hashes
-  const studentPasswordHash = await bcrypt.hash("Student@1234", 12);
-  const supervisorPasswordHash = await bcrypt.hash("Supervisor@1234", 12);
-  const adminPasswordHash = await bcrypt.hash("Admin@1234", 12);
+  // Password hashes - strictly sourced from environment or secure defaults
+  const studentPw = process.env.SEED_STUDENT_PASSWORD || process.env.SEED_DEFAULT_PASSWORD || "StudentPass123!";
+  const supervisorPw = process.env.SEED_SUPERVISOR_PASSWORD || process.env.SEED_DEFAULT_PASSWORD || "SupervisorPass123!";
+  const adminPw = process.env.SEED_ADMIN_PASSWORD || process.env.SEED_DEFAULT_PASSWORD || "AdminPass123!";
+
+  const studentPasswordHash = await bcrypt.hash(studentPw, 12);
+  const supervisorPasswordHash = await bcrypt.hash(supervisorPw, 12);
+  const adminPasswordHash = await bcrypt.hash(adminPw, 12);
 
   // ─── 2. Supervisors (2 Users) ───────────────────────────────────────────────
   const supervisorsData = [
@@ -519,7 +518,7 @@ async function main() {
       supervisorId: supRajesh.id,
       technologies: ["C++", "ROS2", "OpenCV", "YOLOv8", "Gazebo Simulator"],
       status: "IN_PROGRESS" as const,
-      groupMembers: [],
+      groupMembers: [stuRahul.id, stuAmit.id],
       milestones: [
         {
           title: "Gazebo Simulation Environment & PID Tuning",
@@ -551,7 +550,7 @@ async function main() {
       supervisorId: supAnanya.id,
       technologies: ["Python", "TensorRT", "NVIDIA Jetson", "FastAPI", "PostgreSQL"],
       status: "APPROVED" as const,
-      groupMembers: [],
+      groupMembers: [stuSneha.id],
       milestones: [
         {
           title: "TensorRT Model Quantization (FP16/INT8)",
@@ -583,7 +582,7 @@ async function main() {
       supervisorId: supAnanya.id,
       technologies: ["Python", "Spacy", "Transformers", "React", "FastAPI", "MongoDB"],
       status: "SUBMITTED" as const,
-      groupMembers: [],
+      groupMembers: [stuPriya.id],
       milestones: [
         {
           title: "PDF & DOCX Named Entity Recognition (NER) Pipeline",
@@ -615,7 +614,7 @@ async function main() {
       supervisorId: supRajesh.id,
       technologies: ["Node.js", "TypeScript", "RabbitMQ", "PostgreSQL", "Docker", "Jest"],
       status: "IN_PROGRESS" as const,
-      groupMembers: [],
+      groupMembers: [stuVikram.id, stuRohan.id],
       milestones: [
         {
           title: "Saga Pattern Implementation for Distributed Transactions",
@@ -647,7 +646,7 @@ async function main() {
       supervisorId: supRajesh.id,
       technologies: ["Go", "gRPC", "Raft Consensus", "Protobuf", "Docker"],
       status: "IN_PROGRESS" as const,
-      groupMembers: [],
+      groupMembers: [stuVikram.id],
       milestones: [
         {
           title: "Leader Election & Heartbeat Protocol",
@@ -705,7 +704,7 @@ async function main() {
       supervisorId: supAnanya.id,
       technologies: ["Python", "PyTorch", "PySyft", "FastAPI", "Docker"],
       status: "IN_PROGRESS" as const,
-      groupMembers: [],
+      groupMembers: [stuNeha.id, stuRohan.id],
       milestones: [
         {
           title: "Local Node X-Ray Classification Model",
@@ -737,7 +736,7 @@ async function main() {
       supervisorId: supRajesh.id,
       technologies: ["Go", "Open Policy Agent (OPA)", "OAuth2/OIDC", "Redis", "Envoy Proxy"],
       status: "APPROVED" as const,
-      groupMembers: [],
+      groupMembers: [stuPriya.id, stuAmit.id],
       milestones: [
         {
           title: "mTLS Certificate Authority & Envoy Config",
@@ -770,7 +769,8 @@ async function main() {
       },
     });
 
-    const repoUrl = `http://localhost:3000/${(await prisma.user.findUnique({ where: { id: p.ownerId } }))?.giteaUsername || "user"}/${p.repoName}`;
+    const giteaRoot = (process.env["GITEA_BASE_URL"] || "http://localhost:3000").replace("/api/v1", "");
+    const repoUrl = `${giteaRoot}/${(await prisma.user.findUnique({ where: { id: p.ownerId } }))?.giteaUsername || "user"}/${p.repoName}.git`;
 
     if (!project) {
       project = await prisma.project.create({
@@ -836,6 +836,8 @@ async function main() {
 
         const isApproved = m.status === "APPROVED";
         const isSubmitted = m.status === "SUBMITTED" || isApproved;
+        const feedbackVal = (m as any).feedback || (isApproved ? "Approved by supervisor. Quality standards met." : null);
+        const notesVal = (m as any).studentNotes || (isSubmitted ? "Submitted artifacts and code repository links." : null);
 
         if (!existingMilestone) {
           await prisma.milestone.create({
@@ -845,8 +847,8 @@ async function main() {
               status: m.status,
               order: m.order,
               projectId: project.id,
-              feedback: m.feedback || (isApproved ? "Approved by supervisor. Quality standards met." : null),
-              studentNotes: m.studentNotes || (isSubmitted ? "Submitted artifacts and code repository links." : null),
+              feedback: feedbackVal,
+              studentNotes: notesVal,
               reviewedById: isApproved ? p.supervisorId : null,
               submittedById: isSubmitted ? p.ownerId : null,
               submittedAt: isSubmitted ? new Date(Date.now() - 86400000 * 3) : null,
@@ -861,8 +863,8 @@ async function main() {
               description: m.description,
               status: m.status,
               order: m.order,
-              feedback: m.feedback || (isApproved ? "Approved by supervisor. Quality standards met." : null),
-              studentNotes: m.studentNotes || (isSubmitted ? "Submitted artifacts and code repository links." : null),
+              feedback: feedbackVal,
+              studentNotes: notesVal,
               reviewedById: isApproved ? p.supervisorId : null,
               submittedById: isSubmitted ? p.ownerId : null,
             },
@@ -876,10 +878,10 @@ async function main() {
   console.log("\n=================================================================");
   console.log("🎉 Seeding Complete! Summary of Demo Accounts & Projects:");
   console.log("=================================================================");
-  console.log("\n👨‍🏫 SUPERVISORS (Password: Supervisor@1234):");
+  console.log("\n👨‍🏫 SUPERVISORS (Accounts Provisioned):");
   console.log("  1. rajesh.sharma@lms.com   (Dr. Rajesh Sharma, ID: SUP2024CS01, Gitea: rajesh-sharma)");
   console.log("  2. ananya.roy@lms.com      (Prof. Ananya Roy,  ID: SUP2024CS02, Gitea: ananya-roy)");
-  console.log("\n🎓 STUDENTS (Password: Student@1234):");
+  console.log("\n🎓 STUDENTS (Accounts Provisioned):");
   console.log("  1. rahul.verma@lms.com     (Rahul Verma,  ID: STU2024CS001, Gitea: rahul-verma) [GROUP ALPHA LEAD]");
   console.log("  2. priya.patel@lms.com     (Priya Patel,  ID: STU2024CS002, Gitea: priya-patel) [GROUP ALPHA LEAD]");
   console.log("  3. amit.kumar@lms.com      (Amit Kumar,   ID: STU2024CS003, Gitea: amit-kumar)  [GROUP ALPHA MEMBER]");
@@ -901,6 +903,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
-    await pool.end();
+    await disconnectDB();
   });

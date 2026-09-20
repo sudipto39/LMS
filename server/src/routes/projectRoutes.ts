@@ -10,17 +10,34 @@ import {
   getProjectFiles,
   getProjectFeedback,
   postProjectFeedback,
+  replyProjectFeedback,
+  resolveProjectFeedback,
+  getCommitDiff,
+  getCodeReviewComments,
+  postCodeReviewComment,
+  resolveCodeReviewComment,
   submitFinalProject,
   getPotentialMembers,
   addProjectMember,
   removeProjectMember,
+  extendProject,
+  commitAndPushSandbox,
 } from "../controllers/projectController.js";
-import { protect, restrictTo } from "../middlewares/authMiddleware.js";
+import { protect, restrictTo, requireVerifiedEmail } from "../middlewares/authMiddleware.js";
+import { validate } from "../middlewares/validate.js";
+import {
+  createProjectSchema,
+  postFeedbackSchema,
+  replyFeedbackSchema,
+  postCodeReviewCommentSchema,
+} from "../schemas/projectSchema.js";
 
 const router = Router();
 
-router.post("/create", protect, restrictTo("STUDENT"), createProject);
-router.get("/me", protect, restrictTo("STUDENT"), getMyProjects);
+router.use(protect, requireVerifiedEmail);
+
+router.post("/create", restrictTo("STUDENT"), validate(createProjectSchema), createProject);
+router.get("/me", restrictTo("STUDENT"), getMyProjects);
 router.get(
   "/supervised",
   protect,
@@ -28,12 +45,24 @@ router.get(
   getSupervisedProjects
 );
 
-// ── specific /:id sub-routes BEFORE /:id ──────────────────────────────────────
+// ── Specific /:id sub-routes BEFORE /:id ──────────────────────────────────────
 router.get("/:id/files", protect, getProjectFiles);
-// Feedback thread — GET to read, POST to reply (student + supervisor)
-router.get("/:id/feedback", protect, getProjectFeedback);
-router.post("/:id/feedback", protect, postProjectFeedback);
+router.post("/:id/extend", protect, restrictTo("STUDENT"), extendProject);
+router.post("/:id/commit", protect, commitAndPushSandbox);
 
+// In-App Code Review & Diffs
+router.get("/:id/diff/:commitSha", protect, getCommitDiff);
+router.get("/:id/code-review/comments", protect, getCodeReviewComments);
+router.post("/:id/code-review/comments", protect, validate(postCodeReviewCommentSchema), postCodeReviewComment);
+router.patch("/:id/code-review/comments/:commentId/resolve", protect, resolveCodeReviewComment);
+
+// Threaded Feedback Discussions
+router.get("/:id/feedback", protect, getProjectFeedback);
+router.post("/:id/feedback", protect, validate(postFeedbackSchema), postProjectFeedback);
+router.post("/:id/feedback/:feedbackId/reply", protect, validate(replyFeedbackSchema), replyProjectFeedback);
+router.patch("/:id/feedback/:feedbackId/resolve", protect, resolveProjectFeedback);
+
+// Team Members
 router.get("/:id/potential-members", protect, restrictTo("STUDENT"), getPotentialMembers);
 router.post("/:id/members", protect, restrictTo("STUDENT"), addProjectMember);
 router.delete("/:id/members/:userId", protect, removeProjectMember);

@@ -9,6 +9,7 @@ import {
 } from "../utils/appError.js";
 import { logActivity } from "../services/activityService.js";
 import { requireParam } from "../utils/requireParam.js";
+import { emailService } from "../services/sendVerificationEmail.js";
 
 export const createMilestone = catchAsync(
   async (req: Request, res: Response) => {
@@ -81,43 +82,6 @@ export const getProjectMilestones = catchAsync(
     });
   }
 );
-
-// export const submitMilestone = catchAsync(
-//   async (req: Request, res: Response) => {
-//     const id = requireParam(req.params["id"], "id");
-//     const { studentNotes } = req.body as { studentNotes?: string };
-
-//     const milestone = await prisma.milestone.findUnique({
-//       where: { id },
-//       include: { project: { select: { ownerId: true } } },
-//     });
-
-//     if (!milestone) throw new NotFoundError("Milestone");
-//     if (milestone.project.ownerId !== req.user!.id) throw new ForbiddenError();
-//     if (milestone.status === "APPROVED") {
-//       throw new BadRequestError("Milestone already approved");
-//     }
-
-//     const updated = await prisma.milestone.update({
-//       where: { id },
-//       data: {
-//         status: "SUBMITTED",
-//         submittedAt: new Date(),
-//         submittedById: req.user!.id,
-//         ...(studentNotes !== undefined && { studentNotes }),
-//       },
-//     });
-
-//     await logActivity({
-//       type: "MILESTONE_SUBMITTED",
-//       payload: { milestoneTitle: milestone.title },
-//       userId: req.user!.id,
-//       projectId: milestone.projectId,
-//     });
-
-//     res.status(200).json({ status: "success", data: updated });
-//   }
-// );
 
 export const submitMilestone = catchAsync(
   async (req: Request, res: Response) => {
@@ -196,7 +160,15 @@ export const approveMilestone = catchAsync(
 
     const milestone = await prisma.milestone.findUnique({
       where: { id },
-      include: { project: { select: { supervisorId: true } } },
+      include: {
+        project: {
+          select: {
+            title: true,
+            supervisorId: true,
+            owner: { select: { name: true, email: true } },
+          },
+        },
+      },
     });
 
     if (!milestone) throw new NotFoundError("Milestone");
@@ -222,6 +194,17 @@ export const approveMilestone = catchAsync(
       projectId: milestone.projectId,
     });
 
+    if (milestone.project.owner?.email) {
+      void emailService.sendMilestoneReviewNotification({
+        to: milestone.project.owner.email,
+        name: milestone.project.owner.name,
+        milestoneTitle: milestone.title,
+        projectTitle: milestone.project.title,
+        status: "APPROVED",
+        feedback,
+      });
+    }
+
     res.status(200).json({ status: "success", data: updated });
   }
 );
@@ -233,7 +216,15 @@ export const rejectMilestone = catchAsync(
 
     const milestone = await prisma.milestone.findUnique({
       where: { id },
-      include: { project: { select: { supervisorId: true } } },
+      include: {
+        project: {
+          select: {
+            title: true,
+            supervisorId: true,
+            owner: { select: { name: true, email: true } },
+          },
+        },
+      },
     });
 
     if (!milestone) throw new NotFoundError("Milestone");
@@ -258,6 +249,17 @@ export const rejectMilestone = catchAsync(
       userId: req.user!.id,
       projectId: milestone.projectId,
     });
+
+    if (milestone.project.owner?.email) {
+      void emailService.sendMilestoneReviewNotification({
+        to: milestone.project.owner.email,
+        name: milestone.project.owner.name,
+        milestoneTitle: milestone.title,
+        projectTitle: milestone.project.title,
+        status: "REJECTED",
+        feedback,
+      });
+    }
 
     res.status(200).json({ status: "success", data: updated });
   }
@@ -333,3 +335,73 @@ export const startMilestone = catchAsync(
     res.status(200).json({ status: "success", data: updated });
   }
 );
+
+export const updateMilestone = catchAsync(async (req: Request, res: Response) => {
+  const id = requireParam(req.params["id"], "id");
+  const { title, description, dueDate } = req.body as {
+    title?: string;
+    description?: string;
+    dueDate?: string;
+  };
+
+  const milestone = await prisma.milestone.findUnique({
+    where: { id },
+    include: {
+      project: {
+        select: {
+          ownerId: true,
+          supervisorId: true,
+        },
+      },
+    },
+  });
+
+  if (!milestone) throw new NotFoundError("Milestone");
+
+  if (milestone.status === "APPROVED") {
+    throw new BadRequestError("Cannot modify an already approved milestone");
+  }
+
+  const isOwner = milestone.project.ownerId === req.user!.id;
+  const isSupervisor = milestone.project.supervisorId === req.user!.id;
+  const isAdmin = req.user!.role === "ADMIN";
+  if (!isOwner && !isSupervisor && !isAdmin) {
+    throw new ForbiddenError("Only the project owner, supervisor, or admin can modify milestone details");
+  }
+
+  const updated = await prisma.milestone.update({
+    where: { id },
+    data: {
+      ...(title && { title }),
+      ...(description !== undefined && { description }),
+      ...(dueDate && { dueDate: new Date(dueDate) }),
+    },
+  });
+
+  res.status(200).json({ status: "success", data: updated });
+});
+
+export const deleteMilestone = catchAsync(async (req: Request, res: Response) => {
+  const id = requireParam(req.params["id"], "id");
+
+  const milestone = await prisma.milestone.findUnique({
+    where: { id },
+    include: { project: { select: { ownerId: true } } },
+  });
+
+  if (!milestone) throw new NotFoundError("Milestone");
+  if (milestone.project.ownerId !== req.user!.id && req.user!.role !== "ADMIN") {
+    throw new ForbiddenError();
+  }
+
+  if (milestone.status === "APPROVED" || milestone.status === "SUBMITTED") {
+    throw new BadRequestError(`Cannot delete a milestone that has already been ${milestone.status.toLowerCase()}`);
+  }
+
+  await prisma.milestone.update({
+    where: { id },
+    data: { isActive: false },
+  });
+
+  res.status(200).json({ status: "success", message: "Milestone deleted" });
+});

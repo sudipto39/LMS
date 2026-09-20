@@ -151,3 +151,74 @@ export const deleteBatch = catchAsync(
     });
   }
 );
+
+// Admin — get students enrolled in batch
+export const getBatchStudents = catchAsync(async (req: Request, res: Response) => {
+  const id = requireParam(req.params["id"], "id");
+
+  const enrollments = await prisma.batchEnrollment.findMany({
+    where: { batchId: id },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          universityId: true,
+          department: true,
+          role: true,
+          isEmailVerified: true,
+        },
+      },
+    },
+    orderBy: { user: { name: "asc" } },
+  });
+
+  const students = enrollments.map((e) => e.user);
+
+  res.status(200).json({
+    status: "success",
+    count: students.length,
+    data: students,
+  });
+});
+
+// Admin — enroll student in batch
+export const enrollStudentInBatch = catchAsync(async (req: Request, res: Response) => {
+  const batchId = requireParam(req.params["id"], "id");
+  const { userId } = req.body as { userId: string };
+
+  if (!userId) throw new BadRequestError("User ID is required");
+
+  const enrollment = await prisma.batchEnrollment.upsert({
+    where: {
+      userId_batchId: { userId, batchId },
+    },
+    create: { userId, batchId },
+    update: {},
+    include: {
+      user: {
+        select: { id: true, name: true, email: true, universityId: true },
+      },
+    },
+  });
+
+  res.status(201).json({ status: "success", data: enrollment });
+});
+
+// Admin — remove student from batch
+export const removeStudentFromBatch = catchAsync(async (req: Request, res: Response) => {
+  const batchId = requireParam(req.params["id"], "id");
+  const userId = requireParam(req.params["userId"], "userId");
+
+  await prisma.batchEnrollment.delete({
+    where: {
+      userId_batchId: { userId, batchId },
+    },
+  });
+
+  res.status(200).json({
+    status: "success",
+    message: "Student removed from batch enrollment",
+  });
+});

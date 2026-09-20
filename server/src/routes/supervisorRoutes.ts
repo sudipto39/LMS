@@ -8,10 +8,9 @@ import {
   reviewMilestone,
   getSupervisorActivityFeed,
   getSuperviorGrades,
-  postProjectFeedback,
+  evaluateProjectRubric,
 } from "../controllers/supervisorController.js";
-import { gradeProject } from "../controllers/projectController.js";
-import { protect, restrictTo } from "../middlewares/authMiddleware.js";
+import { protect, restrictTo, requireVerifiedEmail } from "../middlewares/authMiddleware.js";
 
 const router = Router();
 
@@ -19,7 +18,7 @@ const router = Router();
 router.get("/allsupervisors", protect, getAllSupervisors);
 
 // Supervisor-only routes
-router.use(protect, restrictTo("SUPERVISOR", "ADMIN"));
+router.use(protect, requireVerifiedEmail, restrictTo("SUPERVISOR", "ADMIN"));
 
 router.get("/dashboard", getSupervisorDashboard);
 router.get("/projects", getAssignedProjects);
@@ -27,7 +26,6 @@ router.get("/milestones/pending", getPendingMilestones);
 router.patch("/milestones/:id/review", reviewMilestone);
 router.get("/activity", getSupervisorActivityFeed);
 router.get("/grades", getSuperviorGrades);
-router.patch("/projects/:id/grade", gradeProject);
-router.post("/projects/:id/feedback", postProjectFeedback);
+router.patch("/projects/:id/grade", evaluateProjectRubric);
 
 export default router;

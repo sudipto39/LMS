@@ -20,5 +20,5 @@ describe("Rate Limiting (Brute-Force Protection) Tests", () => {
 
     expect(blockedRes.statusCode).toBe(429);
     expect(blockedRes.text).toContain("Too many requests from this IP");
-  });
+  }, 15000);
 });

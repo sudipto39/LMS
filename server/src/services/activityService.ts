@@ -5,8 +5,8 @@ import type { Prisma } from "../generated/prisma/index.js";
 interface LogActivityParams {
   type: string;
   payload: Prisma.InputJsonValue;
-  userId?: string;
-  projectId?: string;
+  userId?: string | undefined;
+  projectId?: string | undefined;
 }
 
 export const logActivity = async ({

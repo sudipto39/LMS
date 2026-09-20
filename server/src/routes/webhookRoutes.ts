@@ -55,11 +55,23 @@ const handleGiteaWebhook = async (
     return;
   }
   const repoUrl = payload.repository?.html_url as string | undefined;
+  const cloneUrl = payload.repository?.clone_url as string | undefined;
+  const repoName = payload.repository?.name as string | undefined;
+  const ownerName = payload.repository?.owner?.username as string | undefined;
 
-  if (!repoUrl) return;
+  if (!repoUrl && !cloneUrl && !repoName) return;
+
+  const cleanRepoUrl = repoUrl ? repoUrl.replace(/\.git$/i, "").replace(/\/+$/, "") : "";
+  const cleanCloneUrl = cloneUrl ? cloneUrl.replace(/\.git$/i, "").replace(/\/+$/, "") : "";
 
   const project = await prisma.project.findFirst({
-    where: { repoUrl },
+    where: {
+      OR: [
+        ...(cleanRepoUrl ? [{ repoUrl: cleanRepoUrl }, { repoUrl: `${cleanRepoUrl}.git` }] : []),
+        ...(cleanCloneUrl ? [{ repoUrl: cleanCloneUrl }, { repoUrl: `${cleanCloneUrl}.git` }] : []),
+        ...(repoName && ownerName ? [{ repoName, owner: { giteaUsername: ownerName } }] : []),
+      ],
+    },
     orderBy: { phase: "desc" },
     select: { id: true, ownerId: true },
   });

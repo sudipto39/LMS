@@ -11,9 +11,11 @@ import {
 
 const router = Router();
 
+// Authenticated users — list all courses
+router.get("/allcourses", protect, getAllCourses);
+router.get("/:id", protect, getCourseById);
+
 // Admin only
-router.get("/allcourses", protect, restrictTo("ADMIN"), getAllCourses);
-router.get("/:id", protect, restrictTo("ADMIN"), getCourseById);
 router.post("/create", protect, restrictTo("ADMIN"), createCourse);
 router.patch("/:id", protect, restrictTo("ADMIN"), updateCourse);
 router.delete("/:id", protect, restrictTo("ADMIN"), deleteCourse);

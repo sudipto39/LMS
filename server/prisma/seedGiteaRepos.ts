@@ -49,7 +49,7 @@ async function main() {
       await gitea.post("/admin/users", {
         username,
         email: u.email,
-        password: "Student@1234",
+        password: process.env["GITEA_DEFAULT_USER_PASSWORD"] || process.env["SEED_DEFAULT_PASSWORD"] || "StudentPass123!",
         must_change_password: false,
         send_notify: false,
       });

@@ -45,25 +45,29 @@ const createGiteaUser = async (payload: GiteaUserPayload) => {
 async function main() {
   console.log("🔧 Creating Gitea accounts for demo users...\n");
 
+  const defaultSupervisorPassword = process.env.SEED_SUPERVISOR_PASSWORD || process.env.SEED_DEFAULT_PASSWORD || "SupervisorPass123!";
+  const defaultStudentPassword = process.env.SEED_STUDENT_PASSWORD || process.env.SEED_DEFAULT_PASSWORD || "StudentPass123!";
+  const defaultAdminPassword = process.env.SEED_ADMIN_PASSWORD || process.env.SEED_DEFAULT_PASSWORD || "AdminPass123!";
+
   const users = [
     // Supervisors
-    { username: "rajesh-sharma", email: "rajesh.sharma@lms.com", password: "Supervisor@1234" },
-    { username: "ananya-roy", email: "ananya.roy@lms.com", password: "Supervisor@1234" },
-    { username: "supervisor", email: "supervisor@lms.com", password: "Supervisor@1234" },
+    { username: "rajesh-sharma", email: "rajesh.sharma@lms.com", password: defaultSupervisorPassword },
+    { username: "ananya-roy", email: "ananya.roy@lms.com", password: defaultSupervisorPassword },
+    { username: "supervisor", email: "supervisor@lms.com", password: defaultSupervisorPassword },
 
     // Students
-    { username: "rahul-verma", email: "rahul.verma@lms.com", password: "Student@1234" },
-    { username: "priya-patel", email: "priya.patel@lms.com", password: "Student@1234" },
-    { username: "amit-kumar", email: "amit.kumar@lms.com", password: "Student@1234" },
-    { username: "sneha-das", email: "sneha.das@lms.com", password: "Student@1234" },
-    { username: "vikram-singh", email: "vikram.singh@lms.com", password: "Student@1234" },
-    { username: "neha-gupta", email: "neha.gupta@lms.com", password: "Student@1234" },
-    { username: "rohan-mehta", email: "rohan.mehta@lms.com", password: "Student@1234" },
-    { username: "tanvi-sharma", email: "tanvi.sharma@lms.com", password: "Student@1234" },
-    { username: "student", email: "student@lms.com", password: "Student@1234" },
+    { username: "rahul-verma", email: "rahul.verma@lms.com", password: defaultStudentPassword },
+    { username: "priya-patel", email: "priya.patel@lms.com", password: defaultStudentPassword },
+    { username: "amit-kumar", email: "amit.kumar@lms.com", password: defaultStudentPassword },
+    { username: "sneha-das", email: "sneha.das@lms.com", password: defaultStudentPassword },
+    { username: "vikram-singh", email: "vikram.singh@lms.com", password: defaultStudentPassword },
+    { username: "neha-gupta", email: "neha.gupta@lms.com", password: defaultStudentPassword },
+    { username: "rohan-mehta", email: "rohan.mehta@lms.com", password: defaultStudentPassword },
+    { username: "tanvi-sharma", email: "tanvi.sharma@lms.com", password: defaultStudentPassword },
+    { username: "student", email: "student@lms.com", password: defaultStudentPassword },
 
     // Admin
-    { username: "admin-lms", email: "admin@lms.com", password: "Admin@1234" },
+    { username: "admin-lms", email: "admin@lms.com", password: defaultAdminPassword },
   ];
 
   for (const user of users) {

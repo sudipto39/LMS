@@ -28,21 +28,30 @@ model User {
   ownedProjects       Project[]         @relation("ProjectOwner")
   supervisedProjects  Project[]         @relation("ProjectSupervisor")
   projectMembers      ProjectMember[]
+  codeReviewComments  CodeReviewComment[]
+  evaluationsGiven    RubricEvaluation[] @relation("Evaluator")
+  feedbacksWritten    ProjectFeedback[]
+  createdLabAssignments LabAssignment[]   @relation("AssignmentCreator")
+  labSubmissions        LabSubmission[]   @relation("StudentLabSubmissions")
+  createdProblemStatements  ProblemStatement[] @relation("IdeaCreator")
+  reviewedProblemStatements ProblemStatement[] @relation("IdeaReviewer")
+  requestedSupervisions     Project[]          @relation("RequestedSupervisor")
 
   @@map("users")
 }
 
 model Batch {
-  id          String            @id @default(cuid())
-  name        String            @unique
-  courseId    String
-  createdAt   DateTime          @default(now())
-  endYear     Int
-  isActive    Boolean           @default(true)
-  startYear   Int
-  enrollments BatchEnrollment[]
-  course      Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  projects    Project[]
+  id             String            @id @default(cuid())
+  name           String            @unique
+  courseId       String
+  createdAt      DateTime          @default(now())
+  endYear        Int
+  isActive       Boolean           @default(true)
+  startYear      Int
+  enrollments    BatchEnrollment[]
+  course         Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  projects       Project[]
+  labAssignments LabAssignment[]
 
   @@map("batches")
 }
@@ -73,32 +82,41 @@ model Course {
 }
 
 model Project {
-  id           String        @id @default(cuid())
-  title        String
-  description  String?
-  repoName     String?
-  repoUrl      String?
-  ownerId      String
-  supervisorId String?
-  batchId      String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  endDate      DateTime?
-  feedback     String?
-  isActive     Boolean       @default(true)
-  startDate    DateTime?
-  status       ProjectStatus @default(DRAFT)
-  technologies String[]
-  activities   Activity[]
-  milestones   Milestone[]
-  batch        Batch         @relation(fields: [batchId], references: [id])
-  owner        User          @relation("ProjectOwner", fields: [ownerId], references: [id])
-  supervisor   User?         @relation("ProjectSupervisor", fields: [supervisorId], references: [id])
+  id              String            @id @default(cuid())
+  title           String
+  description     String?
+  repoName        String?
+  repoUrl         String?
+  ownerId         String
+  supervisorId    String?
+  batchId         String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  endDate         DateTime?
+  feedback        String?
+  isActive        Boolean           @default(true)
+  startDate       DateTime?
+  status          ProjectStatus     @default(DRAFT)
+  technologies    String[]
+  activities      Activity[]
+  milestones      Milestone[]
+  batch           Batch             @relation(fields: [batchId], references: [id])
+  owner           User              @relation("ProjectOwner", fields: [ownerId], references: [id])
+  supervisor      User?             @relation("ProjectSupervisor", fields: [supervisorId], references: [id])
   parentProjectId String?
-  parentProject   Project?      @relation("ProjectExtension", fields: [parentProjectId], references: [id])
-  extensions      Project[]     @relation("ProjectExtension")
-  phase           Int           @default(1)
+  parentProject   Project?          @relation("ProjectExtension", fields: [parentProjectId], references: [id])
+  extensions      Project[]         @relation("ProjectExtension")
+  phase           Int               @default(1)
   members         ProjectMember[]
+  reviewComments  CodeReviewComment[]
+  evaluation      RubricEvaluation?
+  feedbacks       ProjectFeedback[]
+  problemStatementId      String?
+  problemStatement        ProblemStatement?       @relation(fields: [problemStatementId], references: [id])
+  requestedSupervisorId   String?
+  requestedSupervisor     User?                   @relation("RequestedSupervisor", fields: [requestedSupervisorId], references: [id])
+  supervisorRequestStatus SupervisorRequestStatus? @default(PENDING)
+  supervisorRequestReason String?
 
   @@map("projects")
 }
@@ -155,6 +173,66 @@ model ProjectMember {
   @@map("project_members")
 }
 
+model CodeReviewComment {
+  id         String   @id @default(cuid())
+  projectId  String
+  commitSha  String
+  filePath   String
+  lineNumber Int
+  side       String   @default("RIGHT") // LEFT | RIGHT
+  content    String
+  authorId   String
+  isResolved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, commitSha])
+  @@map("code_review_comments")
+}
+
+model RubricEvaluation {
+  id            String   @id @default(cuid())
+  projectId     String   @unique
+  totalScore    Float
+  letterGrade   String   // "A+", "A", "A-", "B+", "B", "Fail"
+  codeQuality   Float    @default(0)
+  documentation Float    @default(0)
+  presentation  Float    @default(0)
+  innovation    Float    @default(0)
+  teamwork      Float    @default(0)
+  feedback      String?
+  evaluatorId   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  evaluator     User     @relation("Evaluator", fields: [evaluatorId], references: [id])
+
+  @@map("rubric_evaluations")
+}
+
+model ProjectFeedback {
+  id         String            @id @default(cuid())
+  projectId  String
+  authorId   String
+  parentId   String?
+  content    String
+  isResolved Boolean           @default(false)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author     User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent     ProjectFeedback?  @relation("ThreadReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies    ProjectFeedback[] @relation("ThreadReplies")
+
+  @@index([projectId])
+  @@map("project_feedbacks")
+}
+
 enum Role {
   STUDENT
   SUPERVISOR
@@ -178,4 +256,130 @@ enum ProjectStatus {
   ARCHIVED
 }
 
+enum IdeaStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
 
+enum SupervisorRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum SubmissionStatus {
+  PENDING
+  RUNNING
+  EVALUATED
+  PASSED
+  FAILED
+}
+
+model LabAssignment {
+  id             String           @id @default(cuid())
+  title          String
+  objective      String           @db.Text
+  description    String           @db.Text
+  subject        String?          @default("General Programming")
+  prerequisites  String?          @db.Text
+  submissionType String           @default("PDF_REPORT") // "PDF_REPORT" | "CODING"
+  manualUrl      String?          // Faculty guide/manual PDF download link
+  manualName     String?          // Original faculty manual file name
+  language       String?          @default("python")
+  starterCode    String?          @db.Text
+  testCases      Json?            // [{ id, input, expectedOutput, isHidden, weight, explanation }]
+  timeLimit      Float            @default(2.0)
+  memoryLimit    Int              @default(128000)
+  totalPoints    Int              @default(100)
+  dueDate        DateTime?
+  startDate      DateTime         @default(now())
+  allowLate      Boolean          @default(false)
+  status         AssignmentStatus @default(PUBLISHED)
+
+  batchId        String
+  batch          Batch            @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  creatorId      String
+  creator        User             @relation("AssignmentCreator", fields: [creatorId], references: [id])
+
+  submissions    LabSubmission[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([batchId])
+  @@index([creatorId])
+  @@map("lab_assignments")
+}
+
+model LabSubmission {
+  id                 String           @id @default(cuid())
+  assignmentId       String
+  assignment         LabAssignment    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  studentId          String
+  student            User             @relation("StudentLabSubmissions", fields: [studentId], references: [id], onDelete: Cascade)
+
+  // Coding Submission Fields (Nullable for PDF reports)
+  code               String?          @db.Text
+  language           String?
+  testsPassed        Int              @default(0)
+  totalTests         Int              @default(0)
+  testResults        Json?            // [{ testCaseId, passed, actualOutput, executionTime, memoryUsed, isHidden, error }]
+  executionTime      Float?
+  memoryUsed         Int?
+
+  // PDF Report Submission Fields
+  fileUrl            String?          // Download/view link for submitted report PDF
+  fileName           String?          // Original submitted file name
+  fileSize           Int?             // File size in bytes
+  studentNotes       String?          @db.Text // Optional notes submitted by student
+
+  status             SubmissionStatus @default(PENDING)
+  score              Float            @default(0)
+  supervisorFeedback String?          @db.Text
+  manualScoreAdjust  Float?
+
+  attemptNumber      Int              @default(1)
+  submittedAt        DateTime         @default(now())
+
+  @@index([assignmentId, studentId])
+  @@map("lab_submissions")
+}
+
+model ProblemStatement {
+  id               String          @id @default(cuid())
+  title            String
+  description      String          @db.Text
+  domain           String          // e.g. "AI/ML", "Web3", "Cybersecurity", "Cloud", "IoT", "FinTech"
+  technologies     String[]
+  difficulty       String          @default("INTERMEDIATE") // BEGINNER | INTERMEDIATE | ADVANCED
+  expectedOutcomes String?         @db.Text
+  prerequisites    String?         @db.Text
+  status           IdeaStatus      @default(PENDING)
+  adminFeedback    String?         @db.Text
+  maxSelections    Int             @default(3)
+
+  creatorId        String
+  creator          User            @relation("IdeaCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  reviewedById     String?
+  reviewedBy       User?           @relation("IdeaReviewer", fields: [reviewedById], references: [id])
+  reviewedAt       DateTime?
+
+  projects         Project[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([status])
+  @@index([creatorId])
+  @@map("problem_statements")
+}

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Rounded squircle background if rendered standalone -->
+  <rect width="100" height="100" rx="22" fill="#0B192C" />
+
+  <g transform="translate(10, 10)">
+    <!-- Graduation Cap / Mortarboard (Top Center) -->
+    <!-- Diamond Mortarboard Top -->
+    <path
+      d="M38 6 L68 18 L38 30 L8 18 Z"
+      fill="#00A3FF"
+    />
+    <!-- Skull Cap Base under diamond -->
+    <path
+      d="M20 23 L20 32 C20 38 56 38 56 32 L56 23 C48 27.5 28 27.5 20 23 Z"
+      fill="#0091E6"
+    />
+    <!-- Tassel hanging from center/top down to the left -->
+    <path
+      d="M38 18 L12 21 L11 36"
+      stroke="#00A3FF"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <!-- Tassel bobble -->
+    <circle cx="11" cy="37" r="2" fill="#00A3FF" />
+    <path d="M9 39 L13 39 L12 43 L10 43 Z" fill="#00A3FF" />
+
+    <!-- Person / Student (Bottom Left) -->
+    <!-- Head -->
+    <circle cx="21" cy="46" r="8" fill="#00A3FF" />
+    <!-- Shoulders / Torso -->
+    <path
+      d="M7 72 C7 58 35 58 35 72 Z"
+      fill="#00A3FF"
+    />
+
+    <!-- Shield (Bottom Right) -->
+    <path
+      d="M39 39 C50 36 67 33 73 43 C73 60 56 71 39 76 C39 63 39 49 39 39 Z"
+      fill="#00A3FF"
+    />
+
+    <!-- Git Branch / Nodes Inside Shield (Dark negative space) -->
+    <!-- Left branch node -->
+    <circle cx="50" cy="48" r="2.8" fill="#0B192C" />
+    <!-- Right branch node -->
+    <circle cx="63" cy="51" r="2.8" fill="#0B192C" />
+    <!-- Bottom trunk / node -->
+    <circle cx="52" cy="67" r="2.5" fill="#0B192C" />
+
+    <!-- Git branch connect lines -->
+    <!-- Left vertical line -->
+    <path
+      d="M50 50.8 L50 59 C50 63 52 64.5 52 64.5"
+      stroke="#0B192C"
+      stroke-width="2.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <!-- Right curved branch line branching from trunk to right node -->
+    <path
+      d="M50 58 C50 55 63 56 63 53.8"
+      stroke="#0B192C"
+      stroke-width="2.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+</svg>

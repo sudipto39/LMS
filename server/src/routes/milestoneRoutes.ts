@@ -8,15 +8,18 @@ import {
   rejectMilestone,
   getMySubmissions,
   startMilestone,
+  updateMilestone,
+  deleteMilestone,
 } from "../controllers/milestoneController.js";
-import { protect, restrictTo } from "../middlewares/authMiddleware.js";
+import { protect, restrictTo, requireVerifiedEmail } from "../middlewares/authMiddleware.js";
 import { upload } from "../middlewares/fileUploadMiddleware.js";
 
 const router = Router();
 
+router.use(protect, requireVerifiedEmail);
+
 router.post(
   "/projects/:projectId/milestones",
-  protect,
   restrictTo("STUDENT"),
   createMilestone
 );
@@ -25,6 +28,20 @@ router.get(
   "/projects/:projectId/milestones",
   protect,
   getProjectMilestones
+);
+
+router.patch(
+  "/milestones/:id",
+  protect,
+  restrictTo("STUDENT", "SUPERVISOR", "ADMIN"),
+  updateMilestone
+);
+
+router.delete(
+  "/milestones/:id",
+  protect,
+  restrictTo("STUDENT", "ADMIN"),
+  deleteMilestone
 );
 
 router.patch(

@@ -4629,7 +4629,7 @@ export function AdminUsers({
         body: JSON.stringify({
           name: form.name,
           email: form.email,
-          password: "Welcome@123",
+          password: (form as any).password || `SecurePass${Math.random().toString(36).slice(-8)}!`,
           role: form.role.toUpperCase(),
           department: form.department,
           universityId: form.universityId,
@@ -4830,7 +4830,6 @@ export function AdminUsers({
       {showModal && (
         <Modal open={showModal} onClose={() => { setShowModal(false); setError(""); resetForm(); }} title="Add New User">
           {userFormFields}
-          <p className={cn("text-xs mt-2", mutedText)}>Default password: Welcome@123</p>
           <div className="flex justify-end gap-2 pt-3">
             <Button variant="secondary" onClick={() => { setShowModal(false); setError(""); resetForm(); }}>Cancel</Button>
             <Button onClick={handleCreateUser} disabled={submitting}>

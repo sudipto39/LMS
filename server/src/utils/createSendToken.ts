@@ -17,28 +17,51 @@ export const signRefreshToken = (id: string): string =>
     expiresIn: env.JWT_REFRESH_EXPIRES_IN,
   } as jwt.SignOptions);
 
+import crypto from "crypto";
+
 // ─── Token verification ───────────────────────────────────────────────────────
 
 export const verifyAccessToken = (token: string) =>
-  jwt.verify(token, env.JWT_ACCESS_SECRET) as { id: string; role: Role };
+  jwt.verify(token, env.JWT_ACCESS_SECRET) as { id: string; role: Role; iat?: number };
 
 export const verifyRefreshToken = (token: string) =>
-  jwt.verify(token, env.JWT_REFRESH_SECRET) as { id: string };
+  jwt.verify(token, env.JWT_REFRESH_SECRET) as { id: string; iat?: number };
+
+// ─── Cryptographic token hashing & timing-safe compare ────────────────────────
+
+export const hashToken = (token: string): string =>
+  crypto.createHash("sha256").update(token).digest("hex");
+
+export const safeTokenCompare = (a: string, b: string): boolean => {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+};
+
+export const matchesRefreshToken = (stored: string, candidate: string): boolean => {
+  const hashedCandidate = hashToken(candidate);
+  if (safeTokenCompare(stored, hashedCandidate)) return true;
+  if (safeTokenCompare(stored, candidate)) return true; // Legacy plaintext fallback
+  return false;
+};
 
 // ─── Refresh token store (Redis + DB fallback) ────────────────────────────────
 
 const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
-/** Store refresh token — tries Redis first, always writes to DB as fallback */
+/** Store refresh token — hashes before persisting in Redis and DB */
 export const storeRefreshToken = async (
   userId: string,
   token: string
 ): Promise<void> => {
+  const hashed = hashToken(token);
   // Always persist in DB so sessions survive Redis restarts
   try {
     await prisma.user.update({
       where: { id: userId },
-      data: { refreshToken: token },
+      data: { refreshToken: hashed },
     });
   } catch (err) {
     console.warn("⚠️ Could not persist refresh token to DB:", err);
@@ -46,7 +69,7 @@ export const storeRefreshToken = async (
 
   // Also try Redis for speed
   try {
-    await redis.setex(`refresh:${userId}`, REFRESH_TTL_SECONDS, token);
+    await redis.setex(`refresh:${userId}`, REFRESH_TTL_SECONDS, hashed);
   } catch {
     // Redis unavailable — DB fallback already done above
   }
@@ -76,7 +99,7 @@ export const getStoredRefreshToken = async (
   }
 };
 
-/** Revoke refresh token — removes from both Redis and DB */
+/** Revoke refresh token — removes from both Redis and DB, records revocation time */
 export const revokeRefreshToken = async (userId: string): Promise<void> => {
   try {
     await redis.del(`refresh:${userId}`);
@@ -88,6 +111,14 @@ export const revokeRefreshToken = async (userId: string): Promise<void> => {
       where: { id: userId },
       data: { refreshToken: null },
     });
+  } catch {
+    // ignore
+  }
+  try {
+    if (redis.status === "ready") {
+      const nowSec = Math.floor(Date.now() / 1000);
+      await redis.setex(`revoked_before:${userId}`, 15 * 60, nowSec.toString());
+    }
   } catch {
     // ignore
   }
@@ -125,7 +156,7 @@ export const createSendToken = async (
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
-    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+    sameSite: "lax",
     maxAge: REFRESH_TTL_SECONDS * 1000,
   });
 

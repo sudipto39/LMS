@@ -16,12 +16,15 @@ const ALLOWED_MIMETYPES = [
   "application/x-zip-compressed",
 ];
 
+const ALLOWED_EXTENSIONS = new Set([".pdf", ".jpg", ".jpeg", ".png", ".zip"]);
+
 const fileFilter = (
   _req: Express.Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ) => {
-  if (ALLOWED_MIMETYPES.includes(file.mimetype)) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ALLOWED_MIMETYPES.includes(file.mimetype) && ALLOWED_EXTENSIONS.has(ext)) {
     cb(null, true);
   } else {
     cb(new AppError(`Invalid file type: ${file.mimetype}. Only PDF, JPG, PNG, ZIP are allowed.`, 400));

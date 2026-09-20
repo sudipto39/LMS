@@ -23,12 +23,25 @@ async function verifyRepoAccess(
 
   if (isDirectOwner) return;
 
-  // Otherwise, find the project in the database
+  const cleanOwner = owner.trim().toLowerCase();
+  const cleanRepo = repo.trim().toLowerCase();
+
+  // Otherwise, find the project in the database strictly scoped to the repository owner
   const project = await prisma.project.findFirst({
     where: {
-      OR: [
-        { repoName: repo },
-        { repoUrl: { contains: `${owner}/${repo}` } },
+      AND: [
+        {
+          OR: [
+            { owner: { giteaUsername: { equals: cleanOwner, mode: "insensitive" } } },
+            { repoUrl: { contains: `/${cleanOwner}/`, mode: "insensitive" } },
+          ],
+        },
+        {
+          OR: [
+            { repoName: { equals: cleanRepo, mode: "insensitive" } },
+            { repoUrl: { contains: `/${cleanRepo}`, mode: "insensitive" } },
+          ],
+        },
       ],
     },
     include: {
@@ -93,7 +106,8 @@ export const listCommits = catchAsync(
     const repo = requireParam(req.params["repo"], "repo");
     await verifyRepoAccess(req, owner, repo, false);
 
-    const limit = Number(req.query["limit"]) || 20;
+    const rawLimit = Number(req.query["limit"]) || 20;
+    const limit = Math.max(1, Math.min(rawLimit, 100));
     const data = await giteaService.getCommits(owner, repo, limit);
     res.status(200).json({ status: "success", data });
   }
@@ -116,7 +130,9 @@ export const getRepoCommits = catchAsync(
     const repo = requireParam(req.params["repo"], "repo");
     await verifyRepoAccess(req, owner, repo, false);
 
-    const commits = await giteaService.getCommits(owner, repo);
+    const rawLimit = Number(req.query["limit"]) || 20;
+    const limit = Math.max(1, Math.min(rawLimit, 100));
+    const commits = await giteaService.getCommits(owner, repo, limit);
     res.status(200).json({ status: "success", data: commits });
   }
 );
@@ -138,8 +154,6 @@ export const updateFile = catchAsync(
     const owner = requireParam(req.params["owner"], "owner");
     const repo = requireParam(req.params["repo"], "repo");
 
-    console.log(`📥 updateFile request: owner=${owner}, repo=${repo}, user=${req.user?.giteaUsername || req.user?.id}`);
-
     await verifyRepoAccess(req, owner, repo, true);
 
     const { filepath, content, message } = req.body as {
@@ -151,7 +165,9 @@ export const updateFile = catchAsync(
       throw new BadRequestError("Filepath and content are required");
     }
 
-    console.log(`📤 Pushing file "${filepath}" to ${owner}/${repo}`);
+    if (filepath.includes("..") || filepath.startsWith("/") || filepath.startsWith("\\")) {
+      throw new BadRequestError("Invalid or unsafe file path");
+    }
 
     const data = await giteaService.updateRepoFile(
       owner,

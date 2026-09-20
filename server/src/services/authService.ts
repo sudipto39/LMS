@@ -13,10 +13,16 @@ import {
 import type { SignUpInput } from "../schemas/signUpSchema.js";
 import type { SignInInput } from "../schemas/signInSchema.js";
 import { env } from "../config/env.js";
+import { revokeRefreshToken } from "../utils/createSendToken.js";
 
 const SALT_ROUNDS = 12;
 const OTP_TTL_SECONDS = 10 * 60;
 const MAX_OTP_ATTEMPTS = 5;
+
+// In-memory fallback if Redis is unreachable under load/network blip
+const fallbackAttempts = new Map<string, { count: number; expiresAt: number }>();
+const fallbackOtps = new Map<string, { code: string; expiresAt: number }>();
+const fallbackLoginAttempts = new Map<string, { count: number; expiresAt: number; lockedUntil?: number }>();
 
 // ─── OTP helpers (CSPRNG) ─────────────────────────────────────────────────────
 
@@ -24,26 +30,42 @@ const generateOTP = (): string =>
   crypto.randomInt(100000, 1000000).toString();
 
 const storeOTP = async (key: string, code: string): Promise<void> => {
-  try {
-    await redis.setex(key, OTP_TTL_SECONDS, code);
-  } catch {
-    console.warn("⚠️ Could not store OTP in Redis — Redis unavailable");
+  fallbackOtps.set(key, { code, expiresAt: Date.now() + OTP_TTL_SECONDS * 1000 });
+  if (redis.status === "ready") {
+    try {
+      await redis.setex(key, OTP_TTL_SECONDS, code);
+    } catch {
+      console.warn("⚠️ Could not store OTP in Redis — fallback in-memory cache active");
+    }
   }
 };
 
 const getOTP = async (key: string): Promise<string | null> => {
-  try {
-    return await redis.get(key);
-  } catch {
+  if (redis.status === "ready") {
+    try {
+      const code = await redis.get(key);
+      if (code) return code;
+    } catch {
+      // fallback to in-memory
+    }
+  }
+  const item = fallbackOtps.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expiresAt) {
+    fallbackOtps.delete(key);
     return null;
   }
+  return item.code;
 };
 
 const deleteOTP = async (key: string): Promise<void> => {
-  try {
-    await redis.del(key);
-  } catch {
-    // ignore
+  fallbackOtps.delete(key);
+  if (redis.status === "ready") {
+    try {
+      await redis.del(key);
+    } catch {
+      // ignore
+    }
   }
 };
 
@@ -52,21 +74,36 @@ const checkAndIncrementAttempts = async (
   email: string
 ): Promise<void> => {
   const attemptKey = `attempts:${keyPrefix}:${email}`;
+  let attempts = 0;
   try {
-    const attempts = await redis.incr(attemptKey);
+    attempts = await redis.incr(attemptKey);
     if (attempts === 1) {
       await redis.expire(attemptKey, OTP_TTL_SECONDS);
     }
-    if (attempts >= MAX_OTP_ATTEMPTS) {
-      await deleteOTP(`${keyPrefix}:${email}`);
-      await redis.del(attemptKey);
-      throw new BadRequestError(
-        "Maximum attempts exceeded. Please request a new code."
-      );
+  } catch {
+    // Redis unavailable: fallback in-memory rate limiting
+    const now = Date.now();
+    const current = fallbackAttempts.get(attemptKey);
+    if (!current || current.expiresAt < now) {
+      fallbackAttempts.set(attemptKey, { count: 1, expiresAt: now + OTP_TTL_SECONDS * 1000 });
+      attempts = 1;
+    } else {
+      current.count += 1;
+      attempts = current.count;
     }
-  } catch (err) {
-    if (err instanceof BadRequestError) throw err;
-    // continue if Redis is offline
+  }
+
+  if (attempts >= MAX_OTP_ATTEMPTS) {
+    await deleteOTP(`${keyPrefix}:${email}`);
+    try {
+      await redis.del(attemptKey);
+    } catch {
+      // ignore
+    }
+    fallbackAttempts.delete(attemptKey);
+    throw new BadRequestError(
+      "Maximum attempts exceeded. Please request a new code."
+    );
   }
 };
 
@@ -74,10 +111,67 @@ const clearAttempts = async (
   keyPrefix: string,
   email: string
 ): Promise<void> => {
+  fallbackAttempts.delete(`attempts:${keyPrefix}:${email}`);
   try {
     await redis.del(`attempts:${keyPrefix}:${email}`);
   } catch {
     // ignore
+  }
+};
+
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_SECONDS = 15 * 60; // 15 minutes
+
+const isAccountLocked = async (email: string): Promise<boolean> => {
+  const mem = fallbackLoginAttempts.get(email);
+  if (mem?.lockedUntil && mem.lockedUntil > Date.now()) {
+    return true;
+  }
+  if (redis.status !== "ready") return false;
+  try {
+    const locked = await redis.get(`lockout:${email}`);
+    return locked !== null;
+  } catch {
+    return false;
+  }
+};
+
+const handleFailedLogin = async (email: string): Promise<void> => {
+  const now = Date.now();
+  const mem = fallbackLoginAttempts.get(email);
+  if (!mem || mem.expiresAt < now) {
+    fallbackLoginAttempts.set(email, { count: 1, expiresAt: now + LOCKOUT_DURATION_SECONDS * 1000 });
+  } else {
+    mem.count += 1;
+    if (mem.count >= MAX_LOGIN_ATTEMPTS) {
+      mem.lockedUntil = now + LOCKOUT_DURATION_SECONDS * 1000;
+    }
+  }
+
+  if (redis.status !== "ready") return;
+  const attemptsKey = `login_attempts:${email}`;
+  try {
+    const attempts = await redis.incr(attemptsKey);
+    if (attempts === 1) {
+      await redis.expire(attemptsKey, LOCKOUT_DURATION_SECONDS);
+    }
+    if (attempts >= MAX_LOGIN_ATTEMPTS) {
+      await redis.setex(`lockout:${email}`, LOCKOUT_DURATION_SECONDS, "locked");
+      await redis.del(attemptsKey);
+    }
+  } catch {
+    // continue if Redis is offline
+  }
+};
+
+const handleSuccessfulLogin = async (email: string): Promise<void> => {
+  fallbackLoginAttempts.delete(email);
+  if (redis.status !== "ready") return;
+  try {
+    await redis.del(`login_attempts:${email}`);
+    await redis.del(`lockout:${email}`);
+  } catch {
+    // continue if Redis is offline
   }
 };
 
@@ -214,7 +308,12 @@ export const authService = {
         "Verification code expired or invalid. Please request a new one"
       );
     }
-    if (storedOTP !== code) {
+    const isMatch =
+      typeof code === "string" &&
+      storedOTP.length === code.length &&
+      crypto.timingSafeEqual(Buffer.from(storedOTP), Buffer.from(code));
+
+    if (!isMatch) {
       await checkAndIncrementAttempts("otp", email);
       throw new BadRequestError("Invalid verification code");
     }
@@ -242,8 +341,16 @@ export const authService = {
   },
 
   async loginUser(data: SignInInput) {
+    const cleanEmail = data.email.trim().toLowerCase();
+
+    if (await isAccountLocked(cleanEmail)) {
+      throw new UnauthorizedError(
+        "Account is temporarily locked due to multiple failed login attempts. Please try again in 15 minutes."
+      );
+    }
+
     const user = await prisma.user.findUnique({
-      where: { email: data.email },
+      where: { email: cleanEmail },
       select: {
         id: true,
         name: true,
@@ -259,10 +366,14 @@ export const authService = {
       },
     });
 
-    if (!user) throw new UnauthorizedError("Invalid email or password");
+    if (!user) {
+      await handleFailedLogin(cleanEmail);
+      throw new UnauthorizedError("Invalid email or password");
+    }
 
     const isPasswordValid = await bcrypt.compare(data.password, user.password);
     if (!isPasswordValid) {
+      await handleFailedLogin(cleanEmail);
       throw new UnauthorizedError("Invalid email or password");
     }
 
@@ -271,6 +382,8 @@ export const authService = {
         "Please verify your email address before logging in"
       );
     }
+
+    await handleSuccessfulLogin(cleanEmail);
 
     const { password: _, ...safeUser } = user;
     return safeUser;
@@ -311,17 +424,31 @@ export const authService = {
         "Reset code expired or invalid. Please request a new one"
       );
     }
-    if (storedOTP !== code) {
+    const isMatch =
+      typeof code === "string" &&
+      storedOTP.length === code.length &&
+      crypto.timingSafeEqual(Buffer.from(storedOTP), Buffer.from(code));
+
+    if (!isMatch) {
       await checkAndIncrementAttempts("reset", email);
       throw new BadRequestError("Invalid reset code");
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
-    await prisma.user.update({
+    const user = await prisma.user.update({
       where: { email },
       data: { password: hashedPassword },
+      select: { id: true, giteaUsername: true },
     });
+
+    if (user?.id) {
+      await revokeRefreshToken(user.id);
+    }
+
+    if (user?.giteaUsername) {
+      await giteaService.updateUserPassword(user.giteaUsername, newPassword);
+    }
 
     await deleteOTP(`reset:${email}`);
     await clearAttempts("reset", email);

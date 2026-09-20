@@ -16,18 +16,19 @@ jobs:
         working-directory: server
     env:
       # Real secrets take priority; CI-safe dummy fallbacks for fork/PR runs
-      DATABASE_URL: ${{ secrets.DATABASE_URL != '' && secrets.DATABASE_URL || 'postgresql://user:pass@ep-dummy.neon.tech/neondb?sslmode=require' }}
+      STORAGE_TYPE: local
+      DATABASE_URL: ${{ secrets.DATABASE_URL != '' && secrets.DATABASE_URL || 'postgresql://localhost:5432/test_db' }}
       JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET != '' && secrets.JWT_ACCESS_SECRET || 'test-access-secret-min-32-characters-long' }}
       JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET != '' && secrets.JWT_REFRESH_SECRET || 'test-refresh-secret-min-32-characters-long' }}
       CLIENT_URL: ${{ secrets.CLIENT_URL != '' && secrets.CLIENT_URL || 'http://localhost:5173' }}
       GITEA_BASE_URL: ${{ secrets.GITEA_BASE_URL != '' && secrets.GITEA_BASE_URL || 'http://localhost:3000/api/v1' }}
-      GITEA_ADMIN_TOKEN: ${{ secrets.GITEA_ADMIN_TOKEN != '' && secrets.GITEA_ADMIN_TOKEN || 'dummy-token' }}
-      GITEA_WEBHOOK_SECRET: ${{ secrets.GITEA_WEBHOOK_SECRET != '' && secrets.GITEA_WEBHOOK_SECRET || 'dummy-webhook-secret' }}
-      # AWS - dummy values so S3Client initializes without crashing during tests
+      GITEA_ADMIN_TOKEN: ${{ secrets.GITEA_ADMIN_TOKEN != '' && secrets.GITEA_ADMIN_TOKEN || 'test-token' }}
+      GITEA_WEBHOOK_SECRET: ${{ secrets.GITEA_WEBHOOK_SECRET != '' && secrets.GITEA_WEBHOOK_SECRET || 'test-webhook-secret' }}
+      # AWS - safe mock values for unit/integration tests
       AWS_REGION: ${{ secrets.AWS_REGION != '' && secrets.AWS_REGION || 'us-east-1' }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_ACCESS_KEY_ID || 'AKIADUMMYACCESSKEYID' }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_SECRET_ACCESS_KEY || 'dummySecretAccessKey1234567890123456789' }}
-      AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME != '' && secrets.AWS_S3_BUCKET_NAME || 'dummy-bucket' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_ACCESS_KEY_ID || 'test-aws-key-id' }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_SECRET_ACCESS_KEY || 'test-aws-secret-access-key' }}
+      AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME != '' && secrets.AWS_S3_BUCKET_NAME || 'test-bucket' }}
 
     steps:
       - name: Checkout repository

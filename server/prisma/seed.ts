@@ -91,7 +91,7 @@
 
 //   // Create admin user
 //   const bcrypt = await import("bcrypt");
-//   const hashedPassword = await bcrypt.hash("Admin@1234", 12);
+//   const hashedPassword = await bcrypt.hash(process.env["ADMIN_SEED_PASSWORD"] || "ChangeMeSecurely!", 12);
 
 //   const admin = await prisma.user.upsert({
 //     where: { email: "admin@giteaforge.com" },
@@ -223,7 +223,11 @@ async function main() {
   }
 
   // ─── Admin user ─────────────────────────────────────────────────────────────
-  const adminPassword = await bcrypt.hash("Admin@1234", 12);
+  const rawAdminPassword =
+    process.env["ADMIN_SEED_PASSWORD"] ||
+    process.env["SEED_DEFAULT_PASSWORD"] ||
+    "AdminPass" + Date.now();
+  const adminPassword = await bcrypt.hash(rawAdminPassword, 12);
   const admin = await prisma.user.upsert({
     where: { email: "admin@giteaforge.com" },
     update: {},
@@ -248,7 +252,7 @@ async function main() {
   console.log("\nBatch names:");
   createdBatches.forEach((b) => console.log(`  • ${b.name}`));
   console.log("─────────────────────────────────────────────────────────────");
-  console.log("📧 admin@giteaforge.com  🔑 Admin@1234");
+  console.log("📧 admin@giteaforge.com account provisioned");
 }
 
 main()

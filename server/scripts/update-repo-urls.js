@@ -16,14 +16,22 @@ async function updateRepoUrls() {
   const projects = await prisma.project.findMany();
   console.log(`Found ${projects.length} projects in database.`);
 
+  const oldUrl = process.env.OLD_GITEA_URL;
+  const newUrl = process.env.NEW_GITEA_URL || process.env.GITEA_BASE_URL?.replace("/api/v1", "");
+
+  if (!oldUrl || !newUrl) {
+    console.log("ℹ️  Skipping repo URL updates: OLD_GITEA_URL and NEW_GITEA_URL must be specified in environment.");
+    return;
+  }
+
   for (const project of projects) {
-    if (project.repoUrl && project.repoUrl.includes("13.206.9.18")) {
-      const updatedUrl = project.repoUrl.replace("https://gitea.13.206.9.18.nip.io", "http://34.93.254.1:3000");
+    if (project.repoUrl && project.repoUrl.includes(oldUrl)) {
+      const updatedUrl = project.repoUrl.replace(oldUrl, newUrl);
       await prisma.project.update({
         where: { id: project.id },
         data: { repoUrl: updatedUrl },
       });
-      console.log(`? Updated project "${project.title}": ${project.repoUrl} -> ${updatedUrl}`);
+      console.log(`✅ Updated project "${project.title}": ${project.repoUrl} -> ${updatedUrl}`);
     }
   }
 
