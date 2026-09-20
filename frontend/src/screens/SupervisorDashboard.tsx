@@ -12,8 +12,6 @@ import {
   Clock,
   Paperclip,
   Sparkles,
-  GitCommitHorizontal,
-  MessageCircle,
 } from "lucide-react";
 import { Card, Card2, Btn, Pill } from "../components/common/UIPrimitives";
 import { projectsApi, activitiesApi, milestonesApi } from "../api";

@@ -4,7 +4,6 @@ import {
   Code2,
   Folder,
   FolderOpen,
-  FolderPlus,
   Terminal,
   Globe,
   ExternalLink,
@@ -24,12 +23,10 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronRight,
-  Shield,
-  Lock,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { Card, Pill } from "../../../components/common/UIPrimitives";
+import { Card } from "../../../components/common/UIPrimitives";
 import { executeApi, projectsApi } from "../../../api";
 import { useTheme } from "../../../context/ThemeContext";
 import SandboxNewFileModal from "../modals/SandboxNewFileModal";
@@ -448,7 +445,7 @@ const clearSandboxDraft = (id: string): void => {
   }
 };
 
-const getFileIcon = (name: string, isIgnored: boolean) => {
+const getFileIcon = (name: string, _isIgnored?: boolean) => {
   const lower = name.toLowerCase();
   if (lower === ".env" || lower.startsWith(".env.")) {
     return <span title="Environment variables (Protected)" className="text-amber-400 font-bold text-[11px]">🔒</span>;

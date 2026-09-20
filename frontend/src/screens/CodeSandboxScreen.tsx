@@ -271,8 +271,8 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
 
   useEffect(() => {
     if (labAssignment) {
-      const isPolyglot = labAssignment.language === "all" || labAssignment.language === "any";
-      const targetLangId = labAssignment.mySubmission?.language?.toLowerCase() || (isPolyglot ? "python" : labAssignment.language.toLowerCase());
+      const isPolyglot = !labAssignment.language || labAssignment.language === "all" || labAssignment.language === "any";
+      const targetLangId = labAssignment.mySubmission?.language?.toLowerCase() || (isPolyglot ? "python" : (labAssignment.language || "python").toLowerCase());
       const matchLang = sandboxLanguages.find((l) => l.id === targetLangId) || sandboxLanguages[0];
       if (matchLang) {
         setSandboxLang(matchLang.id);

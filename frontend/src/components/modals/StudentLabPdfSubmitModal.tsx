@@ -5,15 +5,14 @@ import {
   Upload,
   Download,
   CheckCircle2,
-  Clock,
-  AlertCircle,
   FileCheck,
   Target,
   Sparkles,
   ExternalLink,
   RotateCcw,
+  Clock,
 } from "lucide-react";
-import { Card, Btn, Btn2, Pill } from "../common/UIPrimitives";
+import { Card, Btn, Btn2 } from "../common/UIPrimitives";
 import { labsApi } from "../../api";
 import { useToast } from "../../context/ToastContext";
 import type { LabAssignment, LabSubmission } from "../../types";

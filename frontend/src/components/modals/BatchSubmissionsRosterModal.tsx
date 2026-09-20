@@ -11,7 +11,6 @@ import {
   Sparkles,
   FileText,
   Download,
-  ExternalLink,
 } from "lucide-react";
 import { Card, Btn, Btn2, Pill } from "../common/UIPrimitives";
 import { labsApi } from "../../api";
@@ -120,7 +119,7 @@ const getDemoRoster = (assignmentId: string): LabRosterResponse => {
           fileName: "Lab1_BST_Complexity_Analysis.pdf",
           fileSize: 1048576,
           studentNotes: "Comprehensive asymptotic analysis of binary search trees with experimental benchmarks.",
-          status: "SUBMITTED",
+          status: "EVALUATED",
           score: 85,
           manualScoreAdjust: 0,
           attemptNumber: 1,

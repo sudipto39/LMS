@@ -1092,8 +1092,8 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
                       ) : (
                         <div className="flex items-center gap-3 text-[11px] font-mono" style={{ color: "var(--t2)" }}>
                           <span>🧪 {rawTests.length} Test Cases</span>
-                          <span>⏱ {assignment.timeLimit}s Timeout</span>
-                          <span>💾 {Math.round(assignment.memoryLimit / 1024)}MB RAM</span>
+                          <span>⏱ {assignment.timeLimit || 2}s Timeout</span>
+                          <span>💾 {Math.round((assignment.memoryLimit || 262144) / 1024)}MB RAM</span>
                         </div>
                       )}
 
