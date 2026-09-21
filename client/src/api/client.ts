@@ -98,12 +98,19 @@ client.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        const fallbackRt = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("giteaforge_rt") : null;
         const res = await axios.post(
           `${env.API_BASE_URL}/v1/auth/refresh-token`,
-          {},
-          { withCredentials: true }
+          fallbackRt ? { refreshToken: fallbackRt } : {},
+          {
+            headers: fallbackRt ? { "X-Refresh-Token": fallbackRt } : undefined,
+            withCredentials: true,
+          }
         );
         const newToken = res.data.accessToken as string;
+        if (res.data.refreshToken && typeof sessionStorage !== "undefined") {
+          sessionStorage.setItem("giteaforge_rt", res.data.refreshToken);
+        }
         tokenStore.set(newToken);
         processQueue(newToken);
         if (original?.headers) {
@@ -112,6 +119,9 @@ client.interceptors.response.use(
         return client(original);
       } catch {
         tokenStore.clear();
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.removeItem("giteaforge_rt");
+        }
         refreshQueue = [];
         window.dispatchEvent(new CustomEvent("auth:logout"));
         return Promise.reject(error);

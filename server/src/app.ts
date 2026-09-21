@@ -148,7 +148,7 @@ app.get("/api/v1/auth/csrf", (_req, res) => {
   res.cookie("csrfToken", csrfToken, {
     httpOnly: false,
     secure: env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     path: "/",
   });
   res.status(200).json({ status: "success", csrfToken });
@@ -204,7 +204,7 @@ app.use((req, res, next) => {
     res.cookie("csrfToken", freshCsrf, {
       httpOnly: false,
       secure: env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
       path: "/",
     });
     res.setHeader("X-CSRF-Token", freshCsrf);

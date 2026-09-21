@@ -42,6 +42,7 @@ export interface AuthResponse {
   status: "success" | "fail" | "error";
   message?: string;
   accessToken?: string;
+  refreshToken?: string;
   data?: {
     user?: User;
     userId?: string;

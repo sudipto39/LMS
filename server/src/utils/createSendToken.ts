@@ -156,7 +156,7 @@ export const createSendToken = async (
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: REFRESH_TTL_SECONDS * 1000,
   });
 
@@ -165,7 +165,7 @@ export const createSendToken = async (
   res.cookie("csrfToken", csrfToken, {
     httpOnly: false,
     secure: env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     path: "/",
     maxAge: REFRESH_TTL_SECONDS * 1000,
   });
@@ -174,6 +174,7 @@ export const createSendToken = async (
   res.status(statusCode).json({
     status: "success",
     accessToken,
+    refreshToken,
     data: { user },
   });
 };

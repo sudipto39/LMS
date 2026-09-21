@@ -50,15 +50,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        // Attempt silent refresh via HTTP-only cookie
+        const fallbackRt = sessionStorage.getItem("giteaforge_rt");
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (fallbackRt) {
+          headers["X-Refresh-Token"] = fallbackRt;
+        }
+
+        // Attempt silent refresh via HTTP-only cookie or fallback token
         const res = await fetch(`${env.API_BASE_URL}/v1/auth/refresh-token`, {
           method: "POST",
+          headers,
+          body: fallbackRt ? JSON.stringify({ refreshToken: fallbackRt }) : JSON.stringify({}),
           credentials: "include",
         });
 
         if (res.ok) {
           const json = await res.json();
           const token = json.accessToken as string;
+          if (json.refreshToken) {
+            sessionStorage.setItem("giteaforge_rt", json.refreshToken);
+          }
           if (token) {
             tokenStore.set(token);
             const userRes = await fetch(`${env.API_BASE_URL}/v1/users/me`, {
@@ -91,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         throw new Error("No active server session");
       } catch {
+        sessionStorage.removeItem("giteaforge_rt");
         setState({
           user: null,
           accessToken: null,
@@ -106,7 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for custom logout events from API client
     const handleRemoteLogout = () => {
       tokenStore.clear();
+      sessionStorage.removeItem("giteaforge_rt");
       sessionStorage.removeItem("giteaforge_demo_auth");
+      sessionStorage.removeItem("giteaforge_role");
       setState({
         user: null,
         accessToken: null,
@@ -132,6 +148,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const res = await authApi.login(payload);
         if (res.accessToken) {
           tokenStore.set(res.accessToken);
+          if (res.refreshToken) {
+            sessionStorage.setItem("giteaforge_rt", res.refreshToken);
+          }
           let userObj = res.data?.user;
           if (!userObj) {
             const meRes = await authApi.getMe();
@@ -229,6 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore
     }
     tokenStore.clear();
+    sessionStorage.removeItem("giteaforge_rt");
     sessionStorage.removeItem("giteaforge_demo_auth");
     sessionStorage.removeItem("giteaforge_role");
     setState({

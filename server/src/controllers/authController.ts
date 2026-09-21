@@ -54,7 +54,7 @@ export const login = catchAsync(async (req: Request, res: Response) => {
 
 export const refreshToken = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
-    const token = req.cookies?.refreshToken as string | undefined;
+    const token = (req.cookies?.refreshToken || req.body?.refreshToken || req.headers["x-refresh-token"]) as string | undefined;
     if (!token) {
       next(new AppError("No refresh token provided", 401));
       return;
@@ -94,11 +94,11 @@ export const refreshToken = catchAsync(
     res.cookie("refreshToken", newRefreshToken, {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    res.status(200).json({ status: "success", accessToken });
+    res.status(200).json({ status: "success", accessToken, refreshToken: newRefreshToken });
   }
 );
 
@@ -124,7 +124,7 @@ export const logout = catchAsync(async (req: Request, res: Response) => {
   res.cookie("refreshToken", "", {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     expires: new Date(0),
   });
 
