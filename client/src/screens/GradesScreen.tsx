@@ -160,7 +160,7 @@ export const GradesScreen: React.FC<GradesScreenProps> = ({
   const handleBulkSave = async () => {
     const code = metadata?.courseCode || selectedCourseCode;
     if (!code) {
-      showToast("No course selected to save evaluations", "error");
+      showToast("No course selected to save evaluations");
       return;
     }
     setSaving(true);
