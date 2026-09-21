@@ -218,12 +218,16 @@ export const getLabAssignments = catchAsync(
           ? studentSubmissions[0]
           : null;
 
+      // Count unique students who have submitted (not total submission attempts)
+      const uniqueSubmitterIds = new Set(assignment.submissions.map((s) => s.studentId));
+      const submissionCount = uniqueSubmitterIds.size;
+
       return {
         ...assignment,
         testCases: safeTestCases,
         totalTestCount,
         publicTestCount,
-        submissionCount: assignment.submissions.length,
+        submissionCount,
         mySubmission,
       };
     });

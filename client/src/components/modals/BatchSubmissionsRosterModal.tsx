@@ -15,7 +15,6 @@ import {
   Minimize2,
   ExternalLink,
   BookOpen,
-  Award,
   HelpCircle,
 } from "lucide-react";
 import { Card, Btn, Btn2, Pill } from "../common/UIPrimitives";
@@ -158,14 +157,13 @@ const getDemoRoster = (assignmentId: string): LabRosterResponse => {
           fileSize: 1048576,
           studentNotes: "Comprehensive asymptotic analysis of binary search trees with experimental benchmarks.",
           status: "EVALUATED",
-          score: 85,
+          score: 88,
           notebookScore: 1.8,
           performanceScore: 1.7,
-          vivaScore: 8.5,
           manualScoreAdjust: 0,
           attemptNumber: 1,
           submittedAt: new Date(Date.now() - 3600000 * 26).toISOString(),
-          supervisorFeedback: "Detailed algorithmic proofs and good handling of tree balancing questions during viva.",
+          supervisorFeedback: "Detailed algorithmic proofs and clean handling of tree balancing operations.",
         },
       },
       {
@@ -201,10 +199,9 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isPdfExpanded, setIsPdfExpanded] = useState(false);
 
-  // University Excel Marks Distribution (Sheet 1: PRACTICAL)
+  // University Excel Marks Distribution (Sheet 1: PRACTICAL - Note Book: 2, Performance: 2)
   const [notebookScore, setNotebookScore] = useState<number | "">("");
   const [performanceScore, setPerformanceScore] = useState<number | "">("");
-  const [vivaScore, setVivaScore] = useState<number | "">("");
   const [manualScoreOverride, setManualScoreOverride] = useState<number | "">("");
   const [isManualOverride, setIsManualOverride] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -312,39 +309,35 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
       const sub = item.latestSubmission;
       setNotebookScore(typeof sub.notebookScore === "number" ? sub.notebookScore : "");
       setPerformanceScore(typeof sub.performanceScore === "number" ? sub.performanceScore : "");
-      setVivaScore(typeof sub.vivaScore === "number" ? sub.vivaScore : "");
       setManualScoreOverride(typeof sub.score === "number" ? sub.score : "");
       setIsManualOverride(false);
       setFeedback(sub.supervisorFeedback || "");
     } else {
       setNotebookScore("");
       setPerformanceScore("");
-      setVivaScore("");
       setManualScoreOverride("");
       setIsManualOverride(false);
       setFeedback("");
     }
   };
 
-  // Calculations for University Practical Distribution
+  // Calculations for University Practical Experiment Distribution (Note Book 2 + Performance 2 = 4 pts)
   const nbVal = Number(notebookScore) || 0;
   const perfVal = Number(performanceScore) || 0;
-  const vivaVal = Number(vivaScore) || 0;
 
-  // Experiment Subtotal: Max 4 pts (Note Book 2 + Performance 2)
+  // Experiment Subtotal: Max 4.0 pts (Note Book 2.0 + Performance 2.0)
   const expSubtotal = Math.min(4, Math.round((nbVal + perfVal) * 10) / 10);
-  // Total Practical Session: Max 14 pts (Experiment 4 + Viva Voce 10)
-  const practicalSessionTotal = Math.min(14, Math.round((expSubtotal + vivaVal) * 10) / 10);
 
   // Scaled Mark out of Assignment Total Points (default 100 pts)
   const totalAssignmentPoints = data?.assignment.totalPoints || 100;
-  const computedRubricScore = vivaScore !== ""
-    ? Math.min(totalAssignmentPoints, Math.round((practicalSessionTotal / 14) * totalAssignmentPoints))
-    : Math.min(totalAssignmentPoints, Math.round((expSubtotal / 4) * totalAssignmentPoints));
+  const computedRubricScore = Math.min(
+    totalAssignmentPoints,
+    Math.round((expSubtotal / 4) * totalAssignmentPoints)
+  );
 
   const effectiveFinalScore = isManualOverride && manualScoreOverride !== ""
     ? Number(manualScoreOverride)
-    : (notebookScore !== "" || performanceScore !== "" || vivaScore !== ""
+    : (notebookScore !== "" || performanceScore !== ""
         ? computedRubricScore
         : (selectedItem?.latestSubmission?.score ?? 0));
 
@@ -400,20 +393,18 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
 
       const nbNum = notebookScore !== "" ? Number(notebookScore) : undefined;
       const perfNum = performanceScore !== "" ? Number(performanceScore) : undefined;
-      const vivaNum = vivaScore !== "" ? Number(vivaScore) : undefined;
 
       const payload = {
         score: effectiveFinalScore,
         notebookScore: nbNum,
         performanceScore: perfNum,
-        vivaScore: vivaNum,
         supervisorFeedback: feedback.trim() || undefined,
       };
 
       const res = await labsApi.gradeSubmission(submissionId, payload);
 
       if (res?.data) {
-        showToast(`Grade saved! (Note Book: ${nbNum ?? 0}/2, Perf: ${perfNum ?? 0}/2, Viva: ${vivaNum ?? 0}/10) ✅`);
+        showToast(`Grade saved! (Note Book: ${nbNum ?? 0}/2, Perf: ${perfNum ?? 0}/2, Total: ${((nbNum ?? 0) + (perfNum ?? 0)).toFixed(1)}/4) ✅`);
         setData((prev) => {
           if (!prev) return null;
           return {
@@ -427,7 +418,6 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                       score: effectiveFinalScore,
                       notebookScore: nbNum,
                       performanceScore: perfNum,
-                      vivaScore: vivaNum,
                       supervisorFeedback: feedback.trim(),
                     },
                   }
@@ -440,8 +430,7 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
       if (selectedItem.latestSubmission.id.startsWith("sub_") || assignmentId.startsWith("demo_")) {
         const nbNum = notebookScore !== "" ? Number(notebookScore) : undefined;
         const perfNum = performanceScore !== "" ? Number(performanceScore) : undefined;
-        const vivaNum = vivaScore !== "" ? Number(vivaScore) : undefined;
-        showToast(`Grade saved locally! (Note Book: ${nbNum ?? 0}/2, Perf: ${perfNum ?? 0}/2, Viva: ${vivaNum ?? 0}/10) ✅`);
+        showToast(`Grade saved locally! (Note Book: ${nbNum ?? 0}/2, Perf: ${perfNum ?? 0}/2, Total: ${((nbNum ?? 0) + (perfNum ?? 0)).toFixed(1)}/4) ✅`);
         setData((prev) => {
           if (!prev) return null;
           return {
@@ -455,7 +444,6 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                       score: effectiveFinalScore,
                       notebookScore: nbNum,
                       performanceScore: perfNum,
-                      vivaScore: vivaNum,
                       supervisorFeedback: feedback.trim(),
                     },
                   }
@@ -559,7 +547,6 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
       const sub = r.latestSubmission;
       const nb = typeof sub?.notebookScore === "number" ? sub.notebookScore : 0;
       const perf = typeof sub?.performanceScore === "number" ? sub.performanceScore : 0;
-      const viva = typeof sub?.vivaScore === "number" ? sub.vivaScore : 0;
 
       const exps = Array.from({ length: 10 }, (_, idx) => {
         const expIndex = idx + 1;
@@ -579,7 +566,7 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
         exps.reduce((sum, e) => sum + (Number(e.notebook) || 0) + (Number(e.performance) || 0), 0)
       );
 
-      const intViva = viva > 0 ? viva : (existing?.internalViva ?? 0);
+      const intViva = existing?.internalViva ?? 0;
       const totalInternal = Math.min(50, expTotal + intViva);
       const endSemLab = existing?.endSemLabTest ?? 0;
       const endSemViva = existing?.endSemViva ?? 0;
@@ -665,7 +652,7 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                 {data?.assignment.title || "Batch Submissions Roster"}
               </h2>
               <p className="text-[12px]" style={{ color: "var(--t2)" }}>
-                Batch: <span className="font-semibold text-[#06b6d4]">{data?.assignment.batch.name || "Target Batch"}</span> | Total Marks: {data?.assignment.totalPoints || 100} pts | <span className="text-emerald-500 font-medium">Excel Scheme: Notebook (2) + Performance (2) + Viva (10)</span>
+                Batch: <span className="font-semibold text-[#06b6d4]">{data?.assignment.batch.name || "Target Batch"}</span> | Total Marks: {data?.assignment.totalPoints || 100} pts | <span className="text-emerald-500 font-medium">Excel Scheme: Note Book (2) + Performance (2) = 4.0</span>
               </p>
             </div>
           </div>
@@ -778,7 +765,7 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                             </div>
                             <div className="text-[10px] font-mono" style={{ color: "var(--t3)" }}>
                               {typeof sub.notebookScore === "number" && typeof sub.performanceScore === "number"
-                                ? `NB:${sub.notebookScore} P:${sub.performanceScore} V:${sub.vivaScore ?? 0}`
+                                ? `NB:${sub.notebookScore} P:${sub.performanceScore} (Exp: ${((sub.notebookScore || 0) + (sub.performanceScore || 0)).toFixed(1)}/4)`
                                 : sub.fileUrl || !sub.code
                                 ? "📄 PDF Report"
                                 : `${sub.testsPassed}/${sub.totalTests} tests`}
@@ -962,8 +949,8 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                         </div>
                       </div>
 
-                      {/* Official University 3-Part Rubric Input Grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Official University Experiment Rubric Input Grid (Max 4.0 pts) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {/* 1. Note Book (Lab Record) */}
                         <div className="p-3 rounded-xl border bg-black/5 dark:bg-white/5 flex flex-col justify-between" style={{ borderColor: "var(--bdr)" }}>
                           <div>
@@ -1023,54 +1010,24 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                             <span className="absolute right-2.5 top-2 text-[10px] font-mono pointer-events-none" style={{ color: "var(--t3)" }}>/ 2</span>
                           </div>
                         </div>
-
-                        {/* 3. Viva Voce Portion */}
-                        <div className="p-3 rounded-xl border bg-black/5 dark:bg-white/5 flex flex-col justify-between border-cyan-500/30" style={{ borderColor: "var(--bdr)" }}>
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 text-[#06b6d4]">
-                                <Award size={12} /> Viva Voce Portion
-                              </label>
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-[#06b6d4]">Max 10.0</span>
-                            </div>
-                            <p className="text-[10px] mb-2" style={{ color: "var(--t3)" }}>
-                              Continuous oral assessment, theory & conceptual defense.
-                            </p>
-                          </div>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              min="0"
-                              max="10"
-                              step="0.5"
-                              placeholder="0.0 - 10.0"
-                              value={vivaScore}
-                              onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
-                              onChange={(e) => setVivaScore(e.target.value === "" ? "" : Math.max(0, Math.min(10, parseFloat(e.target.value) || 0)))}
-                              className="w-full h-8 px-2.5 rounded-lg border text-[13px] font-bold font-mono outline-none text-[#06b6d4] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              style={{ background: "var(--srf)", borderColor: "rgba(6, 182, 212, 0.4)", color: "var(--t1)" }}
-                            />
-                            <span className="absolute right-2.5 top-2 text-[10px] font-mono pointer-events-none" style={{ color: "var(--t3)" }}>/ 10</span>
-                          </div>
-                        </div>
                       </div>
 
                       {/* Live Calculated Mark Summary Matrix */}
                       <div className="p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3" style={{ background: "rgba(6, 182, 212, 0.04)", borderColor: "rgba(6, 182, 212, 0.25)" }}>
                         <div className="flex items-center gap-4 flex-wrap text-[11px]">
                           <div>
-                            <span style={{ color: "var(--t3)" }}>Experiment Subtotal (NB+Perf):</span>{" "}
-                            <span className="font-bold font-mono text-[12px]">{expSubtotal} / 4.0</span>
+                            <span style={{ color: "var(--t3)" }}>Note Book:</span>{" "}
+                            <span className="font-bold font-mono text-[12px] text-[#06b6d4]">{nbVal} / 2.0</span>
                           </div>
                           <div className="h-3 w-[1px] bg-black/10 dark:bg-white/10" />
                           <div>
-                            <span style={{ color: "var(--t3)" }}>Viva Voce:</span>{" "}
-                            <span className="font-bold font-mono text-[12px] text-[#06b6d4]">{vivaVal} / 10.0</span>
+                            <span style={{ color: "var(--t3)" }}>Performance:</span>{" "}
+                            <span className="font-bold font-mono text-[12px] text-emerald-500">{perfVal} / 2.0</span>
                           </div>
                           <div className="h-3 w-[1px] bg-black/10 dark:bg-white/10" />
                           <div>
-                            <span style={{ color: "var(--t3)" }}>Session Practical:</span>{" "}
-                            <span className="font-bold font-mono text-[12px] text-emerald-500">{practicalSessionTotal} / 14.0</span>
+                            <span style={{ color: "var(--t3)" }}>Experiment Total:</span>{" "}
+                            <span className="font-bold font-mono text-[12px]" style={{ color: "var(--t1)" }}>{expSubtotal} / 4.0</span>
                           </div>
                         </div>
 
@@ -1124,11 +1081,11 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                       {/* Qualitative Feedback */}
                       <div>
                         <label className="text-[11px] font-bold uppercase tracking-wider block mb-1" style={{ color: "var(--t2)" }}>
-                          Qualitative Feedback on Objective Fulfillment & Viva Response
+                          Qualitative Feedback on Objective Fulfillment & Code Quality
                         </label>
                         <textarea
                           rows={2}
-                          placeholder="e.g. Excellent recursive tree structure, handled base conditions cleanly, strong answers during viva voce..."
+                          placeholder="e.g. Excellent recursive tree structure, handled base conditions cleanly, accurate observations..."
                           value={feedback}
                           onChange={(e) => setFeedback(e.target.value)}
                           className="w-full p-2.5 rounded-lg border text-[12px] outline-none resize-none leading-relaxed"

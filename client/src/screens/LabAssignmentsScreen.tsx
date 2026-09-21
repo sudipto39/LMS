@@ -633,7 +633,7 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
             </div>
             <div>
               <div className="text-[11px] font-bold uppercase tracking-wider text-amber-500">
-                {isSupervisorOrAdmin ? "Total Submissions" : "My Submissions"}
+                {isSupervisorOrAdmin ? "Students Submitted" : "My Submissions"}
               </div>
               <div className="text-[20px] font-extrabold text-amber-500">
                 {assignments.reduce((acc, a) => acc + (a.submissionCount || (a.mySubmission ? 1 : 0)), 0)}
@@ -1125,7 +1125,7 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
                             className="!h-8 text-[11px] !px-3 flex items-center gap-1.5 cursor-pointer"
                           >
                             <Users size={13} className="text-[#06b6d4]" />
-                            Submissions ({assignment.submissionCount || 0})
+                            Students Submitted ({assignment.submissionCount || 0})
                           </Btn2>
 
                           <div className="flex items-center gap-1 flex-wrap">
