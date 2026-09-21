@@ -56,8 +56,6 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) {
-        // Block origin-less browser requests with credentials in production (e.g. sandboxed data: iframes)
-        if (env.NODE_ENV === "production") return callback(null, false);
         return callback(null, true);
       }
       if (origin === "null") return callback(null, false);
@@ -65,7 +63,7 @@ app.use(
       if (
         allowedOrigins.includes(cleanOrigin) ||
         /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(cleanOrigin) ||
-        /^https:\/\/lms-[a-zA-Z0-9_-]+\.vercel\.app$/.test(cleanOrigin)
+        /^https:\/\/([a-zA-Z0-9_-]+\.)*vercel\.app$/.test(cleanOrigin)
       ) {
         return callback(null, true);
       }
