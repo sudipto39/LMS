@@ -75,12 +75,18 @@ const checkAndIncrementAttempts = async (
 ): Promise<void> => {
   const attemptKey = `attempts:${keyPrefix}:${email}`;
   let attempts = 0;
-  try {
-    attempts = await redis.incr(attemptKey);
-    if (attempts === 1) {
-      await redis.expire(attemptKey, OTP_TTL_SECONDS);
+  if (redis.status === "ready") {
+    try {
+      attempts = await redis.incr(attemptKey);
+      if (attempts === 1) {
+        await redis.expire(attemptKey, OTP_TTL_SECONDS);
+      }
+    } catch {
+      // fallback below
     }
-  } catch {
+  }
+
+  if (attempts === 0) {
     // Redis unavailable: fallback in-memory rate limiting
     const now = Date.now();
     const current = fallbackAttempts.get(attemptKey);
@@ -95,10 +101,12 @@ const checkAndIncrementAttempts = async (
 
   if (attempts >= MAX_OTP_ATTEMPTS) {
     await deleteOTP(`${keyPrefix}:${email}`);
-    try {
-      await redis.del(attemptKey);
-    } catch {
-      // ignore
+    if (redis.status === "ready") {
+      try {
+        await redis.del(attemptKey);
+      } catch {
+        // ignore
+      }
     }
     fallbackAttempts.delete(attemptKey);
     throw new BadRequestError(
@@ -112,10 +120,12 @@ const clearAttempts = async (
   email: string
 ): Promise<void> => {
   fallbackAttempts.delete(`attempts:${keyPrefix}:${email}`);
-  try {
-    await redis.del(`attempts:${keyPrefix}:${email}`);
-  } catch {
-    // ignore
+  if (redis.status === "ready") {
+    try {
+      await redis.del(`attempts:${keyPrefix}:${email}`);
+    } catch {
+      // ignore
+    }
   }
 };
 

@@ -436,155 +436,165 @@ function MainApp() {
   // ── Live Backend Data Sync (Mount & Auth) ──────────────────────────────────
   useEffect(() => {
     const loadLiveData = async () => {
-      // 1. Courses & Batches
-      try {
-        const [courseRes, batchRes] = await Promise.allSettled([
-          coursesApi.getAllCourses(),
-          batchesApi.getAllBatches(),
-        ]);
-        if (courseRes.status === "fulfilled" && courseRes.value?.data) {
-          setCourses(courseRes.value.data);
-        }
-        if (batchRes.status === "fulfilled" && batchRes.value?.data) {
-          setBatches(batchRes.value.data);
-        }
-      } catch {
-        // Keeps graceful defaults
-      }
-
-      // 2. Projects & Milestones by Role
-      await loadProjects();
-
-      // 3. Live Activities (Role Specific)
-      try {
-        let actRes: any;
-        if (role === "ADMIN") {
-          actRes = await activitiesApi.getAdminActivities();
-        } else if (role === "SUPERVISOR") {
-          actRes = await activitiesApi.getSupervisorActivities();
-        } else {
-          actRes = await activitiesApi.getMyActivities();
-        }
-        if (actRes?.data && Array.isArray(actRes.data) && actRes.data.length > 0) {
-          setActivities(actRes.data);
-        }
-      } catch (err) {
-        console.warn("Could not load activities:", err);
-      }
-
-      // 4. Live Users & Audit Logs (Admin) or Supervisors List (Non-Admin)
-      if (role === "ADMIN") {
-        try {
-          const [audRes, usersRes] = await Promise.allSettled([
-            adminApi.getAuditLogs(),
-            adminApi.getAllUsers(),
-          ]);
-          if (audRes.status === "fulfilled" && audRes.value?.data && Array.isArray(audRes.value.data) && audRes.value.data.length > 0) {
-            const liveLogs: AuditLogItem[] = audRes.value.data.map((l: any) => ({
-              id: l.id,
-              time: l.createdAt || l.time
-                ? new Date(l.createdAt || l.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                : "Just now",
-              user:
-                typeof l.user === "object" && l.user !== null
-                  ? l.user.name || "System"
-                  : typeof l.user === "string"
-                  ? l.user
-                  : "System",
-              action: l.action || l.type || "SYSTEM_EVENT",
-              desc: l.desc || l.description || "System activity recorded",
-            }));
-            setAuditLogs(liveLogs);
-          }
-          if (usersRes.status === "fulfilled" && usersRes.value?.data && Array.isArray(usersRes.value.data) && usersRes.value.data.length > 0) {
-            const liveUsers: User[] = usersRes.value.data.map((u: any) => ({
-              id: u.id,
-              name: u.name,
-              email: u.email,
-              role: u.role,
-              avatar:
-                u.avatar ||
-                `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-                  u.name || u.email || "User"
-                )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
-              dept: u.dept || u.department || "CSE",
-              idNo: u.idNo || u.universityId || "CS1001",
-              batch: u.batch || (u.role === "STUDENT" ? "General Batch" : "Academic Staff"),
-              phoneNumber: u.phoneNumber || "",
-              universityId: u.universityId || u.idNo || "",
-            }));
-            setUsers(liveUsers);
-          }
-
-          // Problem Statements & Supervisor Requests Queues
+      await Promise.allSettled([
+        // 1. Courses & Batches
+        (async () => {
           try {
-            const [pendingIdeasRes, supervisorReqRes] = await Promise.allSettled([
-              problemStatementsApi.getPendingAdmin(),
-              adminApi.getSupervisorRequests(),
+            const [courseRes, batchRes] = await Promise.allSettled([
+              coursesApi.getAllCourses(),
+              batchesApi.getAllBatches(),
             ]);
-            if (pendingIdeasRes.status === "fulfilled" && pendingIdeasRes.value?.data) {
-              setPendingIdeasCount(pendingIdeasRes.value.data.length);
+            if (courseRes.status === "fulfilled" && courseRes.value?.data) {
+              setCourses(courseRes.value.data);
             }
-            if (supervisorReqRes.status === "fulfilled" && supervisorReqRes.value?.data) {
-              setPendingSupervisorRequestsCount(supervisorReqRes.value.data.length);
+            if (batchRes.status === "fulfilled" && batchRes.value?.data) {
+              setBatches(batchRes.value.data);
             }
           } catch {
             // Keeps graceful defaults
           }
-        } catch (err) {
-          console.warn("Could not load admin users/audit logs:", err);
-        }
-      } else {
-        try {
-          const supRes = await usersApi.getSupervisors();
-          if (supRes?.data && Array.isArray(supRes.data) && supRes.data.length > 0) {
-            setUsers((prev) => {
-              const liveSups: User[] = supRes.data!.map((s: any) => ({
-                id: s.id,
-                name: s.name,
-                email: s.email,
-                role: "SUPERVISOR" as const,
-                avatar:
-                  s.avatar ||
-                  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-                    s.name || s.email || "Supervisor"
-                  )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
-                dept: s.dept || s.department || "CSE",
-                idNo: s.idNo || s.universityId || "FAC-100",
-                batch: "Academic Staff",
-              }));
-              const nonSups = prev.filter((u) => u.role !== "SUPERVISOR");
-              return [...liveSups, ...nonSups];
-            });
-          }
-        } catch (err) {
-          console.warn("Could not load supervisors:", err);
-        }
-      }
+        })(),
 
-      // 5. Problem Statements & Lab Assignments for Global Omni-Search
-      try {
-        const [psRes, labsRes] = await Promise.allSettled([
-          problemStatementsApi.getCatalog(),
-          labsApi.getLabAssignments(),
-        ]);
-        if (psRes.status === "fulfilled") {
-          const val: any = psRes.value;
-          const list = Array.isArray(val) ? val : val?.data;
-          if (Array.isArray(list) && list.length > 0) {
-            setProblemStatements(list);
+        // 2. Projects & Milestones by Role
+        loadProjects(),
+
+        // 3. Live Activities (Role Specific)
+        (async () => {
+          try {
+            let actRes: any;
+            if (role === "ADMIN") {
+              actRes = await activitiesApi.getAdminActivities();
+            } else if (role === "SUPERVISOR") {
+              actRes = await activitiesApi.getSupervisorActivities();
+            } else {
+              actRes = await activitiesApi.getMyActivities();
+            }
+            if (actRes?.data && Array.isArray(actRes.data) && actRes.data.length > 0) {
+              setActivities(actRes.data);
+            }
+          } catch (err) {
+            console.warn("Could not load activities:", err);
           }
-        }
-        if (labsRes.status === "fulfilled") {
-          const val: any = labsRes.value;
-          const list = Array.isArray(val) ? val : val?.data;
-          if (Array.isArray(list) && list.length > 0) {
-            setLabAssignments(list);
+        })(),
+
+        // 4. Live Users & Audit Logs (Admin) or Supervisors List (Non-Admin)
+        (async () => {
+          if (role === "ADMIN") {
+            try {
+              const [audRes, usersRes] = await Promise.allSettled([
+                adminApi.getAuditLogs(),
+                adminApi.getAllUsers(),
+              ]);
+              if (audRes.status === "fulfilled" && audRes.value?.data && Array.isArray(audRes.value.data) && audRes.value.data.length > 0) {
+                const liveLogs: AuditLogItem[] = audRes.value.data.map((l: any) => ({
+                  id: l.id,
+                  time: l.createdAt || l.time
+                    ? new Date(l.createdAt || l.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "Just now",
+                  user:
+                    typeof l.user === "object" && l.user !== null
+                      ? l.user.name || "System"
+                      : typeof l.user === "string"
+                      ? l.user
+                      : "System",
+                  action: l.action || l.type || "SYSTEM_EVENT",
+                  desc: l.desc || l.description || "System activity recorded",
+                }));
+                setAuditLogs(liveLogs);
+              }
+              if (usersRes.status === "fulfilled" && usersRes.value?.data && Array.isArray(usersRes.value.data) && usersRes.value.data.length > 0) {
+                const liveUsers: User[] = usersRes.value.data.map((u: any) => ({
+                  id: u.id,
+                  name: u.name,
+                  email: u.email,
+                  role: u.role,
+                  avatar:
+                    u.avatar ||
+                    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                      u.name || u.email || "User"
+                    )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+                  dept: u.dept || u.department || "CSE",
+                  idNo: u.idNo || u.universityId || "CS1001",
+                  batch: u.batch || (u.role === "STUDENT" ? "General Batch" : "Academic Staff"),
+                  phoneNumber: u.phoneNumber || "",
+                  universityId: u.universityId || u.idNo || "",
+                }));
+                setUsers(liveUsers);
+              }
+
+              // Problem Statements & Supervisor Requests Queues
+              try {
+                const [pendingIdeasRes, supervisorReqRes] = await Promise.allSettled([
+                  problemStatementsApi.getPendingAdmin(),
+                  adminApi.getSupervisorRequests(),
+                ]);
+                if (pendingIdeasRes.status === "fulfilled" && pendingIdeasRes.value?.data) {
+                  setPendingIdeasCount(pendingIdeasRes.value.data.length);
+                }
+                if (supervisorReqRes.status === "fulfilled" && supervisorReqRes.value?.data) {
+                  setPendingSupervisorRequestsCount(supervisorReqRes.value.data.length);
+                }
+              } catch {
+                // Keeps graceful defaults
+              }
+            } catch (err) {
+              console.warn("Could not load admin users/audit logs:", err);
+            }
+          } else {
+            try {
+              const supRes = await usersApi.getSupervisors();
+              if (supRes?.data && Array.isArray(supRes.data) && supRes.data.length > 0) {
+                setUsers((prev) => {
+                  const liveSups: User[] = supRes.data!.map((s: any) => ({
+                    id: s.id,
+                    name: s.name,
+                    email: s.email,
+                    role: "SUPERVISOR" as const,
+                    avatar:
+                      s.avatar ||
+                      `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                        s.name || s.email || "Supervisor"
+                      )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`,
+                    dept: s.dept || s.department || "CSE",
+                    idNo: s.idNo || s.universityId || "FAC-100",
+                    batch: "Academic Staff",
+                  }));
+                  const nonSups = prev.filter((u) => u.role !== "SUPERVISOR");
+                  return [...liveSups, ...nonSups];
+                });
+              }
+            } catch (err) {
+              console.warn("Could not load supervisors:", err);
+            }
           }
-        }
-      } catch {
-        // Keeps graceful defaults
-      }
+        })(),
+
+        // 5. Problem Statements & Lab Assignments for Global Omni-Search
+        (async () => {
+          try {
+            const [psRes, labsRes] = await Promise.allSettled([
+              problemStatementsApi.getCatalog(),
+              labsApi.getLabAssignments(),
+            ]);
+            if (psRes.status === "fulfilled") {
+              const val: any = psRes.value;
+              const list = Array.isArray(val) ? val : val?.data;
+              if (Array.isArray(list) && list.length > 0) {
+                setProblemStatements(list);
+              }
+            }
+            if (labsRes.status === "fulfilled") {
+              const val: any = labsRes.value;
+              const list = Array.isArray(val) ? val : val?.data;
+              if (Array.isArray(list) && list.length > 0) {
+                setLabAssignments(list);
+              }
+            }
+          } catch {
+            // Keeps graceful defaults
+          }
+        })(),
+      ]);
     };
 
     loadLiveData();

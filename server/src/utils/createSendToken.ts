@@ -68,10 +68,12 @@ export const storeRefreshToken = async (
   }
 
   // Also try Redis for speed
-  try {
-    await redis.setex(`refresh:${userId}`, REFRESH_TTL_SECONDS, hashed);
-  } catch {
-    // Redis unavailable — DB fallback already done above
+  if (redis.status === "ready") {
+    try {
+      await redis.setex(`refresh:${userId}`, REFRESH_TTL_SECONDS, hashed);
+    } catch {
+      // Redis unavailable — DB fallback already done above
+    }
   }
 };
 
@@ -80,11 +82,13 @@ export const getStoredRefreshToken = async (
   userId: string
 ): Promise<string | null> => {
   // Try Redis first (fastest)
-  try {
-    const cached = await redis.get(`refresh:${userId}`);
-    if (cached) return cached;
-  } catch {
-    // Redis down — fall through to DB
+  if (redis.status === "ready") {
+    try {
+      const cached = await redis.get(`refresh:${userId}`);
+      if (cached) return cached;
+    } catch {
+      // Redis down — fall through to DB
+    }
   }
 
   // Fallback: read from DB
@@ -101,10 +105,12 @@ export const getStoredRefreshToken = async (
 
 /** Revoke refresh token — removes from both Redis and DB, records revocation time */
 export const revokeRefreshToken = async (userId: string): Promise<void> => {
-  try {
-    await redis.del(`refresh:${userId}`);
-  } catch {
-    // ignore
+  if (redis.status === "ready") {
+    try {
+      await redis.del(`refresh:${userId}`);
+    } catch {
+      // ignore
+    }
   }
   try {
     await prisma.user.update({

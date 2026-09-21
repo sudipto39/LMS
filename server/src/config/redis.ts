@@ -4,12 +4,14 @@ import { env } from "./env.js";
 export const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 1,
   lazyConnect: true,
+  enableOfflineQueue: false,
+  connectTimeout: 800,
+  commandTimeout: 800,
   retryStrategy: (times: number) => {
-    if (times > 3) {
-      console.warn("⚠️ Redis unavailable — refresh tokens disabled");
-      return null; // stop retrying
+    if (times > 2) {
+      return null; // stop retrying quickly
     }
-    return Math.min(times * 500, 2000);
+    return 500;
   },
 });
 
