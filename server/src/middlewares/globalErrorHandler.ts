@@ -64,6 +64,15 @@ export const globalErrorHandler = (
     }
   }
 
+  // ─── Body Parser / JSON Syntax Errors ───────────────────────────────────────
+  if (err instanceof SyntaxError && "body" in err && (err as { status?: number }).status === 400) {
+    res.status(400).json({
+      status: "fail",
+      message: "Malformed JSON payload in request body",
+    });
+    return;
+  }
+
   // ─── Operational / known AppErrors ──────────────────────────────────────────
 
   if (err instanceof AppError) {

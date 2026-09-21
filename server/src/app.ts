@@ -62,7 +62,13 @@ app.use(
       }
       if (origin === "null") return callback(null, false);
       const cleanOrigin = origin.replace(/\/$/, "");
-      if (allowedOrigins.includes(cleanOrigin)) return callback(null, true);
+      if (
+        allowedOrigins.includes(cleanOrigin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(cleanOrigin) ||
+        /^https:\/\/lms-[a-zA-Z0-9_-]+\.vercel\.app$/.test(cleanOrigin)
+      ) {
+        return callback(null, true);
+      }
       return callback(null, false);
     },
     credentials: true,
