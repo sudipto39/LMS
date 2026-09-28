@@ -1,11 +1,13 @@
 // src/components/common/Navbar.tsx
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useMemo } from "react";
 import Logo from "../landing/Logo";
 import { Search, Sun, Moon, Bell, Menu, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { GlobalSearchDropdown } from "./GlobalSearchDropdown";
+import { NotificationDropdown } from "./NotificationDropdown";
+import { activitiesApi } from "../../api";
 import type {
   Project,
   Milestone,
@@ -14,6 +16,7 @@ import type {
   LabAssignment,
   Batch,
   Course,
+  ActivityItem,
 } from "../../types";
 
 interface NavbarProps {
@@ -31,6 +34,7 @@ interface NavbarProps {
   labAssignments?: LabAssignment[];
   batches?: Batch[];
   courses?: Course[];
+  activities?: ActivityItem[];
   onSelectProject?: (id: string) => void;
   onSelectLab?: (lab: LabAssignment) => void;
   onSelectProblemStatement?: (statement: ProblemStatement) => void;
@@ -51,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   labAssignments = [],
   batches = [],
   courses = [],
+  activities = [],
   onSelectProject = () => {},
   onSelectLab,
   onSelectProblemStatement,
@@ -60,7 +65,212 @@ export const Navbar: React.FC<NavbarProps> = ({
   const showToast = useToast();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const notificationContainerRef = useRef<HTMLDivElement>(null);
   const [isFocused, setIsFocused] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [internalActivities, setInternalActivities] = useState<ActivityItem[]>(activities || []);
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(`lms_read_notifs_${user?.id || "guest"}`);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Sync internal activities when activities prop updates
+  useEffect(() => {
+    if (activities && activities.length > 0) {
+      setInternalActivities(activities);
+    }
+  }, [activities]);
+
+  // Fetch activities if not provided or empty using role-specific API
+  useEffect(() => {
+    if (!activities || activities.length === 0) {
+      const fetcher =
+        role === "ADMIN"
+          ? activitiesApi.getAdminActivities
+          : role === "SUPERVISOR"
+          ? activitiesApi.getSupervisorActivities
+          : activitiesApi.getMyActivities;
+
+      fetcher()
+        .then((res) => {
+          if (res?.data && Array.isArray(res.data)) {
+            setInternalActivities(res.data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [activities, role]);
+
+  // Close notifications dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        notificationContainerRef.current &&
+        !notificationContainerRef.current.contains(e.target as Node)
+      ) {
+        setShowNotifications(false);
+      }
+    };
+    if (showNotifications) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [showNotifications]);
+
+  // ── Strict RBAC Project Scope ──────────────────────────────────────────────
+  const userProjects = useMemo(() => {
+    if (role === "ADMIN") return projects;
+    if (role === "SUPERVISOR") {
+      return projects.filter(
+        (p) =>
+          p.supervisorId === user?.id ||
+          p.requestedSupervisorId === user?.id ||
+          (p as any).supervisor === user?.name ||
+          (p as any).requestedSupervisor?.id === user?.id
+      );
+    }
+    // STUDENT: strictly projects owned by this student or where this student is a team member
+    return projects.filter(
+      (p) =>
+        p.ownerId === user?.id ||
+        p.owner?.id === user?.id ||
+        (Array.isArray(p.team) && p.team.some((tm: any) => tm?.id === user?.id || tm?.email === user?.email)) ||
+        (Array.isArray(p.members) && p.members.some((m: any) => m?.userId === user?.id || m?.id === user?.id))
+    );
+  }, [projects, role, user?.id, user?.name, user?.email]);
+
+  const userProjectIds = useMemo(() => new Set(userProjects.map((p) => p.id)), [userProjects]);
+  const userProjectTitles = useMemo(
+    () => new Set(userProjects.map((p) => (p.title || "").toLowerCase().trim()).filter(Boolean)),
+    [userProjects]
+  );
+
+  // Calculate unread count strictly within user's RBAC scope
+  const unreadCount = useMemo(() => {
+    let count = 0;
+    const seen = new Set<string>();
+
+    if (role === "STUDENT") {
+      milestones.forEach((m) => {
+        if (!userProjectIds.has(m.projectId)) return;
+        if (m.status === "REJECTED" && !readNotificationIds.has(`notif-ms-rej-${m.id}`)) {
+          seen.add(`notif-ms-rej-${m.id}`);
+          count++;
+        }
+        if (m.status === "APPROVED" && !readNotificationIds.has(`notif-ms-appr-${m.id}`)) {
+          seen.add(`notif-ms-appr-${m.id}`);
+          count++;
+        }
+      });
+    } else if (role === "SUPERVISOR") {
+      milestones.forEach((m) => {
+        if (!userProjectIds.has(m.projectId)) return;
+        if (m.status === "SUBMITTED" && !readNotificationIds.has(`notif-sup-review-${m.id}`)) {
+          seen.add(`notif-sup-review-${m.id}`);
+          count++;
+        }
+      });
+      userProjects.forEach((p) => {
+        if (
+          p.requestedSupervisorId === user?.id &&
+          p.supervisorRequestStatus === "PENDING" &&
+          !readNotificationIds.has(`notif-sup-req-${p.id}`)
+        ) {
+          seen.add(`notif-sup-req-${p.id}`);
+          count++;
+        }
+      });
+    } else if (role === "ADMIN") {
+      milestones.forEach((m) => {
+        if (m.status === "SUBMITTED" && !readNotificationIds.has(`notif-adm-ms-${m.id}`)) {
+          seen.add(`notif-adm-ms-${m.id}`);
+          count++;
+        }
+      });
+    }
+
+    internalActivities.forEach((act) => {
+      if (seen.has(act.id)) return;
+      if (role !== "ADMIN") {
+        const actProjId = act.projectId || (act as any).payload?.projectId;
+        const actProjTitle = (act.project || "").toLowerCase().trim();
+        const isUserProject =
+          (actProjId && userProjectIds.has(actProjId)) ||
+          (actProjTitle && userProjectTitles.has(actProjTitle));
+
+        const isUserActivity =
+          (act as any).userId === user?.id ||
+          (act as any).payload?.studentId === user?.id ||
+          act.user === user?.name;
+
+        if (!isUserProject && !isUserActivity) return;
+      }
+      if (!readNotificationIds.has(act.id)) {
+        count++;
+      }
+    });
+
+    return count;
+  }, [
+    role,
+    milestones,
+    userProjects,
+    userProjectIds,
+    userProjectTitles,
+    internalActivities,
+    readNotificationIds,
+    user?.id,
+    user?.name,
+  ]);
+
+  const handleMarkRead = (id: string) => {
+    setReadNotificationIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem(`lms_read_notifs_${user?.id || "guest"}`, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleMarkAllRead = () => {
+    const next = new Set<string>();
+    if (role === "STUDENT") {
+      milestones.forEach((m) => {
+        if (!userProjectIds.has(m.projectId)) return;
+        next.add(`notif-ms-rej-${m.id}`);
+        next.add(`notif-ms-appr-${m.id}`);
+      });
+    } else if (role === "SUPERVISOR") {
+      milestones.forEach((m) => {
+        if (!userProjectIds.has(m.projectId)) return;
+        next.add(`notif-sup-review-${m.id}`);
+      });
+      userProjects.forEach((p) => {
+        if (p.requestedSupervisorId === user?.id) {
+          next.add(`notif-sup-req-${p.id}`);
+        }
+      });
+    }
+    internalActivities.forEach((act) => next.add(act.id));
+    setReadNotificationIds(next);
+    try {
+      localStorage.setItem(`lms_read_notifs_${user?.id || "guest"}`, JSON.stringify([...next]));
+    } catch {}
+    showToast("All notifications marked as read ✓");
+  };
+
+  const handleClearAll = () => {
+    handleMarkAllRead();
+    setShowNotifications(false);
+  };
 
   // ── Typewriter Greeting Effect ───────────────────────────────────────────
   const [typedCount, setTypedCount] = useState(0);
@@ -323,13 +533,40 @@ export const Navbar: React.FC<NavbarProps> = ({
           {role}
         </div>
 
-        <button
-          onClick={() => showToast("System notifications up to date")}
-          className="hidden sm:grid h-9 w-9 rounded-full border place-items-center flex-shrink-0 cursor-pointer"
-          style={{ borderColor: "var(--bdr)", background: "var(--srf)" }}
-        >
-          <Bell size={14} />
-        </button>
+        {/* ── Notification Bell with Badge & Interactive Center ────── */}
+        <div className="relative" ref={notificationContainerRef}>
+          <button
+            type="button"
+            onClick={() => setShowNotifications((prev) => !prev)}
+            aria-label="Notifications"
+            className="grid h-9 w-9 rounded-full border place-items-center flex-shrink-0 cursor-pointer transition hover:border-[var(--acc)] relative"
+            style={{
+              borderColor: showNotifications ? "var(--acc)" : "var(--bdr)",
+              background: showNotifications ? "var(--srf2)" : "var(--srf)",
+            }}
+          >
+            <Bell size={14} className={unreadCount > 0 ? "text-[var(--acc)]" : "text-[var(--t2)]"} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 bg-red-500 text-white rounded-full text-[9px] font-bold grid place-items-center shadow-xs animate-pulse">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          <NotificationDropdown
+            isOpen={showNotifications}
+            onClose={() => setShowNotifications(false)}
+            activities={internalActivities}
+            projects={projects}
+            milestones={milestones}
+            onSelectProject={onSelectProject}
+            onNavigatePage={(p) => setPage(p)}
+            readIds={readNotificationIds}
+            onMarkAllRead={handleMarkAllRead}
+            onMarkRead={handleMarkRead}
+            onClearAll={handleClearAll}
+          />
+        </div>
 
         <img
           src={userAvatar}

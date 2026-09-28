@@ -44,43 +44,49 @@ export const AuthContainer: React.FC<AuthContainerProps> = ({
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4 py-8 sm:py-12 relative overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar"
-      style={{ background: "#071318" }}
+      style={{
+        background: "linear-gradient(135deg, #e0f7ff 0%, #f0f4ff 35%, #faf0ff 65%, #e8f8f0 100%)",
+        scrollbarGutter: "stable",
+      }}
     >
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'); *{font-family:Inter,sans-serif}`}</style>
 
-      {/* Animated aurora background */}
+      {/* Animated aurora background - soft light glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div
-          className="absolute top-[-30%] left-[-10%] w-[70%] h-[70%] rounded-full bg-gradient-to-br from-[#06b6d4]/25 via-[#0891b2]/15 to-transparent blur-[100px] animate-pulse"
-          style={{ animationDuration: "6s" }}
+          className="absolute top-[-20%] left-[-5%] w-[65%] h-[65%] rounded-full bg-gradient-to-br from-[#67e8f9]/40 via-[#a5f3fc]/25 to-transparent blur-[120px] animate-pulse"
+          style={{ animationDuration: "7s" }}
         />
         <div
-          className="absolute bottom-[-25%] right-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-tl from-[#2563eb]/20 via-[#3b82f6]/10 to-transparent blur-[100px] animate-pulse"
-          style={{ animationDuration: "8s" }}
+          className="absolute bottom-[-20%] right-[-5%] w-[60%] h-[60%] rounded-full bg-gradient-to-tl from-[#c7d2fe]/50 via-[#a5b4fc]/30 to-transparent blur-[120px] animate-pulse"
+          style={{ animationDuration: "9s" }}
         />
         <div
-          className="absolute top-[30%] left-[40%] w-[40%] h-[40%] rounded-full bg-gradient-to-r from-[#14b8a6]/10 to-[#06b6d4]/10 blur-[80px] animate-pulse"
-          style={{ animationDuration: "10s" }}
+          className="absolute top-[25%] left-[35%] w-[45%] h-[45%] rounded-full bg-gradient-to-r from-[#bbf7d0]/30 to-[#6ee7b7]/20 blur-[100px] animate-pulse"
+          style={{ animationDuration: "11s" }}
         />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,#071318_70%)]" />
+        <div
+          className="absolute top-[60%] left-[10%] w-[35%] h-[35%] rounded-full bg-gradient-to-br from-[#fde68a]/25 to-[#fca5a5]/15 blur-[90px] animate-pulse"
+          style={{ animationDuration: "13s" }}
+        />
       </div>
 
       <div
-        className="fixed inset-0 pointer-events-none opacity-[0.03]"
+        className="fixed inset-0 pointer-events-none opacity-[0.02]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
+            "linear-gradient(rgba(6,182,212,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(6,182,212,0.15) 1px, transparent 1px)",
           backgroundSize: "60px 60px",
         }}
       />
 
       <div
-        className="relative w-full max-w-[1080px] grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] rounded-[32px] overflow-hidden border border-white/[0.08] shadow-[0_32px_100px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)]"
+        className="relative w-full max-w-[520px] xl:max-w-[1080px] grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] rounded-[28px] xl:rounded-[32px] overflow-hidden border border-white/60 shadow-[0_24px_60px_rgba(14,116,144,0.15),0_0_0_1px_rgba(255,255,255,0.7)] min-h-[580px]"
         style={{ backdropFilter: "blur(40px)" }}
       >
-        {/* Left Brand Hero */}
+        {/* Left Brand Hero – hidden on mobile, shows on xl+ */}
         <div
-          className="relative p-10 lg:p-12 flex flex-col justify-between overflow-hidden min-h-[520px]"
+          className="relative p-10 xl:p-12 hidden xl:flex flex-col justify-between overflow-hidden min-h-[580px] min-w-0"
           style={{
             background:
               "linear-gradient(160deg, #0a2a38 0%, #0e1f2c 40%, #091520 100%)",
@@ -158,13 +164,13 @@ export const AuthContainer: React.FC<AuthContainerProps> = ({
 
         {/* Right Form Card */}
         <div
-          className="p-8 lg:p-12 flex flex-col justify-center overflow-y-auto"
+          className="p-8 xl:p-12 flex flex-col justify-center overflow-y-auto overflow-x-hidden w-full min-w-0 min-h-[580px]"
           style={{
             background: dark
               ? "rgba(15,26,36,0.9)"
               : "rgba(248,252,253,0.95)",
             backdropFilter: "blur(20px)",
-            maxHeight: "90vh",
+            scrollbarGutter: "stable",
           }}
         >
           <div className="flex items-center justify-between mb-4">

@@ -22,6 +22,16 @@ export const createMilestone = catchAsync(
     };
 
     if (!title) throw new BadRequestError("Milestone title is required");
+    if (title.length > 200) throw new BadRequestError("Milestone title cannot exceed 200 characters");
+
+    // M-02: Validate dueDate is a real parseable date (not "invalid-string" which becomes Invalid Date)
+    let parsedDueDate: Date | undefined;
+    if (dueDate !== undefined && dueDate !== null && dueDate !== "") {
+      parsedDueDate = new Date(dueDate);
+      if (isNaN(parsedDueDate.getTime())) {
+        throw new BadRequestError("dueDate must be a valid ISO 8601 date string");
+      }
+    }
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
@@ -37,7 +47,7 @@ export const createMilestone = catchAsync(
         projectId,
         order: order ?? 0,
         ...(description !== undefined && { description }),
-        ...(dueDate && { dueDate: new Date(dueDate) }),
+        ...(parsedDueDate && { dueDate: parsedDueDate }),
       },
     });
 
@@ -109,21 +119,32 @@ export const submitMilestone = catchAsync(
     if (!isOwner && !isMember) throw new ForbiddenError();
 
     if (milestone.status === "APPROVED") {
-      throw new BadRequestError("Milestone already approved");
+      throw new BadRequestError("Milestone is already approved. Deliverables are locked and no files can be uploaded.");
     }
     if (milestone.status === "SUBMITTED") {
-      throw new BadRequestError("Milestone already submitted and awaiting review");
+      throw new BadRequestError("Milestone is currently submitted and awaiting supervisor review. No files can be uploaded while review is pending.");
+    }
+    if (milestone.status === "PENDING") {
+      throw new BadRequestError("Milestone has not been started yet. Please start the milestone before uploading deliverables.");
     }
 
     // ── S3 uploaded files ──────────────────────────────────────────────────
     const uploadedFiles = (req.files as Express.MulterS3.File[]) ?? [];
-    const attachments = uploadedFiles.map((f) => ({
-      name: f.originalname,
-      url: f.location,
-      key: f.key,
-      size: f.size,
-      mimetype: f.mimetype,
-    }));
+    const attachments = uploadedFiles.map((f) => {
+      // Sanitize stored filename to prevent stored XSS via malicious attachment names (FLAW-R2-14)
+      const safeName = f.originalname
+        .replace(/[<>"'`]/g, "_")   // strip XSS trigger chars
+        .replace(/[\r\n\0]/g, "")   // strip control chars
+        .substring(0, 255)
+        || "attachment";
+      return {
+        name: safeName,
+        url: f.location,
+        key: f.key,
+        size: f.size,
+        mimetype: f.mimetype,
+      };
+    });
 
     const updated = await prisma.milestone.update({
       where: { id },
@@ -358,6 +379,7 @@ export const updateMilestone = catchAsync(async (req: Request, res: Response) =>
 
   if (!milestone) throw new NotFoundError("Milestone");
 
+  // L-04: Block ALL updates on approved milestones — prevents retroactive dueDate backdating
   if (milestone.status === "APPROVED") {
     throw new BadRequestError("Cannot modify an already approved milestone");
   }
@@ -369,12 +391,21 @@ export const updateMilestone = catchAsync(async (req: Request, res: Response) =>
     throw new ForbiddenError("Only the project owner, supervisor, or admin can modify milestone details");
   }
 
+  // M-02: Validate dueDate in milestone updates too
+  let parsedUpdateDueDate: Date | undefined;
+  if (dueDate !== undefined && dueDate !== null && dueDate !== "") {
+    parsedUpdateDueDate = new Date(dueDate);
+    if (isNaN(parsedUpdateDueDate.getTime())) {
+      throw new BadRequestError("dueDate must be a valid ISO 8601 date string");
+    }
+  }
+
   const updated = await prisma.milestone.update({
     where: { id },
     data: {
       ...(title && { title }),
       ...(description !== undefined && { description }),
-      ...(dueDate && { dueDate: new Date(dueDate) }),
+      ...(parsedUpdateDueDate && { dueDate: parsedUpdateDueDate }),
     },
   });
 

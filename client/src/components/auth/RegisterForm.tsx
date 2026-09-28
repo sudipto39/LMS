@@ -112,9 +112,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       showToast("Registration initiated — OTP code sent to your email! 📩");
       setRegStep(3);
     } catch (err: any) {
-      showToast(
-        err.message || "Registration failed. Please check your details."
-      );
+      const msg = err.message || "Registration failed. Please check your details.";
+      showToast(msg);
+      if (msg.toLowerCase().includes("email") && !msg.toLowerCase().includes("university id")) {
+        setRegStep(1);
+      }
     } finally {
       setLoading(false);
     }

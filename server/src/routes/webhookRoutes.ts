@@ -88,7 +88,10 @@ const handleGiteaWebhook = async (
     timestamp: string;
   }> = payload.commits ?? [];
 
-  if (commits.length === 0) return;
+  // M-03: Cap commits to 50 — unbounded Promise.all with thousands of commits
+  // would exhaust the DB connection pool (application-level DoS)
+  const cappedCommits = commits.slice(0, 50);
+  if (cappedCommits.length === 0) return;
 
   // Fetch active project milestones for potential auto-submission
   const milestones = await prisma.milestone.findMany({
@@ -97,7 +100,7 @@ const handleGiteaWebhook = async (
   });
 
   await Promise.all(
-    commits.map(async (commit) => {
+    cappedCommits.map(async (commit) => {
       // 1. Log push activity
       await logActivity({
         type: "PUSH",

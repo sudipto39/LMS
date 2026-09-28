@@ -112,6 +112,11 @@ export const SubmissionsScreen: React.FC<SubmissionsScreenProps> = ({
                     >
                       <td className="p-3 font-semibold">
                         <div className="font-bold text-[13px]">{m.title}</div>
+                        {m.projectTitle && (
+                          <div className="text-[11px] font-medium text-[#06b6d4] mt-0.5">
+                            {m.projectTitle}
+                          </div>
+                        )}
                         {m.note && (
                           <div className="text-[11px] font-normal truncate max-w-[280px]" style={{ color: "var(--t3)" }}>
                             {m.note}

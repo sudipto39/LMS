@@ -61,6 +61,11 @@ export interface LabSubmission {
   vivaScore?: number | null;
   attemptNumber: number;
   submittedAt: string;
+  reuploadStatus?: "PENDING" | "APPROVED" | "REJECTED" | "CONSUMED" | null;
+  reuploadReason?: string | null;
+  reuploadRequestedAt?: string | null;
+  reuploadReviewedAt?: string | null;
+  reuploadReviewedBy?: string | null;
   student?: {
     id: string;
     name: string;

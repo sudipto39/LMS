@@ -61,6 +61,12 @@ export const executeCode = catchAsync(async (req: Request, res: Response) => {
     throw new BadRequestError("Source code or files array is required for execution");
   }
 
+  // Cap number of files to prevent memory DoS from thousands of tiny files (FLAW-R2-11)
+  const MAX_FILE_COUNT = 50;
+  if (files.length > MAX_FILE_COUNT) {
+    throw new BadRequestError(`Too many files submitted. Maximum ${MAX_FILE_COUNT} files allowed per execution.`);
+  }
+
   const totalBytes = files.reduce(
     (acc, f) => acc + (f.content ? Buffer.byteLength(f.content, "utf8") : 0),
     0
@@ -194,8 +200,17 @@ print(summary(scores))
 };
 
 export const getCodeTemplate = catchAsync(async (req: Request, res: Response) => {
-  const language = requireParam(req.params["language"], "language").toLowerCase();
-  const template = CODE_TEMPLATES[language] || CODE_TEMPLATES["python"];
+  const rawLanguage = requireParam(req.params["language"], "language").toLowerCase().trim();
+
+  // FLAW-13: Whitelist language — return 400 for unknown rather than reflecting arbitrary input
+  if (!Object.prototype.hasOwnProperty.call(CODE_TEMPLATES, rawLanguage)) {
+    throw new BadRequestError(
+      `Unknown language '${rawLanguage}'. Supported: ${Object.keys(CODE_TEMPLATES).join(", ")}`
+    );
+  }
+
+  const language = rawLanguage as keyof typeof CODE_TEMPLATES;
+  const template = CODE_TEMPLATES[language];
 
   res.status(200).json({
     status: "success",

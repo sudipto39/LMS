@@ -103,8 +103,48 @@ export const getStoredRefreshToken = async (
   }
 };
 
+// In-memory fallback if Redis is unreachable under load/network blip
+const inMemoryRevokedBefore = new Map<string, number>();
+
+export const parseDurationToSeconds = (durationStr: string, defaultSec: number = 900): number => {
+  if (!durationStr || typeof durationStr !== "string") return defaultSec;
+  const match = durationStr.trim().match(/^(\d+)([smhd]?)$/i);
+  if (!match || !match[1]) return defaultSec;
+  const num = parseInt(match[1], 10);
+  const unit = (match[2] || "s").toLowerCase();
+  switch (unit) {
+    case "s": return num;
+    case "m": return num * 60;
+    case "h": return num * 3600;
+    case "d": return num * 86400;
+    default: return defaultSec;
+  }
+};
+
+export const getInMemoryRevokedBefore = (userId: string): number | null => {
+  const ts = inMemoryRevokedBefore.get(userId);
+  if (!ts) return null;
+  const accessTtlSec = Math.max(900, parseDurationToSeconds(env.JWT_ACCESS_EXPIRES_IN, 900));
+  if (Math.floor(Date.now() / 1000) - ts > accessTtlSec) {
+    inMemoryRevokedBefore.delete(userId);
+    return null;
+  }
+  return ts;
+};
+
+export const generateSignedCsrfToken = (secret: string = env.JWT_ACCESS_SECRET): string => {
+  const random = crypto.randomBytes(16).toString("hex");
+  const ts = Date.now().toString();
+  const payload = `${random}.${ts}`;
+  const sig = crypto.createHmac("sha256", secret).update(payload).digest("hex").slice(0, 32);
+  return `${payload}.${sig}`;
+};
+
 /** Revoke refresh token — removes from both Redis and DB, records revocation time */
 export const revokeRefreshToken = async (userId: string): Promise<void> => {
+  const nowSec = Math.floor(Date.now() / 1000);
+  inMemoryRevokedBefore.set(userId, nowSec);
+
   if (redis.status === "ready") {
     try {
       await redis.del(`refresh:${userId}`);
@@ -122,8 +162,8 @@ export const revokeRefreshToken = async (userId: string): Promise<void> => {
   }
   try {
     if (redis.status === "ready") {
-      const nowSec = Math.floor(Date.now() / 1000);
-      await redis.setex(`revoked_before:${userId}`, 15 * 60, nowSec.toString());
+      const accessTtlSec = Math.max(900, parseDurationToSeconds(env.JWT_ACCESS_EXPIRES_IN, 900));
+      await redis.setex(`revoked_before:${userId}`, accessTtlSec, nowSec.toString());
     }
   } catch {
     // ignore
@@ -166,8 +206,8 @@ export const createSendToken = async (
     maxAge: REFRESH_TTL_SECONDS * 1000,
   });
 
-  // Issue double-submit CSRF token (readable by JavaScript)
-  const csrfToken = crypto.randomBytes(24).toString("hex");
+  // Issue double-submit CSRF token (signed & time-stamped)
+  const csrfToken = generateSignedCsrfToken();
   res.cookie("csrfToken", csrfToken, {
     httpOnly: false,
     secure: env.NODE_ENV === "production",
@@ -180,7 +220,6 @@ export const createSendToken = async (
   res.status(statusCode).json({
     status: "success",
     accessToken,
-    refreshToken,
     data: { user },
   });
 };

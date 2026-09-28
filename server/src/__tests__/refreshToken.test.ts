@@ -72,15 +72,19 @@ describe("Refresh Token Lifecycle & Session Rotation Tests", () => {
 
   describe("POST /api/v1/auth/logout", () => {
     it("should clear the refreshToken cookie and return 200 on logout", async () => {
+      // Use a separate userId to avoid in-memory revocation state pollution from prior tests
+      const logoutUserId = "logout-test-user-456";
+      const freshAccessToken = signAccessToken(logoutUserId, "STUDENT");
+
       jest.spyOn(prisma.user, "findUnique").mockResolvedValue({
-        id: userId,
+        id: logoutUserId,
         role: "STUDENT",
         isEmailVerified: true,
       } as any);
 
       const res = await request(app)
         .post("/api/v1/auth/logout")
-        .set("Authorization", `Bearer ${userAccessToken}`);
+        .set("Authorization", `Bearer ${freshAccessToken}`);
 
       expect(res.statusCode).toBe(200);
       expect(res.body.status).toBe("success");

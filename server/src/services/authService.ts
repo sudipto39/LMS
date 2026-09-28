@@ -23,6 +23,39 @@ const MAX_OTP_ATTEMPTS = 5;
 const fallbackAttempts = new Map<string, { count: number; expiresAt: number }>();
 const fallbackOtps = new Map<string, { code: string; expiresAt: number }>();
 const fallbackLoginAttempts = new Map<string, { count: number; expiresAt: number; lockedUntil?: number }>();
+const fallbackOtpCooldown = new Map<string, number>();
+
+const isOtpCooldownActive = async (email: string): Promise<boolean> => {
+  const cleanEmail = email.toLowerCase().trim();
+  const key = `cooldown:reset:${cleanEmail}`;
+  const now = Date.now();
+  const memExpiry = fallbackOtpCooldown.get(cleanEmail);
+  if (memExpiry && memExpiry > now) return true;
+
+  if (redis.status === "ready") {
+    try {
+      const exists = await redis.get(key);
+      if (exists) return true;
+    } catch {
+      // ignore
+    }
+  }
+  return false;
+};
+
+const setOtpCooldown = async (email: string, cooldownSec: number = 60): Promise<void> => {
+  const cleanEmail = email.toLowerCase().trim();
+  const key = `cooldown:reset:${cleanEmail}`;
+  fallbackOtpCooldown.set(cleanEmail, Date.now() + cooldownSec * 1000);
+
+  if (redis.status === "ready") {
+    try {
+      await redis.setex(key, cooldownSec, "1");
+    } catch {
+      // ignore
+    }
+  }
+};
 
 // ─── OTP helpers (CSPRNG) ─────────────────────────────────────────────────────
 
@@ -189,22 +222,29 @@ const handleSuccessfulLogin = async (email: string): Promise<void> => {
 
 export const authService = {
   async registerUser(data: SignUpInput) {
-    // 1. Check existing by email OR universityId
-    const existing = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: data.email },
-          { universityId: data.universityId },
-        ],
-      },
-      select: { id: true, email: true, universityId: true },
-    });
+    // 1. Check existing by email AND universityId independently (case-insensitive)
+    const cleanEmail = data.email.toLowerCase().trim();
+    const cleanUid = data.universityId.trim();
 
-    if (existing) {
-      if (existing.email === data.email) {
-        throw new ConflictError("Email already registered");
-      }
-      throw new ConflictError("University ID already registered");
+    const [existingByEmail, existingByUid] = await Promise.all([
+      prisma.user.findFirst({
+        where: { email: { equals: cleanEmail, mode: "insensitive" } },
+        select: { id: true, email: true },
+      }),
+      prisma.user.findFirst({
+        where: { universityId: { equals: cleanUid, mode: "insensitive" } },
+        select: { id: true, universityId: true },
+      }),
+    ]);
+
+    if (existingByEmail && existingByUid) {
+      throw new ConflictError("Both Email and University ID are already registered. Please sign in or use different credentials.");
+    }
+    if (existingByEmail) {
+      throw new ConflictError("This email address is already registered. Please sign in or use a different email.");
+    }
+    if (existingByUid) {
+      throw new ConflictError("This University ID is already registered. Please verify your student ID.");
     }
 
     // 2. Validate batchId if provided
@@ -400,20 +440,30 @@ export const authService = {
   },
 
   async forgotPassword(email: string) {
-    const user = await prisma.user.findUnique({
-      where: { email },
+    if (!email || typeof email !== "string") {
+      throw new BadRequestError("Please provide a valid registered email address.");
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const isCoolingDown = await isOtpCooldownActive(cleanEmail);
+    if (isCoolingDown) {
+      throw new BadRequestError("A reset code was recently sent. Please wait 60 seconds before requesting another code.");
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: cleanEmail, mode: "insensitive" } },
       select: { id: true, name: true, email: true },
     });
 
     if (!user) {
-      // Artificial delay to equalize response time and prevent email enumeration
-      await new Promise((r) => setTimeout(r, 150 + Math.random() * 100));
-      return { message: "If that email exists, a reset code has been sent" };
+      throw new BadRequestError("No registered user found with this email address. Please check your email or register.");
     }
 
+    await setOtpCooldown(cleanEmail, 60);
+
     const otp = generateOTP();
-    await storeOTP(`reset:${email}`, otp);
-    await clearAttempts("reset", email);
+    await storeOTP(`reset:${cleanEmail}`, otp);
+    await clearAttempts("reset", cleanEmail);
 
     await emailService.sendPasswordResetEmail({
       to: user.email,
@@ -421,14 +471,15 @@ export const authService = {
       code: otp,
     });
 
-    return { message: "If that email exists, a reset code has been sent" };
+    return { message: "A 6-digit password reset code has been sent to your email." };
   },
 
   async resetPassword(email: string, code: string, newPassword: string) {
     if (!email || !code || !newPassword) {
       throw new BadRequestError("Email, code, and new password are required");
     }
-    const storedOTP = await getOTP(`reset:${email}`);
+    const cleanEmail = email.toLowerCase().trim();
+    const storedOTP = await getOTP(`reset:${cleanEmail}`);
     if (!storedOTP) {
       throw new BadRequestError(
         "Reset code expired or invalid. Please request a new one"
@@ -440,14 +491,23 @@ export const authService = {
       crypto.timingSafeEqual(Buffer.from(storedOTP), Buffer.from(code));
 
     if (!isMatch) {
-      await checkAndIncrementAttempts("reset", email);
+      await checkAndIncrementAttempts("reset", cleanEmail);
       throw new BadRequestError("Invalid reset code");
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: { email: { equals: cleanEmail, mode: "insensitive" } },
+      select: { id: true, giteaUsername: true },
+    });
+
+    if (!existingUser) {
+      throw new BadRequestError("User account not found");
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
     const user = await prisma.user.update({
-      where: { email },
+      where: { id: existingUser.id },
       data: { password: hashedPassword },
       select: { id: true, giteaUsername: true },
     });
@@ -457,12 +517,12 @@ export const authService = {
     }
 
     if (user?.giteaUsername) {
-      await giteaService.updateUserPassword(user.giteaUsername, newPassword);
+      await giteaService.rotateUserPassword(user.giteaUsername);
     }
 
-    await deleteOTP(`reset:${email}`);
-    await clearAttempts("reset", email);
+    await deleteOTP(`reset:${cleanEmail}`);
+    await clearAttempts("reset", cleanEmail);
 
-    return { message: "Password reset successfully. Please log in." };
+    return { message: "Password reset successfully. Please log in with your new password." };
   },
 };

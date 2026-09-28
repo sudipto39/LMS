@@ -125,6 +125,23 @@ const wrappedDiskStorage: multer.StorageEngine = {
   },
 };
 
+export const validateBufferMagicBytes = (buffer: Buffer, ext: string): boolean => {
+  if (buffer.length < 4) return false;
+  if (ext === ".pdf") {
+    return buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46;
+  }
+  if (ext === ".png") {
+    return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  }
+  if (ext === ".jpg" || ext === ".jpeg") {
+    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (ext === ".zip") {
+    return buffer[0] === 0x50 && buffer[1] === 0x4b;
+  }
+  return false;
+};
+
 export const storage = useS3
   ? multerS3({
       s3,
@@ -149,3 +166,65 @@ export const upload = multer({
   },
   fileFilter,
 });
+
+/**
+ * FLAW-04 fix: Validate magic bytes for S3 uploads after multer processes the file.
+ * Reads the file from S3, checks the first 8 bytes, and rejects polyglot files.
+ */
+export const validateS3MagicBytesMiddleware = useS3
+  ? async (
+      req: import("express").Request,
+      _res: import("express").Response,
+      next: import("express").NextFunction
+    ) => {
+      if (!req.file && (!req.files || (Array.isArray(req.files) && req.files.length === 0))) {
+        return next();
+      }
+
+      const filesToCheck: Express.MulterS3.File[] = req.file
+        ? [req.file as Express.MulterS3.File]
+        : (req.files as Express.MulterS3.File[]) || [];
+
+      for (const file of filesToCheck) {
+        const s3Key = (file as any).key;
+        const ext = path.extname(file.originalname).toLowerCase();
+
+        if (!s3Key) continue;
+
+        try {
+          // Pull first 8 bytes from S3
+          const getParams = {
+            Bucket: BUCKET,
+            Key: s3Key,
+            Range: "bytes=0-7",
+          };
+          const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+          const result = await s3.send(new GetObjectCommand(getParams));
+          const bodyStream = result.Body as import("stream").Readable;
+
+          const headerBuf = await new Promise<Buffer>((resolve, reject) => {
+            const chunks: Buffer[] = [];
+            bodyStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+            bodyStream.on("end", () => resolve(Buffer.concat(chunks)));
+            bodyStream.on("error", reject);
+          });
+
+          if (!validateBufferMagicBytes(headerBuf, ext)) {
+            // Delete the offending file from S3
+            try {
+              const { DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+              await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: s3Key }));
+            } catch {
+              // ignore cleanup errors
+            }
+            return next(new AppError("Uploaded file signature does not match its extension.", 400));
+          }
+        } catch {
+          // If we can't read from S3 to verify, reject the upload
+          return next(new AppError("File upload verification failed. Please try again.", 400));
+        }
+      }
+
+      next();
+    }
+  : (_req: import("express").Request, _res: import("express").Response, next: import("express").NextFunction) => next();

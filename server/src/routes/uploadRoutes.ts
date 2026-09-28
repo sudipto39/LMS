@@ -43,9 +43,10 @@ router.get(
           OR: [
             { creatorId: user.id },
             { batch: { enrollments: { some: { userId: user.id } } } },
+            { status: "PUBLISHED" },
           ],
         },
-        select: { id: true },
+        select: { id: true, manualName: true },
       });
 
       const labSubmission = !labManual
@@ -99,11 +100,30 @@ router.get(
       ".jpeg": "image/jpeg",
       ".zip": "application/zip",
       ".txt": "text/plain",
+      ".doc": "application/msword",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".ppt": "application/vnd.ms-powerpoint",
+      ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ".xls": "application/vnd.ms-excel",
+      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     };
 
     const isInlineType = [".png", ".jpg", ".jpeg", ".pdf"].includes(ext);
     const forceDownload = req.query["download"] === "true";
     const disposition = forceDownload ? "attachment" : isInlineType ? "inline" : "attachment";
+
+    // Determine the proper download filename with guaranteed extension
+    // Sanitize: strip header-injection chars (CR, LF, quotes, semicolons)
+    let requestedName = safeFilename;
+    if (typeof req.query["filename"] === "string" && req.query["filename"].trim()) {
+      const rawName = path.basename(req.query["filename"].trim());
+      // Allow only safe filename characters; reject anything with CR/LF or header control chars
+      const sanitizedName = rawName.replace(/[^\w.\-]/g, "_").replace(/\.{2,}/g, ".");
+      if (sanitizedName && sanitizedName !== "." && sanitizedName !== "_") {
+        requestedName = sanitizedName;
+      }
+    }
+    const finalFilename = requestedName.toLowerCase().endsWith(ext) ? requestedName : `${requestedName}${ext}`;
 
     res.setHeader("X-Content-Type-Options", "nosniff");
     if (ext === ".pdf") {
@@ -112,7 +132,10 @@ router.get(
       res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
     }
     res.setHeader("Content-Type", mimeMap[ext] || "application/octet-stream");
-    res.setHeader("Content-Disposition", `${disposition}; filename="${safeFilename}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `${disposition}; filename="${finalFilename}"; filename*=UTF-8''${encodeURIComponent(finalFilename)}`
+    );
     res.sendFile(filePath);
   })
 );

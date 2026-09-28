@@ -163,7 +163,7 @@ export const changePassword = catchAsync(async (req: Request, res: Response) => 
   await revokeRefreshToken(user.id);
 
   if (user.giteaUsername) {
-    await giteaService.updateUserPassword(user.giteaUsername, newPassword);
+    await giteaService.rotateUserPassword(user.giteaUsername);
   }
 
   res.status(200).json({
@@ -188,15 +188,46 @@ export const getSSHKeys = catchAsync(async (req: Request, res: Response) => {
 
 export const addSSHKey = catchAsync(async (req: Request, res: Response) => {
   const { title, key } = req.body;
-  if (!title || !key) {
-    throw new AppError("Title and public key are required", 400);
+  if (!title || typeof title !== "string" || !title.trim()) {
+    throw new AppError("Title is required and must be a non-empty string", 400);
+  }
+  if (title.trim().length > 100) {
+    throw new AppError("SSH key title cannot exceed 100 characters", 400);
+  }
+
+  if (!key || typeof key !== "string" || !key.trim()) {
+    throw new AppError("Public key is required and must be a non-empty string", 400);
+  }
+  const trimmedKey = key.trim();
+  if (trimmedKey.length > 8192) {
+    throw new AppError("SSH public key exceeds maximum allowed length of 8KB", 400);
+  }
+  if (/[\r\n]/.test(trimmedKey)) {
+    throw new AppError("Invalid SSH key format: newlines are not permitted", 400);
+  }
+
+  const validKeyPrefixes = [
+    "ssh-rsa",
+    "ssh-ed25519",
+    "ecdsa-sha2-nistp256",
+    "ecdsa-sha2-nistp384",
+    "ecdsa-sha2-nistp521",
+    "sk-ssh-ed25519@openssh.com",
+    "sk-ecdsa-sha2-nistp256@openssh.com",
+  ];
+  const hasValidPrefix = validKeyPrefixes.some((prefix) => trimmedKey.startsWith(prefix));
+  if (!hasValidPrefix) {
+    throw new AppError(
+      "Invalid SSH key format: must be an OpenSSH public key (e.g. ssh-rsa, ssh-ed25519)",
+      400
+    );
   }
 
   const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
   if (!user) throw new NotFoundError("User");
 
   const username = user.giteaUsername || user.name.toLowerCase().replace(/\s+/g, "");
-  const created = await giteaService.addSSHKey(username, title, key);
+  const created = await giteaService.addSSHKey(username, title.trim(), trimmedKey);
 
   res.status(201).json({
     status: "success",
@@ -262,7 +293,8 @@ export const getStudentStats = catchAsync(async (req: Request, res: Response) =>
   const user = await prisma.user.findUnique({ where: { id: userId } });
   const username = user?.giteaUsername || user?.name.toLowerCase().replace(/\s+/g, "") || "user";
   const heatmap = await giteaService.getHeatmap(username);
-  const totalCommits = heatmap.reduce((sum, h) => sum + (h.contributions || 0), 0) || 127;
+  // L-01: Use 0 as the fallback — never fabricate academic commit counts
+  const totalCommits = heatmap.reduce((sum, h) => sum + (h.contributions || 0), 0);
 
   let overallGrade = "N/A";
   if (milestones.length > 0) {

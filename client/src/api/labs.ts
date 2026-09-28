@@ -137,6 +137,29 @@ export const labsApi = {
     return res.data;
   },
 
+  requestReupload: async (
+    assignmentId: string,
+    reason?: string
+  ): Promise<ApiResponse<LabSubmission>> => {
+    const res = await client.post<ApiResponse<LabSubmission>>(
+      `/v1/lab-assignments/${assignmentId}/request-reupload`,
+      { reason }
+    );
+    return res.data;
+  },
+
+  reviewReuploadPermission: async (
+    submissionId: string,
+    action: "APPROVE" | "REJECT",
+    notes?: string
+  ): Promise<ApiResponse<LabSubmission>> => {
+    const res = await client.patch<ApiResponse<LabSubmission>>(
+      `/v1/lab-assignments/submissions/${submissionId}/reupload-permission`,
+      { action, notes }
+    );
+    return res.data;
+  },
+
   gradeSubmission: async (
     submissionId: string,
     data: {

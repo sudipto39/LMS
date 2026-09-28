@@ -1,5 +1,6 @@
 // src/screens/LabAssignmentsScreen.tsx
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   FlaskConical,
   Target,
@@ -28,6 +29,7 @@ import { Card, Inp, Btn, Btn2, Pill } from "../components/common/UIPrimitives";
 import FillingBeakerLoader from "../components/common/FillingBeakerLoader";
 import { StudentLabPdfSubmitModal } from "../components/modals/StudentLabPdfSubmitModal";
 import { labsApi, batchesApi } from "../api";
+import { downloadFileBlob } from "../utils/fileDownload";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import type { Batch, LabAssignment, LabSubmission } from "../types";
@@ -1024,17 +1026,21 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
                           )}
 
                           {assignment.manualUrl && (
-                            <a
-                              href={assignment.manualUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-[10px] px-2 py-0.5 rounded-md font-bold border border-[#8b5cf6]/30 bg-[#8b5cf6]/10 text-[#8b5cf6] inline-flex items-center gap-1 hover:underline cursor-pointer"
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadFileBlob(
+                                  assignment.manualUrl!,
+                                  assignment.manualName || `${assignment.title}_Manual.pdf`,
+                                  ".pdf"
+                                );
+                              }}
+                              className="text-[10px] px-2 py-0.5 rounded-md font-bold border border-[#8b5cf6]/30 bg-[#8b5cf6]/10 text-[#8b5cf6] inline-flex items-center gap-1 hover:bg-[#8b5cf6]/20 transition cursor-pointer"
                               title="Download faculty guidelines manual"
                             >
                               📎 Manual PDF
-                            </a>
+                            </button>
                           )}
 
                           {isDeactivated ? (
@@ -1187,9 +1193,21 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
                         <>
                           <div className="text-[11px]" style={{ color: "var(--t2)" }}>
                             {mySub ? (
-                              <span className="text-emerald-500 font-medium">
-                                {mySub.status === "EVALUATED" ? "Grading Completed" : "Submitted (Pending Review)"}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-emerald-500 font-medium">
+                                  {mySub.status === "EVALUATED" ? "Grading Completed" : "Submitted"}
+                                </span>
+                                {mySub.reuploadStatus === "APPROVED" && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                                    ✓ Re-upload Allowed
+                                  </span>
+                                )}
+                                {mySub.reuploadStatus === "PENDING" && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                                    ⏳ Re-upload Pending
+                                  </span>
+                                )}
+                              </div>
                             ) : isDuePassed ? (
                               <span className="text-red-500 font-medium">Deadline Passed</span>
                             ) : isDeactivated ? (
@@ -1230,8 +1248,8 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
       )}
 
       {/* ── MODAL: CREATE NEW SUBJECT FOLDER ─────────────────────────────────── */}
-      {showCreateFolderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      {showCreateFolderModal && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div
             className="w-full max-w-md rounded-2xl border p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
             style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
@@ -1305,12 +1323,13 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
               </Btn>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── MODAL: RENAME SUBJECT FOLDER ────────────────────────────────────── */}
-      {showRenameFolderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      {showRenameFolderModal && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div
             className="w-full max-w-md rounded-2xl border p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
             style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
@@ -1362,12 +1381,13 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
               </Btn>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── MODAL: DELETE SUBJECT FOLDER ────────────────────────────────────── */}
-      {showDeleteFolderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      {showDeleteFolderModal && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div
             className="w-full max-w-md rounded-2xl border p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
             style={{ background: "var(--srf)", borderColor: "rgba(239, 68, 68, 0.4)" }}
@@ -1402,7 +1422,8 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Student PDF Report Submission Modal */}

@@ -27,6 +27,9 @@ export interface Project {
   technologies?: string[];
   progress: number;
   team: User[];
+  ownerId?: string;
+  owner?: User;
+  members?: any[];
   supervisor: string;
   supervisorId: string;
   repoUrl: string;

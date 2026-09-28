@@ -44,6 +44,13 @@ const escapeHtml = (unsafe: string | null | undefined): string => {
 
 let cachedTransporter: Transporter | null = null;
 
+const getFromAddress = (): string => {
+  if (env.SMTP_SERVICE?.toLowerCase() === "gmail" || env.SMTP_HOST?.includes("gmail")) {
+    return `"GiteaForge LMS" <${env.SMTP_USER}>`;
+  }
+  return env.EMAIL_FROM || `"GiteaForge LMS" <${env.SMTP_USER}>`;
+};
+
 const getTransporter = (): Transporter | null => {
   if (cachedTransporter) return cachedTransporter;
 
@@ -99,7 +106,7 @@ export const emailService = {
         console.log(`\n======================================================`);
         console.log(`📧 [EMAIL VERIFICATION OTP] Sent to: ${to}`);
         console.log(`👤 User: ${name}`);
-        console.log(`🔑 Verification Code: [SECURE OTP DISPATCHED] (Expires in 10 minutes)`);
+        console.log(`🔑 Verification Code: ${code} (Expires in 10 minutes)`);
         console.log(`======================================================\n`);
       }
       return;
@@ -107,7 +114,7 @@ export const emailService = {
 
     try {
       await transporter.sendMail({
-        from: env.EMAIL_FROM || `"GiteaForge LMS" <${env.SMTP_USER}>`,
+        from: getFromAddress(),
         to,
         subject: `Verify your email — GiteaForge LMS`,
         html: `
@@ -154,7 +161,7 @@ export const emailService = {
         console.log(`\n======================================================`);
         console.log(`🔑 [PASSWORD RESET OTP] Sent to: ${to}`);
         console.log(`👤 User: ${name}`);
-        console.log(`🔐 Reset Code: [SECURE OTP DISPATCHED] (Expires in 10 minutes)`);
+        console.log(`🔐 Reset Code: ${code} (Expires in 10 minutes)`);
         console.log(`======================================================\n`);
       }
       return;
@@ -162,7 +169,7 @@ export const emailService = {
 
     try {
       await transporter.sendMail({
-        from: env.EMAIL_FROM || `"GiteaForge LMS" <${env.SMTP_USER}>`,
+        from: getFromAddress(),
         to,
         subject: `Reset your password — GiteaForge LMS`,
         html: `
@@ -280,6 +287,64 @@ export const emailService = {
       console.log(`✅ Supervisor assignment notification sent to ${to}`);
     } catch (err) {
       console.error(`❌ Failed to send supervisor assignment email to ${to}:`, err);
+    }
+  },
+
+  async sendWelcomeEmail({
+    to,
+    name,
+    loginUrl,
+  }: { to: string; name: string; loginUrl: string }): Promise<void> {
+    const transporter = getTransporter();
+
+    if (!transporter) {
+      if (process.env["NODE_ENV"] !== "production") {
+        console.log(`\n======================================================`);
+        console.log(`📧 [WELCOME EMAIL] Sent to: ${to}`);
+        console.log(`👤 User: ${name}`);
+        console.log(`🔗 Login URL: ${loginUrl}`);
+        console.log(`======================================================\n`);
+      }
+      return;
+    }
+
+    try {
+      await transporter.sendMail({
+        from: env.EMAIL_FROM || `"GiteaForge LMS" <${env.SMTP_USER}>`,
+        to,
+        subject: `Welcome to GiteaForge LMS — Set your password`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;">
+            <div style="background: #0f172a; padding: 24px; text-align: center;">
+              <h1 style="color: #00A3FF; margin: 0; font-size: 20px; font-weight: 700;">GiteaForge LMS</h1>
+              <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 12px;">Welcome Onboard!</p>
+            </div>
+            <div style="padding: 32px 24px;">
+              <h2 style="color: #0f172a; margin: 0 0 12px 0; font-size: 18px;">Hello, ${escapeHtml(name)}</h2>
+              <p style="color: #475569; font-size: 14px; line-height: 1.6; margin: 0 0 20px 0;">
+                Your GiteaForge LMS account has been created by an administrator.
+                To access the platform, you first need to <strong>set your password</strong> using the link below.
+              </p>
+              <div style="text-align: center; margin: 24px 0;">
+                <a href="${escapeHtml(loginUrl)}"
+                   style="display: inline-block; background: #2563eb; color: #ffffff; text-decoration: none;
+                          padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px;">
+                  Set Your Password
+                </a>
+              </div>
+              <p style="color: #64748b; font-size: 12px; margin: 0;">
+                If you did not expect this email, you can safely ignore it.
+              </p>
+            </div>
+            <div style="background: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #64748b;">
+              © ${new Date().getFullYear()} GiteaForge LMS. All rights reserved.
+            </div>
+          </div>
+        `,
+      });
+      console.log(`✅ Welcome email sent to ${to}`);
+    } catch (err) {
+      console.error(`❌ Failed to send welcome email to ${to}:`, err);
     }
   },
 };

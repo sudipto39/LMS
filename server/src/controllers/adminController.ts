@@ -365,12 +365,18 @@ export const getAuditLogs = catchAsync(async (req: Request, res: Response) => {
 
   const formatted = logs.map((l) => {
     const payload = (l.payload as any) || {};
+    // L-03: Sanitize extracted desc to prevent HTML injection in admin dashboard
+    const rawDesc = payload.desc || payload.description || payload.detail || payload.msg || payload.message || "System activity recorded";
+    const safeDesc = String(rawDesc)
+      .replace(/[<>"'`]/g, "_")   // strip HTML trigger chars
+      .replace(/[\r\n\0]/g, " ")  // strip control chars
+      .substring(0, 500);          // cap length
     return {
       id: l.id,
       time: l.createdAt.toISOString(),
       user: l.user?.name || "System",
       action: l.type,
-      desc: payload.desc || payload.description || payload.detail || payload.msg || payload.message || "System activity recorded",
+      desc: safeDesc,
       projectName: l.project?.title || "",
     };
   });
@@ -707,6 +713,11 @@ export const createUser = catchAsync(
       },
     });
 
+    // Provision Gitea account so the new user can create/access repos (FLAW-R2-13)
+    void giteaService
+      .ensureGiteaUser(giteaUsername, cleanEmail)
+      .catch((err: unknown) => console.warn(`⚠️ Gitea provisioning failed for ${giteaUsername}:`, err));
+
     res.status(201).json({
       status: "success",
       data: {
@@ -894,6 +905,21 @@ export const importUsers = catchAsync(
         existingEmailSet.add(email);
         if (universityId) existingIdSet.add(universityId);
         results.successCount++;
+
+        // Provision Gitea account so the user can create/access repos (FLAW-R2-12)
+        void giteaService
+          .ensureGiteaUser(giteaUsername, email)
+          .catch((err: unknown) => console.warn(`⚠️ Gitea provisioning failed for ${giteaUsername}:`, err));
+
+        // FLAW-20: Notify imported users so they can access their account
+        const clientUrl = env.CLIENT_URL || "http://localhost:5173";
+        const primaryUrl = clientUrl.split(",")[0] ?? "http://localhost:5173";
+        const loginUrl = `${primaryUrl.trim()}/forgot-password`;
+        emailService
+          .sendWelcomeEmail({ to: email, name: u.name.trim(), loginUrl })
+          .catch((err: unknown) =>
+            console.warn(`⚠️ Welcome email failed for ${email}:`, err)
+          );
 
         // Yield execution every 5 users to allow Node event loop to process concurrent I/O
         if (results.successCount % 5 === 0) {

@@ -222,8 +222,11 @@ export const getLabAssignments = catchAsync(
       const uniqueSubmitterIds = new Set(assignment.submissions.map((s) => s.studentId));
       const submissionCount = uniqueSubmitterIds.size;
 
+      // FLAW-05: Do not expose peer submissions to students
+      const { submissions: _subs, ...assignmentWithoutSubmissions } = assignment;
+
       return {
-        ...assignment,
+        ...(user.role === "STUDENT" ? assignmentWithoutSubmissions : assignment),
         testCases: safeTestCases,
         totalTestCount,
         publicTestCount,
@@ -289,6 +292,20 @@ export const getLabAssignmentById = catchAsync(
     );
 
     const { submissions, ...assignmentData } = assignment;
+
+    // FLAW-18: For supervisors, only allow read if they are the creator or an admin
+    if (user.role === "SUPERVISOR" && assignment.creatorId !== user.id) {
+      // supervisor can see their own assignment's data, but not other supervisors' full submissions
+      res.status(200).json({
+        status: "success",
+        data: {
+          ...assignmentData,
+          testCases: safeTestCases,
+          mySubmissions: userSubmissions,
+        },
+      });
+      return;
+    }
 
     res.status(200).json({
       status: "success",
@@ -450,13 +467,30 @@ export const submitLabAssignment = catchAsync(
       isSubmission: true,
     });
 
-    // Determine attempt number
-    const previousSubmissionsCount = await prisma.labSubmission.count({
+    // Determine attempt number and check supervisor permission for re-uploads
+    const previousSubmissions = await prisma.labSubmission.findMany({
       where: {
         assignmentId: id,
         studentId: user.id,
       },
+      orderBy: { attemptNumber: "desc" },
     });
+
+    const previousSubmissionsCount = previousSubmissions.length;
+    const latestSub = previousSubmissions[0];
+
+    if (previousSubmissionsCount > 0) {
+      if (latestSub?.reuploadStatus !== "APPROVED") {
+        if (latestSub?.reuploadStatus === "PENDING") {
+          throw new ForbiddenError(
+            "Your re-upload request is currently pending supervisor approval. You will be able to submit once approved."
+          );
+        }
+        throw new ForbiddenError(
+          "Re-uploading this lab assignment requires supervisor permission. Please request permission from your supervisor first."
+        );
+      }
+    }
 
     const submission = await prisma.labSubmission.create({
       data: {
@@ -472,8 +506,16 @@ export const submitLabAssignment = catchAsync(
         executionTime: evaluation.maxExecutionTime,
         memoryUsed: evaluation.maxMemoryUsed,
         attemptNumber: previousSubmissionsCount + 1,
+        reuploadStatus: null,
       },
     });
+
+    if (latestSub && latestSub.reuploadStatus === "APPROVED") {
+      await prisma.labSubmission.update({
+        where: { id: latestSub.id },
+        data: { reuploadStatus: "CONSUMED" },
+      });
+    }
 
     await logActivity({
       type: "LAB_SUBMISSION_COMPLETED",
@@ -542,15 +584,38 @@ export const submitLabReport = catchAsync(
       throw new BadRequestError("Submission deadline has passed and late submissions are not allowed");
     }
 
-    const previousSubmissionsCount = await prisma.labSubmission.count({
+    const previousSubmissions = await prisma.labSubmission.findMany({
       where: {
         assignmentId: id,
         studentId: user.id,
       },
+      orderBy: { attemptNumber: "desc" },
     });
 
+    const previousSubmissionsCount = previousSubmissions.length;
+    const latestSub = previousSubmissions[0];
+
+    if (previousSubmissionsCount > 0) {
+      if (latestSub?.reuploadStatus !== "APPROVED") {
+        if (latestSub?.reuploadStatus === "PENDING") {
+          throw new ForbiddenError(
+            "Your re-upload request is currently pending supervisor approval. You will be able to upload once approved."
+          );
+        }
+        throw new ForbiddenError(
+          "Re-uploading this lab report requires supervisor permission. Please request permission before uploading a new report."
+        );
+      }
+    }
+
     const fileUrl = file.location || `/api/v1/uploads/files/${file.filename}`;
-    const fileName = file.originalname || file.filename;
+    // M-05: Sanitize stored filename to prevent stored XSS — same pattern as milestoneController (FLAW-R2-14)
+    const rawFileName = (file.originalname || file.filename || "") as string;
+    const fileName = rawFileName
+      .replace(/[<>"'`]/g, "_")   // strip XSS trigger chars
+      .replace(/[\r\n\0]/g, "")   // strip control chars
+      .substring(0, 255)
+      || "report";
     const fileSize = file.size || 0;
 
     const submission = await prisma.labSubmission.create({
@@ -564,12 +629,20 @@ export const submitLabReport = catchAsync(
         status: "PENDING",
         score: 0,
         attemptNumber: previousSubmissionsCount + 1,
+        reuploadStatus: null,
       },
       include: {
         assignment: { select: { id: true, title: true, totalPoints: true } },
         student: { select: { id: true, name: true, email: true } },
       },
     });
+
+    if (latestSub && latestSub.reuploadStatus === "APPROVED") {
+      await prisma.labSubmission.update({
+        where: { id: latestSub.id },
+        data: { reuploadStatus: "CONSUMED" },
+      });
+    }
 
     await logActivity({
       type: "LAB_SUBMISSION_COMPLETED",
@@ -645,7 +718,8 @@ export const getAssignmentSubmissionsRoster = catchAsync(
       throw new NotFoundError("Lab Assignment");
     }
 
-    if (req.user!.role !== "ADMIN" && req.user!.role !== "SUPERVISOR" && assignment.creatorId !== req.user!.id) {
+    // FLAW-10: Supervisors can only view submissions rosters for assignments they created
+    if (req.user!.role !== "ADMIN" && !(req.user!.role === "SUPERVISOR" && assignment.creatorId === req.user!.id)) {
       throw new ForbiddenError("You do not have permission to view submissions for this assignment");
     }
 
@@ -787,16 +861,27 @@ export const gradeSubmission = catchAsync(
       throw new NotFoundError("Submission");
     }
 
-    if (req.user!.role !== "ADMIN" && req.user!.role !== "SUPERVISOR" && submission.assignment.creatorId !== req.user!.id) {
+    // M-04: Fixed inverted RBAC — previous logic allowed any SUPERVISOR to grade any assignment
+    // Correct: ADMIN can grade all; SUPERVISOR can only grade their own assignments
+    const isAdmin = req.user!.role === "ADMIN";
+    const isOwnerSupervisor = req.user!.role === "SUPERVISOR" && submission.assignment.creatorId === req.user!.id;
+    if (!isAdmin && !isOwnerSupervisor) {
       throw new ForbiddenError("You do not have permission to grade submissions for this assignment");
     }
 
-    const finalScore =
+    const totalPoints = submission.assignment.totalPoints ?? 0;
+    const rawScore =
       score !== undefined
         ? Number(score)
         : manualScoreAdjust !== undefined
         ? (submission.score || 0) + Number(manualScoreAdjust)
         : submission.score;
+
+    // FLAW-03: Clamp score to valid range [0, totalPoints]
+    const finalScore =
+      rawScore !== null && rawScore !== undefined
+        ? Math.max(0, Math.min(totalPoints, rawScore))
+        : rawScore;
 
     const updated = await prisma.labSubmission.update({
       where: { id: submissionId },
@@ -978,7 +1063,8 @@ export const updateLabAssignment = catchAsync(
       throw new NotFoundError("Lab Assignment");
     }
 
-    if (req.user!.role !== "ADMIN" && req.user!.role !== "SUPERVISOR" && assignment.creatorId !== req.user!.id) {
+    // FLAW-11: Supervisors can only update assignments they created
+    if (req.user!.role !== "ADMIN" && !(req.user!.role === "SUPERVISOR" && assignment.creatorId === req.user!.id)) {
       throw new ForbiddenError("You do not have permission to modify this assignment");
     }
 
@@ -1029,8 +1115,26 @@ export const renameSubjectFolder = catchAsync(
       throw new BadRequestError("Batch ID is required for folder operations");
     }
 
+    // FLAW-16: Guard against empty subject string triggering mass updates
+    if (!oldSubject || typeof oldSubject !== "string" || !oldSubject.trim()) {
+      throw new BadRequestError("oldSubject must be a non-empty string");
+    }
+    if (!newSubject || typeof newSubject !== "string" || !newSubject.trim()) {
+      throw new BadRequestError("newSubject must be a non-empty string");
+    }
+
+    // H-03: Sanitize newSubject to prevent stored XSS via folder name in DB + API response
+    const safeNewSubject = newSubject
+      .replace(/[<>"'`]/g, "_")    // strip XSS trigger chars
+      .replace(/[\r\n\0]/g, "")    // strip control chars
+      .substring(0, 200)
+      .trim();
+    if (!safeNewSubject) {
+      throw new BadRequestError("newSubject contains only invalid characters");
+    }
+
     const whereClause: any = {
-      subject: oldSubject,
+      subject: oldSubject.trim(),
       batchId,
     };
     if (req.user!.role !== "ADMIN") {
@@ -1040,13 +1144,13 @@ export const renameSubjectFolder = catchAsync(
     const count = await prisma.labAssignment.updateMany({
       where: whereClause,
       data: {
-        subject: newSubject,
+        subject: safeNewSubject,
       },
     });
 
     res.status(200).json({
       status: "success",
-      message: `Updated subject folder name to "${newSubject}"`,
+      message: `Updated subject folder name to "${safeNewSubject}"`,
       affectedCount: count.count,
     });
   }
@@ -1065,8 +1169,18 @@ export const toggleSubjectFolderStatus = catchAsync(
       throw new BadRequestError("Batch ID is required for folder operations");
     }
 
+    if (!subject || typeof subject !== "string" || !subject.trim()) {
+      throw new BadRequestError("subject must be a non-empty string");
+    }
+
+    // H-02: Validate status enum at runtime — TypeScript types are erased
+    const VALID_STATUSES = ["DRAFT", "PUBLISHED", "CLOSED", "ARCHIVED"] as const;
+    if (!VALID_STATUSES.includes(status as typeof VALID_STATUSES[number])) {
+      throw new BadRequestError("Invalid status. Allowed: DRAFT, PUBLISHED, CLOSED, ARCHIVED");
+    }
+
     const whereClause: any = {
-      subject,
+      subject: subject.trim(),
       batchId,
     };
     if (req.user!.role !== "ADMIN") {
@@ -1082,7 +1196,7 @@ export const toggleSubjectFolderStatus = catchAsync(
 
     res.status(200).json({
       status: "success",
-      message: `Subject folder "${subject}" status changed to ${status}`,
+      message: `Subject folder "${subject.trim()}" status changed to ${status}`,
       affectedCount: count.count,
     });
   }
@@ -1098,6 +1212,11 @@ export const deleteSubjectFolder = catchAsync(
 
     if (!batchId) {
       throw new BadRequestError("Batch ID is required for folder operations");
+    }
+
+    // FLAW-16: Guard against empty subject string triggering mass deletions
+    if (!subject || typeof subject !== "string" || !subject.trim()) {
+      throw new BadRequestError("subject must be a non-empty string");
     }
 
     const whereClause: any = {
@@ -1116,6 +1235,126 @@ export const deleteSubjectFolder = catchAsync(
       status: "success",
       message: `Subject folder "${subject}" and its experiments deleted`,
       deletedCount: count.count,
+    });
+  }
+);
+
+// ── 15. Student Request Permission to Re-upload Lab Assignment ───────────────
+export const requestLabReupload = catchAsync(
+  async (req: Request, res: Response) => {
+    const id = requireParam(req.params["id"], "id");
+    const user = req.user!;
+    const { reason } = req.body as { reason?: string };
+
+    const assignment = await prisma.labAssignment.findUnique({
+      where: { id },
+      include: { batch: { select: { id: true, name: true } } },
+    });
+    if (!assignment) throw new NotFoundError("Lab Assignment");
+
+    // Check student enrollment in batch
+    if (user.role === "STUDENT") {
+      const enrollment = await prisma.batchEnrollment.findUnique({
+        where: { userId_batchId: { userId: user.id, batchId: assignment.batchId } },
+      });
+      if (!enrollment) throw new ForbiddenError("Not enrolled in this batch");
+    }
+
+    const latestSub = await prisma.labSubmission.findFirst({
+      where: { assignmentId: id, studentId: user.id },
+      orderBy: { attemptNumber: "desc" },
+    });
+
+    if (!latestSub) {
+      throw new BadRequestError("You have not submitted this lab assignment yet. You can submit directly without permission.");
+    }
+
+    if (latestSub.reuploadStatus === "PENDING") {
+      throw new BadRequestError("A re-upload permission request is already pending supervisor review.");
+    }
+
+    if (latestSub.reuploadStatus === "APPROVED") {
+      throw new BadRequestError("You already have permission to re-upload. You can submit your revised report now.");
+    }
+
+    const updated = await prisma.labSubmission.update({
+      where: { id: latestSub.id },
+      data: {
+        reuploadStatus: "PENDING",
+        reuploadReason: reason?.trim() || "Student requested permission to re-upload lab assignment",
+        reuploadRequestedAt: new Date(),
+      },
+    });
+
+    await logActivity({
+      type: "LAB_REUPLOAD_REQUESTED",
+      userId: user.id,
+      payload: {
+        assignmentId: id,
+        assignmentTitle: assignment.title,
+        submissionId: latestSub.id,
+        reason: updated.reuploadReason,
+      },
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: "Re-upload permission request submitted to your supervisor successfully.",
+      data: updated,
+    });
+  }
+);
+
+// ── 16. Supervisor / Admin Review Re-upload Permission ────────────────────────
+export const reviewLabReuploadPermission = catchAsync(
+  async (req: Request, res: Response) => {
+    const submissionId = requireParam(req.params["submissionId"], "submissionId");
+    const user = req.user!;
+    const { action, notes } = req.body as { action: "APPROVE" | "REJECT"; notes?: string };
+
+    if (action !== "APPROVE" && action !== "REJECT") {
+      throw new BadRequestError("Action must be either 'APPROVE' or 'REJECT'");
+    }
+
+    const submission = await prisma.labSubmission.findUnique({
+      where: { id: submissionId },
+      include: {
+        assignment: { select: { id: true, title: true, creatorId: true, batchId: true } },
+        student: { select: { id: true, name: true, email: true } },
+      },
+    });
+    if (!submission) throw new NotFoundError("Lab Submission");
+
+    const newStatus = action === "APPROVE" ? "APPROVED" : "REJECTED";
+
+    const updated = await prisma.labSubmission.update({
+      where: { id: submissionId },
+      data: {
+        reuploadStatus: newStatus,
+        reuploadReviewedAt: new Date(),
+        reuploadReviewedBy: user.id,
+        ...(notes && { supervisorFeedback: notes }),
+      },
+    });
+
+    await logActivity({
+      type: action === "APPROVE" ? "LAB_REUPLOAD_APPROVED" : "LAB_REUPLOAD_REJECTED",
+      userId: user.id,
+      payload: {
+        assignmentId: submission.assignment.id,
+        assignmentTitle: submission.assignment.title,
+        studentId: submission.student.id,
+        studentName: submission.student.name,
+        action,
+      },
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: action === "APPROVE"
+        ? "Re-upload permission granted. The student can now re-submit."
+        : "Re-upload permission request denied.",
+      data: updated,
     });
   }
 );

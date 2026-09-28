@@ -37,7 +37,7 @@ export interface ProjectDetailScreenProps {
   onAddFeedback: (text: string) => void;
   onReplyFeedback: (feedbackId: string, text: string) => void;
   onToggleResolveFeedback: (feedbackId: string) => void;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, targetId?: string) => void;
   defaultTab?: ProjectTabKey;
 }
 

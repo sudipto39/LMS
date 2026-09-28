@@ -16,6 +16,8 @@ import {
   ExternalLink,
   BookOpen,
   HelpCircle,
+  RotateCcw,
+  ShieldCheck,
 } from "lucide-react";
 import { Card, Btn, Btn2, Pill } from "../common/UIPrimitives";
 import { labsApi, client, tokenStore } from "../../api";
@@ -206,6 +208,47 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
   const [isManualOverride, setIsManualOverride] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [savingGrade, setSavingGrade] = useState(false);
+  const [reviewingReupload, setReviewingReupload] = useState(false);
+
+  const handleReviewReupload = async (action: "APPROVE" | "REJECT") => {
+    if (!selectedItem?.latestSubmission) return;
+    try {
+      setReviewingReupload(true);
+      const subId = selectedItem.latestSubmission.id;
+      const res = await labsApi.reviewReuploadPermission(subId, action);
+      if (res?.data) {
+        const updatedSub = res.data;
+        setSelectedItem((prev) =>
+          prev
+            ? {
+                ...prev,
+                latestSubmission: updatedSub,
+              }
+            : null
+        );
+        setData((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            roster: prev.roster.map((r) =>
+              r.student.id === selectedItem.student.id
+                ? { ...r, latestSubmission: updatedSub }
+                : r
+            ),
+          };
+        });
+        showToast(
+          action === "APPROVE"
+            ? "Re-upload permission granted! Student can now submit a revised report. ✅"
+            : "Re-upload request denied. ❌"
+        );
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Failed to update re-upload permission");
+    } finally {
+      setReviewingReupload(false);
+    }
+  };
 
   useEffect(() => {
     if (show && assignmentId) {
@@ -770,6 +813,20 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                                 ? "📄 PDF Report"
                                 : `${sub.testsPassed}/${sub.totalTests} tests`}
                             </div>
+                            {sub.reuploadStatus === "PENDING" && (
+                              <div className="mt-1 flex justify-end">
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-500 border border-amber-500/30 flex items-center gap-0.5">
+                                  ⚠️ Re-upload Req
+                                </span>
+                              </div>
+                            )}
+                            {sub.reuploadStatus === "APPROVED" && (
+                              <div className="mt-1 flex justify-end">
+                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 flex items-center gap-0.5">
+                                  ✓ Can Re-upload
+                                </span>
+                              </div>
+                            )}
                           </>
                         ) : (
                           <Pill color="#94a3b8">Pending</Pill>
@@ -806,6 +863,80 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
 
                 {selectedItem.latestSubmission ? (
                   <div className="space-y-4 flex-1">
+                    {/* SUPERVISOR RE-UPLOAD PERMISSION REVIEW CARD */}
+                    {selectedItem.latestSubmission.reuploadStatus === "PENDING" ? (
+                      <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-bold text-[12px]">
+                            <RotateCcw size={14} /> Student Requested Re-upload Permission
+                          </div>
+                          <span className="text-[10px] font-mono text-amber-600/80 dark:text-amber-400/80">
+                            {selectedItem.latestSubmission.reuploadRequestedAt
+                              ? new Date(selectedItem.latestSubmission.reuploadRequestedAt).toLocaleString()
+                              : "Pending Review"}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border border-amber-500/20 bg-black/5 dark:bg-white/5 text-[12px]">
+                          <span className="font-semibold text-[11px] text-amber-600 dark:text-amber-400 block mb-0.5">
+                            Student Reason:
+                          </span>
+                          <p className="italic" style={{ color: "var(--t1)" }}>
+                            "{selectedItem.latestSubmission.reuploadReason || "No explanation provided"}"
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            disabled={reviewingReupload}
+                            onClick={() => handleReviewReupload("REJECT")}
+                            className="px-3 py-1.5 rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/10 text-[11px] font-semibold cursor-pointer transition disabled:opacity-50"
+                          >
+                            Deny Request
+                          </button>
+                          <Btn
+                            type="button"
+                            disabled={reviewingReupload}
+                            onClick={() => handleReviewReupload("APPROVE")}
+                            className="!h-8 text-[11px] !px-3.5 !bg-emerald-600 hover:!bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                          >
+                            <ShieldCheck size={13} /> Grant Re-upload Permission
+                          </Btn>
+                        </div>
+                      </div>
+                    ) : selectedItem.latestSubmission.reuploadStatus === "APPROVED" ? (
+                      <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between flex-wrap gap-2 text-[12px]">
+                        <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-semibold">
+                          <ShieldCheck size={16} /> Re-upload Permission Granted
+                          <span className="text-[11px] font-normal opacity-85">
+                            (Student authorized to submit a new version)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={reviewingReupload}
+                          onClick={() => handleReviewReupload("REJECT")}
+                          className="text-[11px] text-red-500 hover:underline cursor-pointer bg-transparent border-none font-medium"
+                        >
+                          Revoke Permission
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl border flex items-center justify-between text-[11px]" style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}>
+                        <span style={{ color: "var(--t2)" }}>
+                          Re-upload Status: <span className="font-semibold text-slate-400">Locked (Requires Supervisor Approval)</span>
+                        </span>
+                        <button
+                          type="button"
+                          disabled={reviewingReupload}
+                          onClick={() => handleReviewReupload("APPROVE")}
+                          className="text-[11px] text-[#06b6d4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none font-medium"
+                          title="Authorize this student to submit a revised report without waiting for a request"
+                        >
+                          <RotateCcw size={11} /> Grant Re-upload Permission
+                        </button>
+                      </div>
+                    )}
+
                     {/* PDF Report Submission with In-App Preview */}
                     {!selectedItem.latestSubmission.code || Boolean(selectedItem.latestSubmission.fileUrl) ? (
                       <div className="p-4 rounded-xl border space-y-3" style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}>

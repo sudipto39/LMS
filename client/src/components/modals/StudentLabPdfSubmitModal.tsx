@@ -1,5 +1,6 @@
 // src/components/modals/StudentLabPdfSubmitModal.tsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   FileText,
   Upload,
@@ -11,9 +12,14 @@ import {
   ExternalLink,
   RotateCcw,
   Clock,
+  Lock,
+  ShieldCheck,
+  AlertCircle,
+  Send,
 } from "lucide-react";
-import { Card, Btn, Btn2 } from "../common/UIPrimitives";
+import { Btn, Btn2 } from "../common/UIPrimitives";
 import { labsApi } from "../../api";
+import { downloadFileBlob } from "../../utils/fileDownload";
 import { useToast } from "../../context/ToastContext";
 import type { LabAssignment, LabSubmission } from "../../types";
 
@@ -39,11 +45,88 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
   const [isDragOver, setIsDragOver] = useState(false);
   const [reuploadMode, setReuploadMode] = useState(false);
 
+  // Local submission state so that re-upload permission requests update instantly
+  const [localSub, setLocalSub] = useState<LabSubmission | null>(assignment?.mySubmission || null);
+  const [requestReason, setRequestReason] = useState("");
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [requestingPermission, setRequestingPermission] = useState(false);
+
+  useEffect(() => {
+    setLocalSub(assignment?.mySubmission || null);
+    setReuploadMode(false);
+    setShowRequestForm(false);
+    setRequestReason("");
+    setSelectedFile(null);
+    setStudentNotes("");
+  }, [assignment?.mySubmission, assignment?.id]);
+
+  // Lock background page and main container scrolling while modal is open
+  useEffect(() => {
+    if (show) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+
+      // Also lock the main scroll container so mousewheel/touch doesn't scroll the page behind the modal
+      const mainEl = document.querySelector("main") as HTMLElement | null;
+      const prevMainOverflow = mainEl ? mainEl.style.overflow : "";
+      if (mainEl) {
+        mainEl.style.overflow = "hidden";
+      }
+
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+        if (mainEl) {
+          mainEl.style.overflow = prevMainOverflow;
+        }
+      };
+    }
+  }, [show]);
+
   if (!show || !assignment) return null;
 
-  const mySub = assignment.mySubmission;
   const isDuePassed = assignment.dueDate ? new Date() > new Date(assignment.dueDate) : false;
-  const canUpload = !mySub || reuploadMode || (!isDuePassed || assignment.allowLate);
+  const hasExistingSubmission = Boolean(localSub);
+  const isPermissionApproved = localSub?.reuploadStatus === "APPROVED";
+  const isPermissionPending = localSub?.reuploadStatus === "PENDING";
+  const isPermissionRejected = localSub?.reuploadStatus === "REJECTED";
+
+  // Re-upload is ONLY permitted when supervisor has approved it
+  const canUpload = !hasExistingSubmission
+    ? (!isDuePassed || assignment.allowLate)
+    : (reuploadMode && isPermissionApproved);
+
+  const handleDownloadManual = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!assignment?.manualUrl) return;
+    const rawName = assignment.manualName || `${assignment.title}_Manual.pdf`;
+    const finalName = rawName.includes(".") ? rawName : `${rawName}.pdf`;
+
+    showToast(`Downloading manual ${finalName}...`);
+    const success = await downloadFileBlob(assignment.manualUrl, finalName, ".pdf");
+    if (success) {
+      showToast(`Downloaded ${finalName} ✅`);
+    } else {
+      showToast("Failed to download manual. Please check your connection.");
+    }
+  };
+
+  const handleDownloadSubmission = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!localSub?.fileUrl) return;
+    const rawName = localSub.fileName || "Submitted_Report.pdf";
+    const finalName = rawName.includes(".") ? rawName : `${rawName}.pdf`;
+
+    showToast(`Downloading report ${finalName}...`);
+    const success = await downloadFileBlob(localSub.fileUrl, finalName, ".pdf");
+    if (success) {
+      showToast(`Downloaded ${finalName} ✅`);
+    } else {
+      showToast("Failed to download report PDF.");
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -82,6 +165,30 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
     setSelectedFile(file);
   };
 
+  const handleRequestReupload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requestReason.trim()) {
+      showToast("Please provide a reason explaining why you need to re-upload.");
+      return;
+    }
+
+    try {
+      setRequestingPermission(true);
+      const res = await labsApi.requestReupload(assignment.id, requestReason.trim());
+      if (res?.data) {
+        setLocalSub(res.data);
+        setShowRequestForm(false);
+        setRequestReason("");
+        showToast("Re-upload permission request sent to supervisor! ⏳");
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Failed to submit re-upload request";
+      showToast(msg);
+    } finally {
+      setRequestingPermission(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) {
@@ -100,6 +207,7 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
       const res = await labsApi.submitLabReport(assignment.id, formData);
       if (res?.data) {
         showToast("Lab report PDF submitted successfully! 📄✨");
+        setLocalSub(res.data);
         onSubmissionSuccess(res.data);
         setSelectedFile(null);
         setStudentNotes("");
@@ -107,7 +215,8 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
         onClose();
       }
     } catch (err: any) {
-      showToast(err?.message || "Failed to submit lab report");
+      const msg = err?.response?.data?.message || err?.message || "Failed to submit lab report";
+      showToast(msg);
     } finally {
       setSubmitting(false);
     }
@@ -121,18 +230,39 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5 overflow-hidden"
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100vw",
+        height: "100vh",
+      }}
+    >
+      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-black/65 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
-      <Card
-        className="relative w-full max-w-[680px] max-h-[92vh] flex flex-col p-6 shadow-2xl z-10 overflow-hidden border"
-        style={{ borderColor: "var(--bdr)" }}
+
+      {/* Modal Dialog Card */}
+      <div
+        className="relative w-full max-w-[680px] my-auto flex flex-col p-5 sm:p-6 rounded-2xl border shadow-2xl z-10 overflow-hidden"
+        style={{
+          background: "var(--srf)",
+          borderColor: "var(--bdr)",
+          maxHeight: "min(90vh, 720px)",
+        }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b" style={{ borderColor: "var(--bdr)" }}>
+        <div className="flex items-center justify-between pb-3.5 border-b shrink-0" style={{ borderColor: "var(--bdr)" }}>
           <div className="flex items-center gap-2.5">
             <div className="h-10 w-10 rounded-xl grid place-items-center bg-[#06b6d4]/10 text-[#06b6d4]">
               <FileText size={22} />
@@ -193,21 +323,20 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                 </div>
               </div>
 
-              <a
-                href={assignment.manualUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
+              <button
+                type="button"
+                onClick={handleDownloadManual}
                 className="h-8 px-3 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer shrink-0"
                 style={{ borderColor: "var(--bdr)", color: "var(--acc)", background: "var(--srf)" }}
+                title="Download Manual in original format"
               >
                 <Download size={13} /> Download Manual
-              </a>
+              </button>
             </div>
           )}
 
           {/* Current Submission Status Card if student already submitted */}
-          {mySub && !reuploadMode && (
+          {localSub && !reuploadMode && (
             <div
               className="p-4 rounded-xl border space-y-3"
               style={{ background: "rgba(34, 197, 94, 0.05)", borderColor: "rgba(34, 197, 94, 0.3)" }}
@@ -218,14 +347,14 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                     <CheckCircle2 size={16} /> Submitted Successfully
                   </span>
                   <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500">
-                    Attempt #{mySub.attemptNumber || 1}
+                    Attempt #{localSub.attemptNumber || 1}
                   </span>
                 </div>
 
                 <div className="text-right font-mono">
-                  {mySub.status === "EVALUATED" ? (
+                  {localSub.status === "EVALUATED" ? (
                     <span className="font-bold text-[14px] text-emerald-500">
-                      Score: {mySub.score}/{assignment.totalPoints} pts
+                      Score: {localSub.score}/{assignment.totalPoints} pts
                     </span>
                   ) : (
                     <span className="text-[11px] text-amber-500 font-semibold flex items-center gap-1">
@@ -243,25 +372,25 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                 <div className="flex items-center gap-2 truncate">
                   <FileText size={14} className="text-[#06b6d4] shrink-0" />
                   <span className="font-semibold truncate" style={{ color: "var(--t1)" }}>
-                    {mySub.fileName || "Submitted_Report.pdf"}
+                    {localSub.fileName || "Submitted_Report.pdf"}
                   </span>
-                  <span style={{ color: "var(--t3)" }}>({formatFileSize(mySub.fileSize)})</span>
+                  <span style={{ color: "var(--t3)" }}>({formatFileSize(localSub.fileSize)})</span>
                 </div>
 
-                {mySub.fileUrl && (
-                  <a
-                    href={mySub.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[#06b6d4] hover:underline flex items-center gap-1 shrink-0 font-medium ml-2"
+                {localSub.fileUrl && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadSubmission}
+                    className="text-[#06b6d4] hover:underline flex items-center gap-1 shrink-0 font-medium ml-2 cursor-pointer bg-transparent border-none p-0"
+                    title="Download submitted PDF"
                   >
-                    View PDF <ExternalLink size={11} />
-                  </a>
+                    View / Download PDF <ExternalLink size={11} />
+                  </button>
                 )}
               </div>
 
               {/* Supervisor Feedback if Graded */}
-              {mySub.supervisorFeedback && (
+              {localSub.supervisorFeedback && (
                 <div
                   className="p-3 rounded-lg border space-y-1"
                   style={{ background: "rgba(6, 182, 212, 0.05)", borderColor: "rgba(6, 182, 212, 0.2)" }}
@@ -270,32 +399,180 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                     <Sparkles size={11} /> Faculty Feedback:
                   </div>
                   <p className="text-[12px] italic" style={{ color: "var(--t1)" }}>
-                    "{mySub.supervisorFeedback}"
+                    "{localSub.supervisorFeedback}"
                   </p>
                 </div>
               )}
 
-              {/* Re-upload Option */}
-              {(!isDuePassed || assignment.allowLate) && (
-                <div className="pt-2 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setReuploadMode(true)}
-                    className="text-[11px] text-[#06b6d4] hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <RotateCcw size={12} /> Re-upload updated report
-                  </button>
-                </div>
-              )}
+              {/* SUPERVISOR RE-UPLOAD PERMISSION CONTROL SECTION */}
+              <div className="pt-2 border-t" style={{ borderColor: "rgba(34, 197, 94, 0.2)" }}>
+                {isPermissionApproved ? (
+                  <div className="p-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                        <ShieldCheck size={16} /> Supervisor Permission Granted
+                      </span>
+                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                        Authorized for Re-upload
+                      </span>
+                    </div>
+                    <p className="text-[12px]" style={{ color: "var(--t2)" }}>
+                      Your supervisor has authorized you to re-upload a revised report. Click below to select and upload your new PDF.
+                    </p>
+                    <div className="pt-1 flex justify-end">
+                      <Btn
+                        type="button"
+                        onClick={() => setReuploadMode(true)}
+                        className="!h-8.5 text-[11px] !px-3.5 flex items-center gap-1.5 cursor-pointer shadow-sm !bg-emerald-600 hover:!bg-emerald-700 text-white"
+                      >
+                        <RotateCcw size={13} /> Upload Revised Report Now
+                      </Btn>
+                    </div>
+                  </div>
+                ) : isPermissionPending ? (
+                  <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                        <Clock size={15} /> Re-upload Permission Pending
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold">
+                        Awaiting Faculty Review
+                      </span>
+                    </div>
+                    <p className="text-[12px]" style={{ color: "var(--t2)" }}>
+                      Your supervisor has not yet reviewed your re-upload request. You will be able to upload once permission is granted.
+                    </p>
+                    {localSub.reuploadReason && (
+                      <div className="text-[11px] italic p-2 rounded-lg border border-amber-500/20 bg-amber-500/5" style={{ color: "var(--t1)" }}>
+                        <span className="font-semibold not-italic text-amber-600 dark:text-amber-400 block mb-0.5">Your Stated Reason:</span>
+                        "{localSub.reuploadReason}"
+                      </div>
+                    )}
+                    <div className="pt-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowRequestForm(true)}
+                        className="text-[11px] text-amber-600 hover:underline cursor-pointer bg-transparent border-none font-medium"
+                      >
+                        Edit / Update Reason
+                      </button>
+                    </div>
+                  </div>
+                ) : isPermissionRejected ? (
+                  <div className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-red-500 flex items-center gap-1.5">
+                        <AlertCircle size={15} /> Re-upload Request Declined
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-red-500/20 text-red-500 font-semibold">
+                        Faculty Declined
+                      </span>
+                    </div>
+                    <p className="text-[12px]" style={{ color: "var(--t2)" }}>
+                      Your supervisor declined the previous re-upload request. If you have valid academic grounds or corrections, you can request permission again.
+                    </p>
+                    <div className="pt-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowRequestForm(true)}
+                        className="px-3 py-1.5 rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/10 text-[11px] font-semibold cursor-pointer transition flex items-center gap-1.5"
+                      >
+                        <RotateCcw size={12} /> Request Permission Again
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl border space-y-2" style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-semibold flex items-center gap-1.5" style={{ color: "var(--t1)" }}>
+                        <Lock size={14} className="text-amber-500" /> Need to re-upload your report?
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20">
+                        Supervisor Permission Required
+                      </span>
+                    </div>
+                    <p className="text-[11px]" style={{ color: "var(--t3)" }}>
+                      Re-uploading an already submitted lab report requires faculty supervisor approval.
+                    </p>
+                    <div className="pt-1 flex justify-end">
+                      <Btn2
+                        type="button"
+                        onClick={() => setShowRequestForm(true)}
+                        className="!h-8 text-[11px] !px-3 flex items-center gap-1.5 cursor-pointer !bg-[#06b6d4]/10 !text-[#06b6d4] hover:!bg-[#06b6d4]/20 border border-[#06b6d4]/30"
+                      >
+                        <RotateCcw size={12} /> Request Re-upload Permission
+                      </Btn2>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+
+          {/* INLINE RE-UPLOAD REQUEST REASON FORM */}
+          {showRequestForm && localSub && !reuploadMode && (
+            <form onSubmit={handleRequestReupload} className="p-4 rounded-xl border border-[#06b6d4]/40 bg-[#06b6d4]/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] font-bold text-[#06b6d4] flex items-center gap-1.5">
+                  <RotateCcw size={14} /> Request Re-upload Permission from Supervisor
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#06b6d4]/20 text-[#06b6d4]">
+                  Official Faculty Request
+                </span>
+              </div>
+              <p className="text-[11px]" style={{ color: "var(--t2)" }}>
+                Please provide a clear reason explaining why you need to re-upload this lab report (e.g., corrected graph calculations, revised error analysis, updated lab manual answers).
+              </p>
+              <textarea
+                rows={3}
+                required
+                value={requestReason}
+                onChange={(e) => setRequestReason(e.target.value)}
+                placeholder="State your reason for requesting re-upload..."
+                className="w-full rounded-xl p-3 text-[12px] border outline-none resize-none focus:border-[#06b6d4]"
+                style={{ background: "var(--srf)", borderColor: "var(--bdr)", color: "var(--t1)" }}
+              />
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <Btn2
+                  type="button"
+                  onClick={() => setShowRequestForm(false)}
+                  className="!h-8 text-[11px] !px-3"
+                  disabled={requestingPermission}
+                >
+                  Cancel
+                </Btn2>
+                <Btn
+                  type="submit"
+                  disabled={!requestReason.trim() || requestingPermission}
+                  className="!h-8 text-[11px] !px-4 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Send size={12} /> {requestingPermission ? "Submitting..." : "Send Request to Supervisor"}
+                </Btn>
+              </div>
+            </form>
           )}
 
           {/* Upload Form */}
           {canUpload && (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {reuploadMode && (
+                <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-semibold text-[12px]">
+                    <ShieldCheck size={16} /> Authorized Re-upload Session Active
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReuploadMode(false)}
+                    className="text-[11px] text-red-500 hover:underline cursor-pointer bg-transparent border-none"
+                  >
+                    Cancel Re-upload
+                  </button>
+                </div>
+              )}
+
               <div>
                 <label className="text-[11px] font-bold uppercase tracking-wider block mb-1.5" style={{ color: "var(--t2)" }}>
-                  Upload Lab Report PDF <span className="text-red-500">*</span>
+                  {reuploadMode ? "Upload Revised Lab Report PDF" : "Upload Lab Report PDF"} <span className="text-red-500">*</span>
                 </label>
 
                 <div
@@ -386,13 +663,14 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                   className="!h-9 text-[12px] !px-5 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Upload size={14} />
-                  {submitting ? "Submitting Report..." : mySub ? "Re-submit PDF Report" : "Submit Lab Report"}
+                  {submitting ? "Submitting Report..." : localSub ? "Submit Revised PDF Report" : "Submit Lab Report"}
                 </Btn>
               </div>
             </form>
           )}
         </div>
-      </Card>
-    </div>
+      </div>
+    </div>,
+    document.body
   );
 };

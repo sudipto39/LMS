@@ -92,10 +92,11 @@ export const getApprovedCatalog = catchAsync(
     }
 
     if (search && search.trim()) {
+      const safeSearch = search.trim().slice(0, 500); // cap to prevent ReDoS via long ILIKE patterns
       whereClause.OR = [
-        { title: { contains: search.trim(), mode: "insensitive" } },
-        { description: { contains: search.trim(), mode: "insensitive" } },
-        { technologies: { hasSome: [search.trim()] } },
+        { title: { contains: safeSearch, mode: "insensitive" } },
+        { description: { contains: safeSearch, mode: "insensitive" } },
+        { technologies: { hasSome: [safeSearch] } },
       ];
     }
 
@@ -213,6 +214,11 @@ export const reviewProblemStatement = catchAsync(
       status: "APPROVED" | "REJECTED" | "ARCHIVED";
       adminFeedback?: string;
     };
+
+    const VALID_STATEMENT_STATUSES = ["APPROVED", "REJECTED", "ARCHIVED"] as const;
+    if (!VALID_STATEMENT_STATUSES.includes(status as typeof VALID_STATEMENT_STATUSES[number])) {
+      throw new NotFoundError("Invalid status value. Allowed: APPROVED, REJECTED, ARCHIVED");
+    }
 
     const statement = await prisma.problemStatement.findUnique({
       where: { id },

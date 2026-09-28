@@ -360,6 +360,13 @@ model LabSubmission {
   attemptNumber      Int              @default(1)
   submittedAt        DateTime         @default(now())
 
+  // Re-upload Permission Tracking (Supervisor approval required for resubmission)
+  reuploadStatus      String?          // null | "PENDING" | "APPROVED" | "REJECTED" | "CONSUMED"
+  reuploadReason      String?          @db.Text
+  reuploadRequestedAt DateTime?
+  reuploadReviewedAt  DateTime?
+  reuploadReviewedBy  String?
+
   @@index([assignmentId, studentId])
   @@map("lab_submissions")
 }

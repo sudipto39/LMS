@@ -364,6 +364,11 @@ export const bulkUpsertCourseEvaluations = catchAsync(async (req: Request, res: 
     throw new BadRequestError("Evaluations array is required and cannot be empty");
   }
 
+  // FLAW-06: Guard against DoS via massive transaction
+  if (evaluations.length > 200) {
+    throw new BadRequestError("Bulk evaluation request exceeds maximum batch size of 200 records");
+  }
+
   const evaluatorId = req.user?.id ?? null;
 
   const results = await prisma.$transaction(

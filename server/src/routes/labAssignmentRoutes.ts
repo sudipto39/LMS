@@ -9,6 +9,8 @@ import {
   runPublicTests,
   submitLabAssignment,
   submitLabReport,
+  requestLabReupload,
+  reviewLabReuploadPermission,
   getAssignmentSubmissionsRoster,
   gradeSubmission,
   deleteLabAssignment,
@@ -40,6 +42,12 @@ router.get("/:id", getLabAssignmentById);
 router.post("/:id/run", validate(runLabTestSchema), runPublicTests);
 router.post("/:id/submit", validate(submitLabCodeSchema), submitLabAssignment);
 router.post("/:id/submit-report", upload.single("file"), submitLabReport);
+router.post("/:id/request-reupload", restrictTo("STUDENT"), requestLabReupload);
+router.patch(
+  "/submissions/:submissionId/reupload-permission",
+  restrictTo("SUPERVISOR", "ADMIN"),
+  reviewLabReuploadPermission
+);
 
 // ── Folder CRUD & Batch Status Operations ────────────────────────────────────
 router.patch(

@@ -18,13 +18,17 @@ export interface AuditLogItem {
 
 export interface ActivityItem {
   id: string;
-  type: "commit" | "milestone" | "feedback" | "push" | "grade" | "system";
-  scope: "personal" | "project" | "supervisor" | "admin" | "all";
+  type: string;
+  scope?: string;
   msg: string;
   time: string;
   date?: string;
+  createdAt?: string;
   user: string;
+  userId?: string;
   avatar: string;
   project: string;
+  projectId?: string;
   detail: string;
+  payload?: any;
 }

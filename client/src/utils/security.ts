@@ -48,19 +48,23 @@ export function sanitizeFileName(name: string): string {
 }
 
 // ── SQL / NoSQL Injection Prevention for query strings ────────────────────────
-export function sanitizeForDB(input: string): string {
+// ⚠️  DO NOT use this on data sent to the API — the backend uses Prisma with
+// parameterized queries which already prevents SQL/NoSQL injection.
+// Applying this strips legitimate characters ($, {}, ;) from user content such
+// as code snippets, project descriptions, and JSON values.
+// Only use this for display-only label sanitization where truly needed.
+/** @deprecated Use only for sanitizing non-API display-only strings. API data is safe via Prisma. */
+export function sanitizeDisplayLabel(input: string): string {
   if (!input) return "";
   return input
-    .replace(/[$]/g, "") // MongoDB operator injection
-    .replace(/[{}]/g, "") // Object injection
-    .replace(/;/g, "") // SQL terminator
-    .replace(/--/g, "") // SQL comment
-    .replace(/\/\*/g, "") // Block comment start
-    .replace(/\*\//g, "") // Block comment end
-    .replace(/'/g, "\\'")
-    .replace(/"/g, '\\"')
+    .replace(/--/g, "")       // SQL comment
+    .replace(/\/\*/g, "")     // Block comment start
+    .replace(/\*\//g, "")     // Block comment end
     .trim();
 }
+
+/** @deprecated Legacy alias — do not use for data bound for API calls. */
+export const sanitizeForDB = sanitizeDisplayLabel;
 
 // ── Email Validation ──────────────────────────────────────────────────────────
 export function validateEmail(email: string): { valid: boolean; error: string } {

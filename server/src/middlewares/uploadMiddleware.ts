@@ -1,9 +1,7 @@
-// ⚠️  LEGACY — this middleware is superseded by fileUploadMiddleware.ts.
-// It is kept for backward compatibility only. Do not add new routes that use this.
-// For any new upload routes, use src/middlewares/fileUploadMiddleware.ts instead.
 import multer from "multer";
 import multerS3 from "multer-s3";
 import path from "path";
+import crypto from "crypto";
 import { s3Client, BUCKET_NAME } from "../config/s3.js";
 import { AppError } from "../utils/appError.js";
 
@@ -39,10 +37,10 @@ export const uploadToS3 = multer({
       cb(null, { fieldName: file.fieldname });
     },
     key: (_req, file, cb) => {
-      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      const ext = path.extname(file.originalname);
-      const name = path.basename(file.originalname, ext);
-      cb(null, `uploads/${name}-${uniqueSuffix}${ext}`);
+      // FLAW-15: Use UUID only — never embed original filename in S3 key
+      const unique = crypto.randomUUID();
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, `uploads/${unique}${ext}`);
     },
   }),
   limits: {

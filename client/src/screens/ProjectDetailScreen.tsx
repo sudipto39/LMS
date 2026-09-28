@@ -636,10 +636,16 @@ export const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
         {activeTab === "progress" && (
           <ErrorBoundary name="Project Analytics & Progress">
             <ProjectProgressTab
+              projectId={project.id}
               totalMilestonesCount={totalMilestonesCount}
               approvedMilestonesCount={approvedMilestonesCount}
               liveFilesCount={liveFiles.length}
               dynamicVelocity={dynamicVelocity}
+              liveMilestones={liveMilestones}
+              liveFiles={liveFiles}
+              commitDiffData={commitDiffData}
+              projectCreatedAt={project.createdAt}
+              feedbacks={liveFeedbacks}
             />
           </ErrorBoundary>
         )}

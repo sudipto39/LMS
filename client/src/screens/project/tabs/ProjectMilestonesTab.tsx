@@ -22,7 +22,7 @@ interface ProjectMilestonesTabProps {
   onApproveMilestone: (id: string) => void;
   onRejectMilestone: (id: string, feedback: string) => void;
   onOpenGradeModal: () => void;
-  onNavigate: (dest: string) => void;
+  onNavigate: (dest: string, targetId?: string) => void;
 }
 
 export const ProjectMilestonesTab: React.FC<ProjectMilestonesTabProps> = ({
@@ -58,7 +58,14 @@ export const ProjectMilestonesTab: React.FC<ProjectMilestonesTabProps> = ({
           </p>
         </div>
         {role === "STUDENT" ? (
-          <Btn onClick={() => onNavigate("milestones")}>
+          <Btn
+            onClick={() => {
+              const activeM = liveMilestones.find(
+                (m) => m.status === "IN_PROGRESS" || m.status === "REJECTED"
+              );
+              onNavigate("milestones", activeM?.id);
+            }}
+          >
             <CloudUpload size={14} /> Upload Attachments
           </Btn>
         ) : (
@@ -147,7 +154,7 @@ export const ProjectMilestonesTab: React.FC<ProjectMilestonesTabProps> = ({
                   )}
                   {(m.status === "IN_PROGRESS" || m.status === "REJECTED") && (
                     <Btn
-                      onClick={() => onNavigate("milestones")}
+                      onClick={() => onNavigate("milestones", m.id)}
                       className="h-8 text-[11px]"
                     >
                       <Send size={12} />{" "}
@@ -158,12 +165,12 @@ export const ProjectMilestonesTab: React.FC<ProjectMilestonesTabProps> = ({
                   )}
                   {m.status === "SUBMITTED" && (
                     <span className="text-[11px] text-[#06b6d4] font-medium flex items-center gap-1.5 py-1">
-                      <Clock size={13} /> Awaiting Supervisor Review
+                      <Clock size={13} /> Awaiting Supervisor Review (Uploads Locked)
                     </span>
                   )}
                   {m.status === "APPROVED" && (
                     <span className="text-[11px] text-[#22c55e] font-semibold flex items-center gap-1.5 py-1">
-                      <CheckCircle2 size={13} /> Approved by Supervisor
+                      <CheckCircle2 size={13} /> Approved by Supervisor (Deliverables Locked)
                     </span>
                   )}
                 </>

@@ -17,15 +17,16 @@ const formatActivityMessage = (a: any) => {
 
   const projTitle = a.project?.title || "project";
   switch (a.type) {
+    case "PUSH":
     case "CODE_COMMITTED":
     case "commit":
-      return `pushed commits to ${projTitle}`;
+      return payload.message ? `pushed commit: "${payload.message}"` : `pushed commits to ${projTitle}`;
     case "MILESTONE_SUBMITTED":
-      return `submitted milestone deliverables on ${projTitle}`;
+      return payload.milestoneTitle ? `submitted milestone "${payload.milestoneTitle}" deliverables` : `submitted milestone deliverables on ${projTitle}`;
     case "MILESTONE_APPROVED":
-      return `approved milestone deliverables on ${projTitle}`;
+      return payload.milestoneTitle ? `approved milestone "${payload.milestoneTitle}" deliverables` : `approved milestone deliverables on ${projTitle}`;
     case "MILESTONE_REJECTED":
-      return `requested changes on deliverables for ${projTitle}`;
+      return payload.milestoneTitle ? `requested changes on milestone "${payload.milestoneTitle}"` : `requested changes on deliverables for ${projTitle}`;
     case "PROJECT_CREATED":
       return `created new capstone project "${projTitle}"`;
     case "PROJECT_GRADED":
@@ -34,8 +35,10 @@ const formatActivityMessage = (a: any) => {
       return `posted feedback remarks on ${projTitle}`;
     case "REPO_SYNCED":
       return `synced repository files on ${projTitle}`;
+    case "LAB_SUBMISSION_COMPLETED":
+      return `submitted lab report for ${payload.assignmentTitle || "lab experiment"}`;
     default:
-      return `updated project ${projTitle}`;
+      return a.project?.title ? `updated project ${a.project.title}` : `completed activity on ${projTitle}`;
   }
 };
 
@@ -45,11 +48,37 @@ const getAvatarUrl = (name?: string) =>
   )}&backgroundColor=06b6d4,2563eb,8b5cf6,10b981,f59e0b`;
 
 export const getMyActivity = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  // Find all projects where this user is owner or member
+  const userProjects = await prisma.project.findMany({
+    where: {
+      OR: [
+        { ownerId: userId },
+        { members: { some: { userId } } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  const projectIds = userProjects.map((p) => p.id);
+
+  // Strictly filter: ONLY activities by this user, OR activities on projects they are a part/member of
+  const whereClause =
+    projectIds.length > 0
+      ? {
+          OR: [
+            { userId },
+            { projectId: { in: projectIds } },
+          ],
+        }
+      : { userId };
+
   const activities = await prisma.activity.findMany({
-    where: { userId: req.user!.id },
+    where: whereClause,
     include: activityInclude,
     orderBy: { createdAt: "desc" },
-    take: 20,
+    take: 50,
   });
 
   const formatted = activities.map((a) => {
@@ -62,12 +91,12 @@ export const getMyActivity = catchAsync(async (req: Request, res: Response) => {
       time: a.createdAt.toISOString(),
       user: a.user?.name || "User",
       avatar: getAvatarUrl(a.user?.name),
-      project: a.project?.title || "Project",
-      detail: payload.detail || payload.message || payload.milestoneTitle || "",
+      project: a.project?.title || payload.assignmentTitle || "",
+      detail: payload.detail || payload.message || payload.milestoneTitle || payload.fileName || "",
     };
   });
 
-  res.status(200).json({ status: "success", data: formatted });
+  res.status(200).json({ status: "success", count: formatted.length, data: formatted });
 });
 
 export const getProjectActivity = catchAsync(async (req: Request, res: Response) => {
@@ -113,7 +142,8 @@ export const getProjectActivity = catchAsync(async (req: Request, res: Response)
       user: a.user?.name || "User",
       avatar: getAvatarUrl(a.user?.name),
       project: a.project?.title || "Project",
-      detail: payload.detail || payload.message || "",
+      detail: payload.detail || payload.message || payload.feedback || "",
+      payload,
     };
   });
 
@@ -125,11 +155,25 @@ export const getProjectActivity = catchAsync(async (req: Request, res: Response)
 });
 
 export const getSupervisorActivity = catchAsync(async (req: Request, res: Response) => {
+  const supervisorId = req.user!.id;
+
+  const supervisedProjects = await prisma.project.findMany({
+    where: {
+      OR: [
+        { supervisorId },
+        { requestedSupervisorId: supervisorId },
+      ],
+    },
+    select: { id: true },
+  });
+
+  const projectIds = supervisedProjects.map((p) => p.id);
+
   const activities = await prisma.activity.findMany({
     where: {
       OR: [
-        { project: { supervisorId: req.user!.id } },
-        { userId: req.user!.id },
+        ...(projectIds.length > 0 ? [{ projectId: { in: projectIds } }] : []),
+        { userId: supervisorId },
       ],
     },
     include: {
@@ -137,7 +181,7 @@ export const getSupervisorActivity = catchAsync(async (req: Request, res: Respon
       project: { select: { id: true, title: true } },
     },
     orderBy: { createdAt: "desc" },
-    take: 30,
+    take: 50,
   });
 
   const formatted = activities.map((a) => {
@@ -151,7 +195,8 @@ export const getSupervisorActivity = catchAsync(async (req: Request, res: Respon
       user: a.user?.name || "User",
       avatar: getAvatarUrl(a.user?.name),
       project: a.project?.title || "Project",
-      detail: payload.detail || payload.message || payload.milestoneTitle || "",
+      detail: payload.detail || payload.message || payload.milestoneTitle || payload.feedback || "",
+      payload,
     };
   });
 
@@ -181,6 +226,7 @@ export const getAdminActivity = catchAsync(async (_req: Request, res: Response) 
       avatar: getAvatarUrl(a.user?.name),
       project: a.project?.title || "Platform",
       detail: payload.detail || payload.message || payload.desc || "",
+      payload,
     };
   });
 

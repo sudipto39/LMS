@@ -14,6 +14,7 @@ import { swaggerSpec } from "./docs/swagger.js";
 import { requestIdMiddleware } from "./middlewares/requestIdMiddleware.js";
 import { globalErrorHandler } from "./middlewares/globalErrorHandler.js";
 import { notFound } from "./middlewares/notFound.js";
+import { generateSignedCsrfToken } from "./utils/createSendToken.js";
 
 import authRouter from "./routes/authRoutes.js";
 import userRouter from "./routes/userRoutes.js";
@@ -60,10 +61,12 @@ app.use(
       }
       if (origin === "null") return callback(null, false);
       const cleanOrigin = origin.replace(/\/$/, "");
+      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(cleanOrigin);
+      const isVercel = /^https:\/\/([a-zA-Z0-9_-]+\.)*vercel\.app$/.test(cleanOrigin);
       if (
         allowedOrigins.includes(cleanOrigin) ||
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:[0-9]+)?$/.test(cleanOrigin) ||
-        /^https:\/\/([a-zA-Z0-9_-]+\.)*vercel\.app$/.test(cleanOrigin)
+        (env.NODE_ENV !== "production" && isLocalhost) ||
+        (env.NODE_ENV !== "production" && isVercel)
       ) {
         return callback(null, true);
       }
@@ -122,7 +125,7 @@ const authLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 1000 : 100,
+  max: isDev ? 1000 : 500, // 500 req/15 min ≈ 33/min — accommodates normal session + dashboard use
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -143,7 +146,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ─── CSRF Token Endpoint & Validation ─────────────────────────────────────────
 app.get("/api/v1/auth/csrf", (_req, res) => {
-  const csrfToken = crypto.randomBytes(24).toString("hex");
+  const csrfToken = generateSignedCsrfToken();
   res.setHeader("X-CSRF-Token", csrfToken);
   res.cookie("csrfToken", csrfToken, {
     httpOnly: false,
@@ -197,10 +200,32 @@ app.use((req, res, next) => {
         message: "Invalid or missing CSRF token",
       });
     }
+
+    // Verify token cryptographic signature and expiry if formatted as signed token
+    const parts = cookieCsrf.split(".");
+    if (parts.length === 3) {
+      const [rand, ts, sig] = parts;
+      const expectedSig = crypto
+        .createHmac("sha256", env.JWT_ACCESS_SECRET)
+        .update(`${rand}.${ts}`)
+        .digest("hex")
+        .slice(0, 32);
+
+      const isSigValid = safeCompare(sig, expectedSig);
+      const tokenTime = parseInt(ts, 10);
+      const isExpired = isNaN(tokenTime) || Date.now() - tokenTime > 7 * 24 * 60 * 60 * 1000;
+
+      if (!isSigValid || isExpired) {
+        return res.status(403).json({
+          status: "fail",
+          message: "CSRF token signature invalid or expired",
+        });
+      }
+    }
   } else if (req.cookies?.["refreshToken"]) {
     // If refreshToken cookie exists but csrfToken was not yet issued (e.g. legacy session),
     // issue the csrfToken now so subsequent requests can use it.
-    const freshCsrf = crypto.randomBytes(24).toString("hex");
+    const freshCsrf = generateSignedCsrfToken();
     res.cookie("csrfToken", freshCsrf, {
       httpOnly: false,
       secure: env.NODE_ENV === "production",
@@ -304,18 +329,31 @@ app.get("/", (_req, res) => {
   });
 });
 
-app.get("/health", async (_req, res) => {
+app.get("/health", async (req, res) => {
   const { isHealthy, dbStatus, redisStatus } = await getHealthStatus();
 
-  res.status(isHealthy ? 200 : 503).json({
-    status: isHealthy ? "ok" : "degraded",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    services: {
-      database: dbStatus,
-      redis: redisStatus,
-    },
-  });
+  // Only expose service-level details to internal monitors (FLAW-R2-20)
+  // External scanners see only a minimal status to prevent stack reconnaissance
+  const internalKey = req.headers["x-health-key"];
+  const expectedKey = process.env["HEALTH_CHECK_KEY"];
+  const isInternalCaller = expectedKey && internalKey === expectedKey;
+
+  if (isInternalCaller) {
+    res.status(isHealthy ? 200 : 503).json({
+      status: isHealthy ? "ok" : "degraded",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      services: {
+        database: dbStatus,
+        redis: redisStatus,
+      },
+    });
+  } else {
+    // Minimal public response — no service topology disclosed
+    res.status(isHealthy ? 200 : 503).json({
+      status: isHealthy ? "ok" : "degraded",
+    });
+  }
 });
 
 // ─── Error handling ───────────────────────────────────────────────────────────

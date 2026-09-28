@@ -6,13 +6,16 @@ export const Card = ({
   className = "",
   onClick,
   style,
+  id,
 }: {
   children: React.ReactNode;
   className?: string;
   onClick?: () => void;
   style?: React.CSSProperties;
+  id?: string;
 }) => (
   <div
+    id={id}
     className={`rounded-2xl border transition-snappy lum-border ${className}`}
     style={{
       background: "var(--srf)",
@@ -31,13 +34,16 @@ export const Card2 = ({
   className = "",
   onClick,
   style,
+  id,
 }: {
   children: React.ReactNode;
   className?: string;
   onClick?: () => void;
   style?: React.CSSProperties;
+  id?: string;
 }) => (
   <div
+    id={id}
     className={`rounded-xl border transition-snappy lum-border ${className}`}
     style={{
       background: "var(--srf2)",

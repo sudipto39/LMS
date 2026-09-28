@@ -19,7 +19,9 @@ export interface MilestoneAttachment {
 export interface Milestone {
   id: string;
   projectId: string;
+  projectTitle?: string;
   title: string;
+  description?: string;
   status: MilestoneStatus;
   due: string;
   dueDate?: string;
@@ -28,8 +30,13 @@ export interface Milestone {
   feedback?: string;
   order: number;
   attachments?: MilestoneAttachment[];
+  studentNotes?: string;
+  submittedById?: string;
+  reviewedById?: string;
   submittedAt?: string;
   reviewedAt?: string;
+  updatedAt?: string;
+  createdAt?: string;
 }
 
 export interface SubmitMilestonePayload {

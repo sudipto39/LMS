@@ -56,8 +56,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { user, role } = useAuth();
   const showToast = useToast();
-  const [isHovered, setIsHovered] = useState(false);
-  const isExpanded = !collapsed || isHovered;
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  const [tooltip, setTooltip] = useState<{
+    top: number;
+    label: string;
+    count?: number;
+  } | null>(null);
+
+  const isExpanded = !collapsed;
 
   const navStudent = [
     { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
@@ -127,16 +133,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <aside
         onMouseEnter={() => {
-          if (collapsed) setIsHovered(true);
+          if (collapsed) setIsSidebarHovered(true);
         }}
         onMouseLeave={() => {
-          if (collapsed) setIsHovered(false);
+          if (collapsed) {
+            setIsSidebarHovered(false);
+            setTooltip(null);
+          }
         }}
         className={`fixed left-0 top-0 z-50 h-screen w-[80vw] max-w-[280px] bg-[#0f2a33] text-[#d0e8f0] border-r border-[#1a4454] flex flex-col transition-all duration-300 ease-in-out lg:translate-x-0 ${
           isExpanded
             ? "lg:w-[260px] rounded-r-2xl lg:rounded-r-3xl border-t border-b overflow-hidden"
             : "lg:w-[72px] rounded-none border-t-0 border-b-0"
-        } ${collapsed && isHovered ? "shadow-2xl ring-1 ring-cyan-500/20" : ""} ${
+        } ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -145,36 +154,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
             !isExpanded ? "justify-center px-1.5" : "justify-between pl-3 pr-3.5 gap-2.5"
           }`}
         >
-          {/* Collapsed Resting View (Desktop): Both Logo and Expand Button adjusted side-by-side */}
+          {/* Collapsed Resting View (Desktop): Only logo shown initially; on hover over collapsed sidebar, logo is replaced by the expand button */}
           {!isExpanded && (
-            <div className="hidden lg:flex items-center justify-center gap-1.5 w-full">
-              <div
+            <div className="hidden lg:flex items-center justify-center w-full">
+              <button
+                type="button"
                 onClick={() => {
-                  setIsHovered(false);
+                  setTooltip(null);
                   onToggleCollapse?.();
                 }}
-                className="cursor-pointer transition-transform hover:scale-105 flex-shrink-0"
-                title="Expand sidebar menu"
+                className="group/toggle relative h-11 w-11 rounded-xl grid place-items-center transition-all duration-200 cursor-pointer hover:bg-white/10"
+                title={isSidebarHovered ? "Expand sidebar menu" : undefined}
+                aria-label="Expand sidebar menu"
               >
-                <Logo size={28} className="shadow-md" />
-              </div>
-              {onToggleCollapse && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsHovered(false);
-                    onToggleCollapse();
-                  }}
-                  className="grid place-items-center h-7 w-7 rounded-lg border border-white/15 bg-white/5 text-[#b0d4e0] hover:text-white hover:bg-white/15 hover:border-white/30 transition cursor-pointer flex-shrink-0"
-                  title="Expand sidebar menu"
+                {/* Logo - visible when cursor is NOT on collapsed menu bar */}
+                <div
+                  className={`transition-all duration-200 flex-shrink-0 ${
+                    isSidebarHovered
+                      ? "opacity-0 scale-75 pointer-events-none"
+                      : "opacity-100 scale-100"
+                  }`}
                 >
-                  <PanelLeftOpen size={14} />
-                </button>
-              )}
+                  <Logo size={38} className="shadow-lg" />
+                </div>
+
+                {/* Expand button - replaces logo when cursor is on the collapsed menu bar */}
+                <div
+                  className={`absolute inset-0 grid place-items-center rounded-xl border border-white/15 bg-white/5 text-[#b0d4e0] group-hover/toggle:text-white group-hover/toggle:bg-white/15 group-hover/toggle:border-cyan-400/50 transition-all duration-200 ${
+                    isSidebarHovered
+                      ? "opacity-100 scale-100"
+                      : "opacity-0 scale-75 pointer-events-none"
+                  }`}
+                >
+                  <PanelLeftOpen size={20} />
+                </div>
+              </button>
             </div>
           )}
 
-          {/* Expanded View (Permanently open, or hovering to peek, or mobile drawer): Full Logo + Portal Title */}
+          {/* Expanded View (Desktop expanded or Mobile drawer): Full Logo + Portal Title */}
           <div className={`items-center gap-2.5 min-w-0 ${!isExpanded ? "flex lg:hidden" : "flex"}`}>
             <Logo size={36} className="flex-shrink-0 shadow-lg" />
             <div className="min-w-0 truncate">
@@ -185,18 +203,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          {/* Desktop Toggle Button (When Expanded or Peeking) */}
+          {/* Desktop Collapse Button (When Expanded) */}
           {isExpanded && onToggleCollapse && (
             <button
               type="button"
-              onClick={() => {
-                setIsHovered(false);
-                onToggleCollapse();
-              }}
+              onClick={onToggleCollapse}
               className="hidden lg:grid place-items-center h-8 w-8 rounded-xl border border-white/15 bg-white/5 text-[#b0d4e0] hover:text-white hover:bg-white/15 hover:border-white/30 transition cursor-pointer flex-shrink-0 ml-auto"
-              title={collapsed ? "Click to lock sidebar expanded" : "Collapse sidebar menu"}
+              title="Collapse sidebar menu"
+              aria-label="Collapse sidebar menu"
             >
-              {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+              <PanelLeftClose size={16} />
             </button>
           )}
 
@@ -209,7 +225,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        <div className="p-2 space-y-1 overflow-y-auto flex-1 overscroll-contain touch-pan-y custom-scrollbar">
+        <div
+          onScroll={() => setTooltip(null)}
+          className="p-2 space-y-1 overflow-y-auto flex-1 overscroll-contain touch-pan-y custom-scrollbar"
+        >
           {nav.map((item) => {
             const active = page === item.id;
             return (
@@ -218,10 +237,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => {
                   setPage(item.id);
                   setMobileOpen(false);
-                  setIsHovered(false);
+                  setTooltip(null);
                 }}
-                title={!isExpanded ? item.label : undefined}
-                className={`w-full flex items-center rounded-xl text-[13px] text-left transition-snappy cursor-pointer relative group ${
+                onMouseEnter={(e) => {
+                  if (collapsed) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setTooltip({
+                      top: rect.top + rect.height / 2,
+                      label: item.label,
+                      count: (item as any).count,
+                    });
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (collapsed) {
+                    setTooltip(null);
+                  }
+                }}
+                className={`w-full flex items-center rounded-xl text-[13px] text-left transition-snappy cursor-pointer relative ${
                   !isExpanded ? "justify-start lg:justify-center px-3 lg:px-0 py-2.5" : "gap-2.5 px-3 py-2.5"
                 } ${
                   active
@@ -252,9 +285,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className={`p-3 pr-3.5 border-t border-[#1a4454] flex items-center ${!isExpanded ? "justify-start lg:justify-center gap-2.5 lg:gap-0" : "gap-2.5"}`}>
           <img
             src={userAvatar}
-            className="h-8 w-8 rounded-full border-2 border-white/20 object-cover flex-shrink-0"
+            className="h-8 w-8 rounded-full border-2 border-white/20 object-cover flex-shrink-0 cursor-pointer"
             alt="User"
-            title={!isExpanded ? `${userName} (${userDept})` : undefined}
+            onMouseEnter={(e) => {
+              if (collapsed) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setTooltip({
+                  top: rect.top + rect.height / 2,
+                  label: `${userName} (${userDept})`,
+                });
+              }
+            }}
+            onMouseLeave={() => {
+              if (collapsed) setTooltip(null);
+            }}
           />
           <div className={`min-w-0 flex-1 ${!isExpanded ? "lg:hidden" : ""}`}>
             <div className="text-[12px] font-semibold text-white truncate">
@@ -279,6 +323,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
       </aside>
+
+      {/* Floating Tooltip showing menu name when collapsed */}
+      {collapsed && tooltip && (
+        <div
+          style={{ top: tooltip.top }}
+          className="hidden lg:flex fixed left-[78px] -translate-y-1/2 z-[70] pointer-events-none items-center gap-2 px-3 py-1.5 rounded-lg bg-[#071920]/95 backdrop-blur-md border border-[#1a4454] shadow-2xl text-white text-[12px] font-semibold whitespace-nowrap animate-in fade-in zoom-in-95 duration-150"
+        >
+          <span>{tooltip.label}</span>
+          {tooltip.count !== undefined && tooltip.count > 0 && (
+            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-[#06b6d4] text-[#042027]">
+              {tooltip.count}
+            </span>
+          )}
+          {/* Arrow pointer */}
+          <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#071920] border-l border-b border-[#1a4454] rotate-45" />
+        </div>
+      )}
     </>
   );
 };

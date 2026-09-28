@@ -171,10 +171,13 @@ function MainApp() {
   const page = VALID_PAGES[firstSegment] || "dashboard";
 
   const navigateToPage = useCallback(
-    (destPage: string) => {
-      const targetUrl = destPage === "dashboard" ? "/dashboard" : `/${destPage}`;
-      if (location.pathname !== targetUrl) {
-        navigate(targetUrl);
+    (destPage: string, targetId?: string) => {
+      let targetUrl = destPage === "dashboard" ? "/dashboard" : `/${destPage}`;
+      if (destPage === "milestones" && targetId) {
+        targetUrl = `/milestones?milestoneId=${encodeURIComponent(targetId)}`;
+      }
+      if (location.pathname !== targetUrl || targetId) {
+        navigate(targetUrl, { state: targetId ? { milestoneId: targetId } : undefined });
       }
     },
     [location.pathname, navigate]
@@ -323,6 +326,7 @@ function MainApp() {
           const mappedMilestones: Milestone[] = rawMilestones.map((m: any, idx: number) => ({
             id: m.id || `m-${p.id}-${idx}`,
             projectId: p.id,
+            projectTitle: p.title,
             title: m.title,
             description: m.description,
             status: m.status || "PENDING",
@@ -391,18 +395,18 @@ function MainApp() {
         });
 
         setProjects(normalizedProjects);
-
-        if (normalizedProjects.length > 0) {
-          const allMils = normalizedProjects.flatMap((p: any) => p.milestones || []);
-          if (allMils.length > 0) {
-            setMilestones(allMils);
-          }
-        }
+        const allMils = normalizedProjects.flatMap((p: any) => p.milestones || []);
+        setMilestones(allMils);
+      } else {
+        setProjects([]);
+        setMilestones([]);
       }
     } catch (err) {
       console.warn("Could not load projects for role:", role, err);
+      setProjects([]);
+      setMilestones([]);
     }
-  }, [role]);
+  }, [role, user?.id]);
 
   // ── Admin Pending Queues Sync ──────────────────────────────────────────────
   const loadAdminQueues = useCallback(async () => {
@@ -430,11 +434,41 @@ function MainApp() {
       if (role === "ADMIN") {
         loadAdminQueues();
       }
+      if (page === "activity" || page === "dashboard") {
+        (async () => {
+          try {
+            let actRes: any;
+            if (role === "ADMIN") {
+              actRes = await activitiesApi.getAdminActivities();
+            } else if (role === "SUPERVISOR") {
+              actRes = await activitiesApi.getSupervisorActivities();
+            } else {
+              actRes = await activitiesApi.getMyActivities();
+            }
+            if (actRes?.data && Array.isArray(actRes.data)) {
+              setActivities(actRes.data);
+            } else {
+              setActivities([]);
+            }
+          } catch (err) {
+            console.warn("Could not reload activities on page navigation:", err);
+          }
+        })();
+      }
     }
   }, [page, isAuthenticated, role, loadProjects, loadAdminQueues]);
 
   // ── Live Backend Data Sync (Mount & Auth) ──────────────────────────────────
   useEffect(() => {
+    if (!isAuthenticated) {
+      setProjects([]);
+      setMilestones([]);
+      setFeedbacks([]);
+      setActivities([]);
+      setAuditLogs([]);
+      return;
+    }
+
     const loadLiveData = async () => {
       await Promise.allSettled([
         // 1. Courses & Batches
@@ -469,11 +503,14 @@ function MainApp() {
             } else {
               actRes = await activitiesApi.getMyActivities();
             }
-            if (actRes?.data && Array.isArray(actRes.data) && actRes.data.length > 0) {
+            if (actRes?.data && Array.isArray(actRes.data)) {
               setActivities(actRes.data);
+            } else {
+              setActivities([]);
             }
           } catch (err) {
             console.warn("Could not load activities:", err);
+            setActivities([]);
           }
         })(),
 
@@ -598,7 +635,7 @@ function MainApp() {
     };
 
     loadLiveData();
-  }, [isAuthenticated, role]);
+  }, [isAuthenticated, role, user?.id]);
 
   // ── Excel Export Handlers ──────────────────────────────────────────────────
   const buildStudentRows = (projectList: Project[]): StudentProjectRow[] => {
@@ -930,6 +967,7 @@ function MainApp() {
           labAssignments={labAssignments}
           batches={batches}
           courses={courses}
+          activities={activities}
           onSelectProject={(id) => handleSelectProject(id)}
           onSelectLab={(lab) => {
             setActiveLabForSandbox(lab);
@@ -966,7 +1004,7 @@ function MainApp() {
                 onAddFeedback={handleAddFeedback}
                 onReplyFeedback={handleReplyFeedback}
                 onToggleResolveFeedback={handleToggleResolveFeedback}
-                onNavigate={(dest) => navigateToPage(dest)}
+                onNavigate={(dest, targetId) => navigateToPage(dest, targetId)}
               />
             </ErrorBoundary>
           ) : (
@@ -1055,6 +1093,11 @@ function MainApp() {
                     onSubmitMilestone={handleSubmitMilestone}
                     onStartMilestone={handleStartMilestone}
                     searchQuery={search}
+                    initialMilestoneId={
+                      new URLSearchParams(location.search).get("milestoneId") ||
+                      (location.state as any)?.milestoneId ||
+                      undefined
+                    }
                   />
                 </RoleGuard>
               )}

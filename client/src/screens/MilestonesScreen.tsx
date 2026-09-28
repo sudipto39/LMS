@@ -1,6 +1,18 @@
-// src/screens/MilestonesScreen.tsx
-import React, { useRef, useState } from "react";
-import { Flag, CloudUpload, FileText, Send, Paperclip, Download, CheckCircle2 } from "lucide-react";
+import React, { useRef, useState, useEffect } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
+import {
+  Flag,
+  CloudUpload,
+  FileText,
+  Send,
+  Paperclip,
+  Download,
+  CheckCircle2,
+  Clock,
+  Lock,
+  Play,
+  ShieldCheck,
+} from "lucide-react";
 import { Card, Card2, Btn, Btn2, Pill } from "../components/common/UIPrimitives";
 import { milestonesApi } from "../api";
 import { useToast } from "../context/ToastContext";
@@ -12,6 +24,7 @@ interface MilestonesScreenProps {
   onSubmitMilestone: (id: string, notes: string, fileCount: number) => void;
   onStartMilestone: (id: string) => void;
   searchQuery?: string;
+  initialMilestoneId?: string;
 }
 
 export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
@@ -19,9 +32,19 @@ export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
   onSubmitMilestone,
   onStartMilestone,
   searchQuery = "",
+  initialMilestoneId,
 }) => {
   const showToast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const urlMilestoneId =
+    initialMilestoneId ||
+    searchParams.get("milestoneId") ||
+    searchParams.get("id") ||
+    (location.state as any)?.milestoneId ||
+    undefined;
 
   const filteredMilestones = milestones.filter((m) => {
     if (!searchQuery || !searchQuery.trim()) return true;
@@ -33,15 +56,58 @@ export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
     );
   });
 
-  const [selectedMilestoneId, setSelectedMilestoneId] = useState(
-    filteredMilestones[0]?.id || milestones[0]?.id || ""
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string>(
+    urlMilestoneId || filteredMilestones[0]?.id || milestones[0]?.id || ""
   );
   const [submissionNotes, setSubmissionNotes] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Sync selected milestone if URL / navigation target changes
+  useEffect(() => {
+    if (urlMilestoneId) {
+      setSelectedMilestoneId(urlMilestoneId);
+    }
+  }, [urlMilestoneId]);
+
+  // If no milestone was selected yet (milestones loaded asynchronously), fallback to first available
+  useEffect(() => {
+    if (!selectedMilestoneId && (filteredMilestones[0]?.id || milestones[0]?.id)) {
+      setSelectedMilestoneId(filteredMilestones[0]?.id || milestones[0]?.id || "");
+    }
+  }, [selectedMilestoneId, filteredMilestones, milestones]);
+
+  // Clear file input and remarks when switching selected milestone
+  useEffect(() => {
+    setAttachedFiles([]);
+    setSubmissionNotes("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [selectedMilestoneId]);
+
+  // Scroll active milestone into view, and on mobile automatically scroll to submit panel if target specified
+  useEffect(() => {
+    if (selectedMilestoneId) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`milestone-card-${selectedMilestoneId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+        if (urlMilestoneId && window.innerWidth < 1024) {
+          const formEl = document.getElementById("milestone-submit-form");
+          if (formEl) {
+            formEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedMilestoneId, urlMilestoneId]);
+
   const selectedMilestone =
-    milestones.find((m) => m.id === selectedMilestoneId) || filteredMilestones[0] || milestones[0];
+    milestones.find((m) => m.id === selectedMilestoneId) ||
+    filteredMilestones.find((m) => m.id === selectedMilestoneId) ||
+    filteredMilestones[0] ||
+    milestones[0];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -63,6 +129,20 @@ export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
 
   const handleSubmit = async () => {
     if (!selectedMilestone) return;
+
+    if (selectedMilestone.status === "APPROVED") {
+      showToast("Cannot upload files: this milestone has already been approved and deliverables are locked.");
+      return;
+    }
+    if (selectedMilestone.status === "SUBMITTED") {
+      showToast("Cannot upload files: this milestone is currently awaiting supervisor review.");
+      return;
+    }
+    if (selectedMilestone.status === "PENDING") {
+      showToast("Please start this milestone before uploading deliverables.");
+      return;
+    }
+
     if (attachedFiles.length === 0 && !submissionNotes) {
       showToast("Please attach deliverables or add submission remarks");
       return;
@@ -77,19 +157,20 @@ export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
       if (res?.data?.attachments) {
         selectedMilestone.attachments = res.data.attachments;
       }
-    } catch {
-      // Graceful local sync
+      onSubmitMilestone(
+        selectedMilestone.id,
+        submissionNotes,
+        attachedFiles.length || 1
+      );
+      showToast("Deliverables uploaded to S3 and submitted for review! 🚀");
+      setSubmissionNotes("");
+      setAttachedFiles([]);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Failed to submit deliverables";
+      showToast(msg);
+    } finally {
+      setLoading(false);
     }
-
-    onSubmitMilestone(
-      selectedMilestone.id,
-      submissionNotes,
-      attachedFiles.length || 1
-    );
-    showToast("Deliverables uploaded to S3 and submitted for review! 🚀");
-    setSubmissionNotes("");
-    setAttachedFiles([]);
-    setLoading(false);
   };
 
   return (
@@ -128,15 +209,23 @@ export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
                 {filteredMilestones.map((m) => (
                   <Card2
                     key={m.id}
+                    id={`milestone-card-${m.id}`}
                     onClick={() => setSelectedMilestoneId(m.id)}
                     className={`p-4 cursor-pointer transition border ${
                       selectedMilestoneId === m.id
-                        ? "border-[#06b6d4] shadow-md"
+                        ? "border-[#06b6d4] shadow-md ring-1 ring-[#06b6d4]/40"
                         : ""
                     }`}
                   >
                     <div className="flex justify-between items-start">
-                      <span className="font-semibold text-[13px]">{m.title}</span>
+                      <div>
+                        <span className="font-semibold text-[13px]">{m.title}</span>
+                        {m.projectTitle && (
+                          <div className="text-[11px] font-medium text-[#06b6d4] mt-0.5">
+                            {m.projectTitle}
+                          </div>
+                        )}
+                      </div>
                       <Pill
                         color={
                           m.status === "APPROVED"
@@ -194,7 +283,7 @@ export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
 
         {/* Upload & Submitted Deliverables Form */}
         <div>
-          <Card className="p-5 space-y-4">
+          <Card id="milestone-submit-form" className="p-5 space-y-4">
             <h3 className="font-semibold text-[14px] flex items-center gap-2">
               <CloudUpload size={16} style={{ color: "var(--acc)" }} /> Submit Deliverables
             </h3>
@@ -208,7 +297,14 @@ export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
                   }}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="font-semibold">{selectedMilestone.title}</div>
+                    <div>
+                      <div className="font-semibold">{selectedMilestone.title}</div>
+                      {selectedMilestone.projectTitle && (
+                        <div className="text-[11px] font-medium text-[#06b6d4] mt-0.5">
+                          {selectedMilestone.projectTitle}
+                        </div>
+                      )}
+                    </div>
                     <Pill
                       color={
                         selectedMilestone.status === "APPROVED"
@@ -272,85 +368,130 @@ export const MilestonesScreen: React.FC<MilestonesScreenProps> = ({
                   </div>
                 )}
 
-                {/* Upload Dropzone */}
-                <div
-                  className="rounded-xl border-2 border-dashed p-5 text-center cursor-pointer transition hover:border-[#06b6d4]"
-                  style={{
-                    borderColor: "var(--bdr)",
-                    background: "var(--srf2)",
-                  }}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <CloudUpload
-                    size={28}
-                    style={{ color: "var(--acc)" }}
-                    className="mx-auto"
-                  />
-                  <div className="mt-2 font-medium text-[12px]">
-                    {attachedFiles.length > 0
-                      ? `${attachedFiles.length} new file(s) selected`
-                      : "Drag and drop files here, or browse"}
+                {/* STATUS-SPECIFIC UPLOAD CONTROLS: Locked if Approved or Pending */}
+                {selectedMilestone.status === "APPROVED" ? (
+                  <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 space-y-2 text-[12px]">
+                    <div className="flex items-center gap-2 font-bold text-emerald-600 dark:text-emerald-400">
+                      <ShieldCheck size={18} /> Milestone Approved — Deliverables Locked
+                    </div>
+                    <p className="text-[var(--t2)] text-[11px] leading-relaxed">
+                      This milestone has already been evaluated and approved by your supervisor. Deliverable submissions are closed and no further files can be uploaded.
+                    </p>
+                    <div className="text-[10px] font-mono text-emerald-600/80 pt-1 flex items-center gap-1 font-semibold">
+                      <Lock size={11} /> File uploads disabled for approved milestones
+                    </div>
                   </div>
-                  <div className="text-[10px]" style={{ color: "var(--t3)" }}>
-                    PDF, PPT, ZIP, TAR up to 50MB
+                ) : selectedMilestone.status === "SUBMITTED" ? (
+                  <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 space-y-2 text-[12px]">
+                    <div className="flex items-center gap-2 font-bold text-amber-600 dark:text-amber-400">
+                      <Clock size={18} /> Milestone Pending Review — Submissions Locked
+                    </div>
+                    <p className="text-[var(--t2)] text-[11px] leading-relaxed">
+                      Your milestone deliverables have been submitted and are currently awaiting supervisor evaluation. No additional files can be uploaded while review is pending.
+                    </p>
+                    <div className="text-[10px] font-mono text-amber-600/80 pt-1 flex items-center gap-1 font-semibold">
+                      <Lock size={11} /> File uploads disabled during pending review
+                    </div>
                   </div>
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-
-                {attachedFiles.length > 0 && (
-                  <div className="space-y-1">
-                    <div className="text-[10px] font-bold uppercase text-[var(--t3)]">Selected for upload:</div>
-                    {attachedFiles.map((f, i) => (
-                      <div
-                        key={i}
-                        className="text-[11px] flex items-center gap-1.5 p-1.5 rounded-lg border"
-                        style={{ background: "var(--srf)", borderColor: "var(--bdr)", color: "var(--t2)" }}
-                      >
-                        <FileText size={12} className="text-[#06b6d4]" />
-                        <span className="truncate flex-1 font-mono">{f.name}</span>
-                        <span className="text-[10px] text-[var(--t3)]">
-                          ({(f.size / 1024 / 1024).toFixed(1)}MB)
-                        </span>
+                ) : selectedMilestone.status === "PENDING" ? (
+                  <div className="p-4 rounded-xl border space-y-3 text-[12px]" style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}>
+                    <div className="flex items-center gap-2 font-semibold" style={{ color: "var(--t1)" }}>
+                      <Clock size={16} className="text-amber-500" /> Milestone Not Started Yet
+                    </div>
+                    <p className="text-[var(--t2)] text-[11px] leading-relaxed">
+                      You must start this milestone before uploading any deliverables or reports.
+                    </p>
+                    <Btn onClick={() => onStartMilestone(selectedMilestone.id)} className="h-8.5 text-[11px] !px-4">
+                      <Play size={12} /> Start Milestone
+                    </Btn>
+                  </div>
+                ) : (
+                  <>
+                    {/* Upload Dropzone */}
+                    <div
+                      className="rounded-xl border-2 border-dashed p-5 text-center cursor-pointer transition hover:border-[#06b6d4]"
+                      style={{
+                        borderColor: "var(--bdr)",
+                        background: "var(--srf2)",
+                      }}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <CloudUpload
+                        size={28}
+                        style={{ color: "var(--acc)" }}
+                        className="mx-auto"
+                      />
+                      <div className="mt-2 font-medium text-[12px]">
+                        {attachedFiles.length > 0
+                          ? `${attachedFiles.length} new file(s) selected`
+                          : "Drag and drop files here, or browse"}
                       </div>
-                    ))}
-                  </div>
+                      <div className="text-[10px]" style={{ color: "var(--t3)" }}>
+                        PDF, PPT, ZIP, TAR up to 50MB
+                      </div>
+                    </div>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+
+                    {attachedFiles.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-[10px] font-bold uppercase text-[var(--t3)]">Selected for upload:</div>
+                        {attachedFiles.map((f, i) => (
+                          <div
+                            key={i}
+                            className="text-[11px] flex items-center gap-1.5 p-1.5 rounded-lg border"
+                            style={{ background: "var(--srf)", borderColor: "var(--bdr)", color: "var(--t2)" }}
+                          >
+                            <FileText size={12} className="text-[#06b6d4]" />
+                            <span className="truncate flex-1 font-mono">{f.name}</span>
+                            <span className="text-[10px] text-[var(--t3)]">
+                              ({(f.size / 1024 / 1024).toFixed(1)}MB)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div>
+                      <label
+                        className="text-[11px] font-bold uppercase block mb-1"
+                        style={{ color: "var(--t2)" }}
+                      >
+                        Submission Remarks
+                      </label>
+                      <textarea
+                        value={submissionNotes}
+                        onChange={(e) => setSubmissionNotes(e.target.value)}
+                        placeholder="Notes for your faculty supervisor..."
+                        className="w-full min-h-[75px] rounded-xl border p-2.5 text-[12px] focus:outline-none resize-y"
+                        style={{
+                          background: "var(--srf2)",
+                          borderColor: "var(--bdr)",
+                          color: "var(--t1)",
+                        }}
+                      />
+                    </div>
+
+                    <Btn
+                      disabled={loading}
+                      onClick={handleSubmit}
+                      className="w-full justify-center"
+                    >
+                      <Send size={13} />{" "}
+                      {loading
+                        ? "Uploading to S3..."
+                        : selectedMilestone.status === "REJECTED"
+                        ? "Resubmit Deliverables to Supervisor"
+                        : "Submit Deliverables to Supervisor"}
+                    </Btn>
+                  </>
                 )}
-
-                <div>
-                  <label
-                    className="text-[11px] font-bold uppercase block mb-1"
-                    style={{ color: "var(--t2)" }}
-                  >
-                    Submission Remarks
-                  </label>
-                  <textarea
-                    value={submissionNotes}
-                    onChange={(e) => setSubmissionNotes(e.target.value)}
-                    placeholder="Notes for your faculty supervisor..."
-                    className="w-full min-h-[75px] rounded-xl border p-2.5 text-[12px] focus:outline-none resize-y"
-                    style={{
-                      background: "var(--srf2)",
-                      borderColor: "var(--bdr)",
-                      color: "var(--t1)",
-                    }}
-                  />
-                </div>
-
-                <Btn
-                  disabled={loading}
-                  onClick={handleSubmit}
-                  className="w-full justify-center"
-                >
-                  <Send size={13} />{" "}
-                  {loading ? "Uploading to S3..." : selectedMilestone.status === "SUBMITTED" ? "Upload Additional / Update Deliverables" : "Submit to Supervisor"}
-                </Btn>
               </>
             ) : (
               <div

@@ -54,7 +54,9 @@ export const login = catchAsync(async (req: Request, res: Response) => {
 
 export const refreshToken = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
-    const token = (req.cookies?.refreshToken || req.body?.refreshToken || req.headers["x-refresh-token"]) as string | undefined;
+    // Accept refreshToken ONLY from the httpOnly cookie (H-01/L-02)
+    // Body and header fallbacks are intentionally removed — they bypass cookie security
+    const token = req.cookies?.refreshToken as string | undefined;
     if (!token) {
       next(new AppError("No refresh token provided", 401));
       return;
@@ -98,7 +100,7 @@ export const refreshToken = catchAsync(
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    res.status(200).json({ status: "success", accessToken, refreshToken: newRefreshToken });
+    res.status(200).json({ status: "success", accessToken });
   }
 );
 

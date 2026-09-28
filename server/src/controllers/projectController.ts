@@ -457,6 +457,18 @@ export const updateProject = catchAsync(async (req: Request, res: Response) => {
   await checkProjectAccess(id, req.user!, true);
   const { title, description, technologies } = req.body;
 
+  // Cap technologies array to prevent oversized DB writes (FLAW-R2-07)
+  if (technologies !== undefined) {
+    if (!Array.isArray(technologies) || technologies.length > 20) {
+      throw new BadRequestError("Technologies must be an array of at most 20 items");
+    }
+    for (const tech of technologies) {
+      if (typeof tech !== "string" || tech.length > 100) {
+        throw new BadRequestError("Each technology name must be a string of at most 100 characters");
+      }
+    }
+  }
+
   const project = await prisma.project.update({
     where: { id },
     data: {
@@ -681,6 +693,9 @@ export const postCodeReviewComment = catchAsync(async (req: Request, res: Respon
   const { commitSha, filePath, lineNumber, side, content } = req.body;
 
   if (!content?.trim()) throw new BadRequestError("Comment content is required");
+  if (typeof content === "string" && content.length > 10240) {
+    throw new BadRequestError("Comment content cannot exceed 10 KB");
+  }
 
   const comment = await prisma.codeReviewComment.create({
     data: {
@@ -777,6 +792,9 @@ export const postProjectFeedback = catchAsync(async (req: Request, res: Response
   const { content } = req.body;
 
   if (!content?.trim()) throw new BadRequestError("Feedback content is required");
+  if (typeof content === "string" && content.length > 10240) {
+    throw new BadRequestError("Feedback content cannot exceed 10 KB");
+  }
 
   const created = await prisma.projectFeedback.create({
     data: {
@@ -1083,9 +1101,19 @@ export const commitAndPushSandbox = catchAsync(async (req: Request, res: Respons
     throw new BadRequestError("Project repository is not properly initialized or linked");
   }
 
-  // Prevent path traversal in file paths
+  // Prevent path traversal — check raw, decoded, and URL-encoded variants (FLAW-R2-08)
   for (const file of files) {
-    if (!file.path || file.path.includes("..") || file.path.startsWith("/") || file.path.startsWith("\\")) {
+    const rawPath = file.path ?? "";
+    const decodedPath = (() => { try { return decodeURIComponent(rawPath); } catch { return rawPath; } })();
+    const isBadPath = [rawPath, decodedPath].some(
+      (p) =>
+        p.includes("..") ||
+        p.startsWith("/") ||
+        p.startsWith("\\") ||
+        /^[a-zA-Z]:/.test(p) || // Windows absolute path (C:\...)
+        p.includes("\0")          // null byte injection
+    );
+    if (!rawPath || isBadPath) {
       throw new BadRequestError("Invalid or unsafe file path in workspace files");
     }
   }

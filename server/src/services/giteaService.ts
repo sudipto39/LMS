@@ -655,10 +655,34 @@ export const giteaService = {
     }
   },
 
-  async updateUserPassword(username: string, password: string) {
+  async rotateUserPassword(username: string) {
     try {
+      const randomPassword = crypto.randomBytes(24).toString("hex");
       await gitea.patch(`/admin/users/${username}`, {
-        password,
+        password: randomPassword,
+        must_change_password: false,
+      });
+      return true;
+    } catch (error) {
+      console.warn(`Could not rotate Gitea password for ${username}:`, error);
+      return false;
+    }
+  },
+
+  async updateUserPassword(username: string, password?: string) {
+    // SECURITY: Never pass a caller-provided (user-originating) password here.
+    // This function must only be called with no argument (uses random rotation).
+    // Syncing LMS passwords to Gitea re-introduces FLAW-01. Use rotateUserPassword() instead.
+    if (password !== undefined && password !== null) {
+      throw new AppError(
+        "updateUserPassword must not receive a caller-provided password. Use rotateUserPassword() for safe random rotation.",
+        500
+      );
+    }
+    try {
+      const giteaPassword = crypto.randomBytes(24).toString("hex");
+      await gitea.patch(`/admin/users/${username}`, {
+        password: giteaPassword,
         must_change_password: false,
       });
       return true;

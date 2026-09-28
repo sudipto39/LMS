@@ -84,6 +84,10 @@ client.interceptors.response.use(
       }
 
       if (isRefreshing) {
+        // Cap queue depth to prevent memory DoS under burst 401s (FLAW-R2-03)
+        if (refreshQueue.length >= 50) {
+          return Promise.reject(error);
+        }
         return new Promise((resolve) => {
           refreshQueue.push((token) => {
             if (original?.headers) {

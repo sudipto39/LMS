@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { prisma } from "../config/db.js";
 import { catchAsync } from "../utils/catchAsync.js";
 import { UnauthorizedError, ForbiddenError } from "../utils/appError.js";
-import { verifyAccessToken } from "../utils/createSendToken.js";
+import { verifyAccessToken, getInMemoryRevokedBefore } from "../utils/createSendToken.js";
 import type { Role } from "../generated/prisma/index.js";
 import { env } from "../config/env.js";
 import { redis } from "../config/redis.js";
@@ -12,13 +12,11 @@ import { redis } from "../config/redis.js";
 
 export const protect: RequestHandler = catchAsync(
   async (req: Request, _res: Response, next: NextFunction) => {
-    // 1. Extract token from Authorization header or query parameter (for direct file downloads/previews)
+    // 1. Extract token from Authorization header or secure cookie
     let token: string | undefined;
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
       token = authHeader.split(" ")[1];
-    } else if (typeof req.query["token"] === "string" && req.query["token"]) {
-      token = req.query["token"];
     } else if (req.cookies && typeof req.cookies["accessToken"] === "string" && req.cookies["accessToken"]) {
       token = req.cookies["accessToken"];
     }
@@ -34,14 +32,23 @@ export const protect: RequestHandler = catchAsync(
     }
 
     // Check if token was issued prior to a revocation event (logout / password reset)
-    if (decoded.iat && redis.status === "ready") {
-      try {
-        const revokedBefore = await redis.get(`revoked_before:${decoded.id}`);
-        if (revokedBefore && decoded.iat < parseInt(revokedBefore, 10)) {
-          throw new UnauthorizedError("Session has been revoked. Please log in again");
+    if (decoded.iat) {
+      let revokedBeforeSec: number | null = null;
+      if (redis.status === "ready") {
+        try {
+          const revokedBefore = await redis.get(`revoked_before:${decoded.id}`);
+          if (revokedBefore) {
+            revokedBeforeSec = parseInt(revokedBefore, 10);
+          }
+        } catch {
+          // ignore redis error
         }
-      } catch (err) {
-        if (err instanceof UnauthorizedError) throw err;
+      }
+      if (revokedBeforeSec === null) {
+        revokedBeforeSec = getInMemoryRevokedBefore(decoded.id);
+      }
+      if (revokedBeforeSec && decoded.iat < revokedBeforeSec) {
+        throw new UnauthorizedError("Session has been revoked. Please log in again");
       }
     }
 
