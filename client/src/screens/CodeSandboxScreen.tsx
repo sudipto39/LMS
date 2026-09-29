@@ -23,12 +23,21 @@ import {
   FlaskConical,
   ArrowLeft,
   Send,
+  Upload,
+  FileText,
+  X,
+  AlertTriangle,
+  Lock,
+  ShieldCheck,
+  AlertCircle,
+  Calendar,
 } from "lucide-react";
 import { Card, Btn, Btn2, Pill } from "../components/common/UIPrimitives";
 import { executeApi, labsApi } from "../api";
 import { useToast } from "../context/ToastContext";
 import { checkRateLimit } from "../utils/security";
-import type { LabAssignment, SingleTestResult } from "../types";
+import { downloadFileBlob } from "../utils/fileDownload";
+import type { LabAssignment, SingleTestResult, LabSubmission } from "../types";
 
 interface AlgorithmPreset {
   name: string;
@@ -265,12 +274,16 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
 
   // ── Lab Assignment Mode State ─────────────────────────────────────────────
   const [labTestResults, setLabTestResults] = useState<SingleTestResult[]>([]);
-  const [labScore, setLabScore] = useState<number | null>(null);
   const [runningLabTests, setRunningLabTests] = useState(false);
   const [submittingLab, setSubmittingLab] = useState(false);
 
   useEffect(() => {
     if (labAssignment) {
+      setLocalSubmission(labAssignment.mySubmission || null);
+      setReuploadMode(false);
+      setShowRequestForm(false);
+      setRequestReason("");
+      setConfirmedWarning(false);
       const isPolyglot = !labAssignment.language || labAssignment.language === "all" || labAssignment.language === "any";
       const targetLangId = labAssignment.mySubmission?.language?.toLowerCase() || (isPolyglot ? "python" : (labAssignment.language || "python").toLowerCase());
       const matchLang = sandboxLanguages.find((l) => l.id === targetLangId) || sandboxLanguages[0];
@@ -283,12 +296,39 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
       } else if (labAssignment.starterCode) {
         setSandboxCode(labAssignment.starterCode);
       }
-      if (labAssignment.mySubmission?.testResults) {
-        setLabTestResults(labAssignment.mySubmission.testResults);
-        setLabScore(labAssignment.mySubmission.score);
+      if (labAssignment.mySubmission) {
+        if (Array.isArray(labAssignment.mySubmission.testResults)) {
+          setLabTestResults(labAssignment.mySubmission.testResults);
+        }
       }
     }
   }, [labAssignment]);
+
+  // Fetch fresh assignment submission details on mount so revisit always has latest marks and fileUrl
+  useEffect(() => {
+    if (labAssignment?.id && !labAssignment.id.startsWith("demo_")) {
+      labsApi
+        .getLabAssignmentById(labAssignment.id)
+        .then((res) => {
+          if (res?.data) {
+            const freshSub =
+              res.data.mySubmission ||
+              (res.data.mySubmissions && res.data.mySubmissions[0]) ||
+              null;
+            if (freshSub) {
+              setLocalSubmission(freshSub);
+              if (freshSub.code && !sandboxCode) {
+                setSandboxCode(freshSub.code);
+              }
+              if (Array.isArray(freshSub.testResults)) {
+                setLabTestResults(freshSub.testResults);
+              }
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [labAssignment?.id]);
 
   const handleRunPublicLabTests = async () => {
     if (!labAssignment || runningLabTests) return;
@@ -302,8 +342,7 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
       );
       if (res?.data) {
         setLabTestResults(res.data.testResults);
-        setLabScore(res.data.score);
-        showToast(`Sample Tests: ${res.data.testsPassed}/${res.data.totalTests} Passed (${res.data.score} pts)`);
+        showToast(`Sample Tests: ${res.data.testsPassed}/${res.data.totalTests} Passed`);
       }
     } catch (err: any) {
       showToast(err?.message || "Failed to run public test cases");
@@ -312,30 +351,217 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
     }
   };
 
-  const handleSubmitLabSolution = async () => {
-    if (!labAssignment || submittingLab) return;
-    if (!window.confirm(`Submit final solution for "${labAssignment.title}"? Your code will be evaluated against all test cases.`)) return;
+  // ── Coding Experiment Report Document & Submission Modal State ──────────────
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [localSubmission, setLocalSubmission] = useState<LabSubmission | null>(labAssignment?.mySubmission || null);
+  const [reuploadMode, setReuploadMode] = useState(false);
+  const [reportFile, setReportFile] = useState<File | null>(null);
+  const [reportNotes, setReportNotes] = useState("");
+  const [confirmedWarning, setConfirmedWarning] = useState(false);
+  const [isDragOverReport, setIsDragOverReport] = useState(false);
+  const [uploadingReport, setUploadingReport] = useState(false);
+  const [requestReason, setRequestReason] = useState("");
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [requestingPermission, setRequestingPermission] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const hasExistingSubmission = Boolean(localSubmission);
+  const hasReportAttached = Boolean(localSubmission?.fileUrl);
+  const isPermissionApproved = localSubmission?.reuploadStatus === "APPROVED";
+  const isPermissionPending = localSubmission?.reuploadStatus === "PENDING";
+  const isPermissionRejected = localSubmission?.reuploadStatus === "REJECTED";
+
+  const isDuePassed = labAssignment?.dueDate
+    ? new Date() > new Date(labAssignment.dueDate)
+    : false;
+  const canUploadReport = !isDuePassed || Boolean(labAssignment?.allowLate) || isPermissionApproved;
+
+  const formatFileSize = (bytes?: number | null) => {
+    if (!bytes) return "0 KB";
+    if (bytes < 1024 * 1024) {
+      return `${Math.round(bytes / 1024)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleDownloadSubmissionFile = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!localSubmission?.fileUrl) return;
+    const rawName = localSubmission.fileName || "Submitted_Report.pdf";
+    const finalName = rawName.includes(".") ? rawName : `${rawName}.pdf`;
+    const ext = finalName.endsWith(".docx") ? ".docx" : finalName.endsWith(".doc") ? ".doc" : ".pdf";
+    showToast(`Downloading ${finalName}...`);
+    const success = await downloadFileBlob(localSubmission.fileUrl, finalName, ext);
+    if (success) {
+      showToast(`Downloaded ${finalName} ✅`);
+    } else {
+      showToast("Failed to download report document.");
+    }
+  };
+
+  const handleRequestReupload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!labAssignment) return;
+    if (!requestReason.trim()) {
+      showToast("Please provide a reason explaining why you need to re-upload.");
+      return;
+    }
+
+    try {
+      setRequestingPermission(true);
+      const res = await labsApi.requestReupload(labAssignment.id, requestReason.trim());
+      if (res?.data) {
+        setLocalSubmission(res.data);
+        setShowRequestForm(false);
+        setRequestReason("");
+        showToast("Re-upload permission request submitted to your supervisor! ⏳");
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Failed to submit re-upload request";
+      showToast(msg);
+    } finally {
+      setRequestingPermission(false);
+    }
+  };
+
+  const handleReportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const lower = file.name.toLowerCase();
+    const isDoc = lower.endsWith(".pdf") || lower.endsWith(".doc") || lower.endsWith(".docx");
+    if (!isDoc) {
+      showToast("Only PDF (.pdf) and Word (.doc, .docx) documents are supported");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      showToast("Report file size must be under 15MB");
+      return;
+    }
+
+    setReportFile(file);
+  };
+
+  const handleReportFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOverReport(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    const lower = file.name.toLowerCase();
+    const isDoc = lower.endsWith(".pdf") || lower.endsWith(".doc") || lower.endsWith(".docx");
+    if (!isDoc) {
+      showToast("Only PDF (.pdf) and Word (.doc, .docx) documents are supported");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      showToast("Report file size must be under 15MB");
+      return;
+    }
+
+    setReportFile(file);
+  };
+
+  const handleConfirmFinalSubmit = async () => {
+    if (!labAssignment || submittingLab || uploadingReport) return;
+
+    if (!sandboxCode.trim()) {
+      showToast("Source code cannot be empty");
+      return;
+    }
+
+    if (!confirmedWarning) {
+      showToast("Please check the confirmation box acknowledging code submission");
+      return;
+    }
 
     try {
       setSubmittingLab(true);
+      let fileUrl = localSubmission?.fileUrl || null;
+      let fileName = localSubmission?.fileName || null;
+      let fileSize = localSubmission?.fileSize || null;
+
+      if (reportFile) {
+        setUploadingReport(true);
+        const uploadRes = await labsApi.uploadDocument(reportFile);
+        if (uploadRes?.data) {
+          fileUrl = uploadRes.data.url;
+          fileName = uploadRes.data.name;
+          fileSize = uploadRes.data.size;
+        }
+      }
+
       setActiveTab("labTests");
-      const res = await labsApi.submitLabAssignment(
-        labAssignment.id,
-        sandboxCode,
-        sandboxLang
-      );
+      const res = await labsApi.submitLabAssignment(labAssignment.id, {
+        code: sandboxCode,
+        language: sandboxLang,
+        fileUrl,
+        fileName,
+        fileSize,
+        studentNotes: reportNotes.trim() || undefined,
+      });
+
       if (res?.data) {
-        setLabTestResults(res.data.evaluation.testResults);
-        setLabScore(res.data.evaluation.score);
-        showToast(`🎉 Solution Submitted! Final Score: ${res.data.evaluation.score}/${labAssignment.totalPoints}`);
+        setLocalSubmission(res.data.submission);
+        setLabTestResults(res.data.evaluation?.testResults || []);
+        if (fileUrl) {
+          showToast(`🎉 Solution & Report Submitted! Your submission is recorded for faculty evaluation.`);
+        } else {
+          showToast(`🎉 Code Solution Submitted! You can upload your report document anytime before the deadline.`);
+        }
+        setShowSubmitModal(false);
+        setReuploadMode(false);
+        setConfirmedWarning(false);
         if (onLabSubmitted) onLabSubmitted();
       }
     } catch (err: any) {
       showToast(err?.message || "Failed to submit lab solution");
     } finally {
       setSubmittingLab(false);
+      setUploadingReport(false);
     }
   };
+
+  const handleAttachReportDocument = async () => {
+    if (!labAssignment || !localSubmission || uploadingReport) return;
+
+    if (!reportFile) {
+      showToast("Please select a report document (.pdf, .doc, .docx) to upload");
+      return;
+    }
+
+    try {
+      setUploadingReport(true);
+      const uploadRes = await labsApi.uploadDocument(reportFile);
+      if (!uploadRes?.data) {
+        throw new Error("Failed to upload report file");
+      }
+
+      const res = await labsApi.submitLabAssignment(labAssignment.id, {
+        code: localSubmission.code || sandboxCode,
+        language: localSubmission.language || sandboxLang,
+        fileUrl: uploadRes.data.url,
+        fileName: uploadRes.data.name,
+        fileSize: uploadRes.data.size,
+        studentNotes: reportNotes.trim() || undefined,
+      });
+
+      if (res?.data) {
+        setLocalSubmission(res.data.submission);
+        showToast("🎉 Lab report document attached successfully! 📄✨");
+        setReportFile(null);
+        setShowSubmitModal(false);
+        if (onLabSubmitted) onLabSubmitted();
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Failed to attach lab report document");
+    } finally {
+      setUploadingReport(false);
+    }
+  };
+
 
   // ── Keyboard Shortcut: Ctrl + Enter / Cmd + Enter ─────────────────────────
   useEffect(() => {
@@ -536,13 +762,13 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
     <div className={`w-full max-w-[1800px] mx-auto space-y-4 ${isFullscreen ? "fixed inset-0 z-50 p-4 bg-[var(--bg)] overflow-y-auto" : ""}`}>
       {/* Lab Assignment Banner (If in Lab Mode) */}
       {labAssignment && (
-        <Card className="p-4 space-y-3 border-2 border-[#06b6d4]/40 bg-[#06b6d4]/5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-xl grid place-items-center bg-[#06b6d4] text-white shadow-md">
-                <FlaskConical size={20} />
+        <Card className="p-4 sm:p-4.5 border-2 border-[#06b6d4]/35 bg-gradient-to-r from-[#06b6d4]/10 via-[#06b6d4]/5 to-transparent space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+              <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl sm:rounded-2xl grid place-items-center bg-gradient-to-br from-[#06b6d4] to-[#0284c7] text-white shadow-md shadow-cyan-500/20 shrink-0 mt-0.5 sm:mt-0">
+                <FlaskConical size={21} className="stroke-[2.2]" />
               </div>
-              <div>
+              <div className="min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Pill color="#10b981">
                     📁 {labAssignment.subject || labAssignment.batch?.course?.title || "General Programming"}
@@ -553,57 +779,110 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
                       ? "✨ Any Language (Polyglot)"
                       : labAssignment.language}
                   </Pill>
-                  <span className="font-mono text-[12px] font-bold" style={{ color: "var(--t1)" }}>
-                    Total Marks: {labAssignment.totalPoints} pts
-                  </span>
+                  <Pill color="#f59e0b">
+                    🎯 4.0 Marks (2.0 Notebook + 2.0 Performance)
+                  </Pill>
                 </div>
-                <h2 className="text-[17px] font-bold mt-0.5">{labAssignment.title}</h2>
+                <h2 className="text-[18px] sm:text-[20px] font-extrabold text-[var(--t1)] tracking-tight leading-snug">
+                  {labAssignment.title}
+                </h2>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
               {onExitLabMode && (
                 <Btn2
                   type="button"
                   onClick={onExitLabMode}
-                  className="!h-8 text-[11px] !px-3 flex items-center gap-1 cursor-pointer"
+                  className="!h-9 !px-4 text-[12px] font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-sm"
                 >
-                  <ArrowLeft size={13} /> Back to Labs
+                  <ArrowLeft size={14} /> Back to Labs
                 </Btn2>
               )}
               <Btn2
                 type="button"
                 onClick={handleRunPublicLabTests}
                 disabled={runningLabTests || submittingLab}
-                className="!h-8 text-[11px] !px-3 flex items-center gap-1.5 cursor-pointer !bg-[#06b6d4]/20 !text-[#06b6d4] border border-[#06b6d4]/40"
+                className="!h-9 !px-4 text-[12px] font-semibold flex items-center gap-1.5 cursor-pointer !bg-[#06b6d4]/15 hover:!bg-[#06b6d4]/25 !text-[#0891b2] dark:!text-[#22d3ee] border border-[#06b6d4]/40 whitespace-nowrap shrink-0 shadow-sm"
               >
-                <Play size={12} /> {runningLabTests ? "Testing..." : "Run Public Tests"}
+                <Play size={13} className="fill-current" /> {runningLabTests ? "Testing..." : "Run Public Tests"}
               </Btn2>
-              <Btn
-                type="button"
-                onClick={handleSubmitLabSolution}
-                disabled={runningLabTests || submittingLab}
-                className="!h-8 text-[11px] !px-3.5 flex items-center gap-1.5 cursor-pointer shadow-md"
-              >
-                <Send size={12} /> {submittingLab ? "Evaluating..." : "Submit Solution"}
-              </Btn>
+              {hasExistingSubmission && !hasReportAttached && !isPermissionApproved ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReuploadMode(false);
+                    setShowSubmitModal(true);
+                  }}
+                  className="whitespace-nowrap shrink-0 h-9 px-4 rounded-full border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-snappy hover:bg-amber-500/20 active:scale-[0.98] shadow-sm animate-pulse"
+                  title={canUploadReport ? "Code submitted in lab class. Click to upload your lab report document before deadline." : "Code submitted in lab class. Report deadline has passed."}
+                >
+                  <Clock size={13} className="text-amber-500" />
+                  <span>{canUploadReport ? "Code Submitted • Attach Report" : "Code Submitted (Report Overdue)"}</span>
+                </button>
+              ) : hasExistingSubmission && !isPermissionApproved ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReuploadMode(false);
+                    setShowSubmitModal(true);
+                  }}
+                  className="whitespace-nowrap shrink-0 h-9 px-4 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-snappy hover:bg-emerald-500/20 active:scale-[0.98] shadow-sm"
+                  title="Experiment code and report document submitted. Click to view submission details."
+                >
+                  <CheckCircle2 size={14} className="text-emerald-500" />
+                  <span>Already Submitted (Attempt #{localSubmission?.attemptNumber || 1})</span>
+                </button>
+              ) : hasExistingSubmission && isPermissionApproved ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReuploadMode(true);
+                    setShowSubmitModal(true);
+                  }}
+                  className="whitespace-nowrap shrink-0 h-9 px-4.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/25 transition-snappy hover:brightness-105 active:scale-[0.98]"
+                  title="Supervisor permission granted. Click to upload revised solution & report."
+                >
+                  <RotateCcw size={13} />
+                  <span>Submit Revised Solution</span>
+                </button>
+              ) : (
+                <Btn
+                  type="button"
+                  onClick={() => {
+                    setReuploadMode(false);
+                    setShowSubmitModal(true);
+                  }}
+                  disabled={runningLabTests || submittingLab}
+                  className="!h-9 !px-5 text-[12px] font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-md shadow-cyan-500/25"
+                >
+                  <Send size={13} /> {submittingLab ? "Evaluating..." : "Submit Solution"}
+                </Btn>
+              )}
             </div>
           </div>
 
           {/* 🎯 LAB EXPERIMENT OBJECTIVE HIGHLIGHT */}
-          <div className="p-3 rounded-xl border space-y-1 bg-[var(--srf)] border-[#06b6d4]/30">
-            <div className="text-[11px] font-bold flex items-center gap-1 text-[#06b6d4] uppercase tracking-wide">
-              <Target size={14} /> Experiment Objective:
+          {/* 🎯 LAB EXPERIMENT OBJECTIVE HIGHLIGHT (IF DEFINED) */}
+          {(labAssignment.objective?.trim() || labAssignment.prerequisites?.trim()) && (
+            <div className="p-3 rounded-xl border space-y-1 bg-[var(--srf)] border-[#06b6d4]/30">
+              {labAssignment.objective?.trim() && (
+                <>
+                  <div className="text-[11px] font-bold flex items-center gap-1 text-[#06b6d4] uppercase tracking-wide">
+                    <Target size={14} /> Experiment Objective:
+                  </div>
+                  <p className="text-[12px] leading-relaxed font-sans" style={{ color: "var(--t1)" }}>
+                    {labAssignment.objective}
+                  </p>
+                </>
+              )}
+              {labAssignment.prerequisites?.trim() && (
+                <div className="text-[11px] text-[#8b5cf6] font-medium pt-0.5">
+                  Prerequisites: {labAssignment.prerequisites}
+                </div>
+              )}
             </div>
-            <p className="text-[12px] leading-relaxed font-sans" style={{ color: "var(--t1)" }}>
-              {labAssignment.objective}
-            </p>
-            {labAssignment.prerequisites && (
-              <div className="text-[11px] text-[#8b5cf6] font-medium pt-1">
-                Prerequisites: {labAssignment.prerequisites}
-              </div>
-            )}
-          </div>
+          )}
         </Card>
       )}
 
@@ -1143,17 +1422,36 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
             {/* TAB 4: Lab Test Suite Results */}
             {activeTab === "labTests" && (
               <div className="p-4 space-y-3 flex-1 overflow-y-auto max-h-[460px]">
-                {/* Top Lab Score Summary Card */}
-                {labScore !== null && (
-                  <div className="p-3 rounded-xl border flex items-center justify-between bg-emerald-500/10 border-emerald-500/30">
-                    <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Current Evaluation Score</div>
-                      <div className="text-[18px] font-bold font-mono text-emerald-400">
-                        {labScore} / {labAssignment?.totalPoints || 100} pts
+                {/* Automated Unit Test Execution Card */}
+                {labAssignment && (
+                  <div className="p-3 rounded-xl border flex items-center justify-between bg-[#06b6d4]/10 border-[#06b6d4]/30">
+                    <div className="space-y-0.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#06b6d4] flex items-center gap-1.5">
+                        <Terminal size={12} /> Automated Code Test Execution
+                      </div>
+                      <div className="text-[15px] font-bold font-mono text-[var(--t1)]">
+                        {labTestResults.length > 0 ? (
+                          <span className={labTestResults.every((r) => r.passed) ? "text-emerald-400" : "text-amber-400"}>
+                            {labTestResults.filter((r) => r.passed).length} / {labTestResults.length} Test Cases Passed
+                          </span>
+                        ) : (
+                          <span className="text-[var(--t2)] text-[12px] font-normal">
+                            {localSubmission ? "Code Submitted • Ready for Testing" : "No Tests Executed Yet"}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <div className="text-right text-[11px] font-mono text-emerald-300">
-                      {labTestResults.filter((r) => r.passed).length} / {labTestResults.length} Tests Passed
+                    <div className="text-right text-[11px] font-mono space-y-0.5">
+                      <div className="font-semibold text-emerald-400">
+                        {labTestResults.length > 0 && labTestResults.every((r) => r.passed)
+                          ? "✓ All Test Cases Passed"
+                          : labTestResults.length > 0
+                          ? `${labTestResults.filter((r) => !r.passed).length} Tests Failed`
+                          : "Ready to Run"}
+                      </div>
+                      <div className="text-[10px] text-[var(--t3)]">
+                        Continuous Evaluation (Max 4.0) evaluated on Experiment Card
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1231,6 +1529,992 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ── Final Submission Modal for Coding Experiment + Report ────────── */}
+      {showSubmitModal && labAssignment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div
+            className="relative w-full max-w-xl rounded-2xl border p-6 space-y-4 shadow-2xl overflow-y-auto max-h-[90vh]"
+            style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 pb-3 border-b" style={{ borderColor: "var(--bdr)" }}>
+              <div className="flex items-center gap-2.5">
+                <div className="h-10 w-10 rounded-xl grid place-items-center bg-[#06b6d4]/10 text-[#06b6d4]">
+                  <FlaskConical size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-[16px] font-bold" style={{ color: "var(--t1)" }}>
+                      {hasExistingSubmission && !hasReportAttached && !reuploadMode
+                        ? "Attach Laboratory Report Document"
+                        : hasExistingSubmission && !reuploadMode
+                        ? "Experiment Already Submitted"
+                        : reuploadMode && isPermissionApproved
+                        ? "Submit Revised Solution & Report"
+                        : "Submit Experiment Solution & Report"}
+                    </h3>
+                    {hasExistingSubmission && !hasReportAttached && !reuploadMode ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                        <Clock size={11} /> Code Submitted in Lab • Report Pending
+                      </span>
+                    ) : hasExistingSubmission && !reuploadMode ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <CheckCircle2 size={11} /> Attempt #{localSubmission?.attemptNumber || 1}
+                      </span>
+                    ) : reuploadMode && isPermissionApproved ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <RotateCcw size={11} /> Revised Attempt #{(localSubmission?.attemptNumber || 1) + 1}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#06b6d4]/10 text-[#06b6d4] border border-[#06b6d4]/30">
+                        Official Submission
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[12px] mt-0.5" style={{ color: "var(--t2)" }}>
+                    {labAssignment.title} • {labAssignment.subject || "General Programming"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSubmitModal(false);
+                  setShowRequestForm(false);
+                }}
+                disabled={submittingLab || uploadingReport || requestingPermission}
+                className="p-1.5 rounded-lg border hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition text-[var(--t2)]"
+                style={{ borderColor: "var(--bdr)" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* ══════════════════════════════════════════════════════════════════════════
+                STATE A: ALREADY SUBMITTED EARLIER (VIEW DETAILS & RE-UPLOAD CONTROL)
+                ══════════════════════════════════════════════════════════════════════════ */}
+            {hasExistingSubmission && !hasReportAttached && !reuploadMode ? (
+              /* ══════════════════════════════════════════════════════════════════════════
+                 STATE A1: CODE SUBMITTED IN LAB CLASS — ATTACH REPORT DOCUMENT
+                 ══════════════════════════════════════════════════════════════════════════ */
+              <div className="space-y-4">
+                {/* Status Notice Banner */}
+                <div
+                  className="p-4 rounded-xl border space-y-2"
+                  style={{ background: "rgba(245, 158, 11, 0.08)", borderColor: "rgba(245, 158, 11, 0.35)" }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock size={18} className="text-amber-500" />
+                      <span className="text-[13px] font-bold text-amber-700 dark:text-amber-300">
+                        Code Submitted in Lab Class • Report Document Pending
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      Attempt #{localSubmission?.attemptNumber || 1}
+                    </span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-[var(--t2)]">
+                    You completed and submitted your code implementation on{" "}
+                    <strong className="text-[var(--t1)]">
+                      {localSubmission?.submittedAt
+                        ? new Date(localSubmission.submittedAt).toLocaleString()
+                        : "an earlier date"}
+                    </strong>.
+                    You can now upload your laboratory writeup/report document (.pdf, .doc, .docx) before the deadline to complete your continuous practical evaluation (Max 2.0 Notebook Marks).
+                  </p>
+                </div>
+
+                {/* Code Submission Details Card */}
+                <div
+                  className="p-3.5 rounded-xl border space-y-3"
+                  style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}
+                >
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#06b6d4] flex items-center justify-between">
+                    <span className="flex items-center gap-1.5"><Code2 size={13} /> Evaluated Source Code Status</span>
+                    <span className="text-[10px] font-semibold text-emerald-500 flex items-center gap-1">
+                      <CheckCircle2 size={11} /> Code Evaluated & Recorded
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[12px]">
+                    <div
+                      className="p-2.5 rounded-lg border space-y-1"
+                      style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
+                    >
+                      <div className="text-[10px] font-mono uppercase text-[var(--t3)] font-semibold flex items-center gap-1">
+                        <Code2 size={12} className="text-[#06b6d4]" /> Implementation
+                      </div>
+                      <div className="font-semibold text-[var(--t1)]">
+                        {localSubmission?.language || sandboxLang}
+                      </div>
+                      <div className="text-[11px] text-[var(--t2)] font-mono">
+                        {localSubmission?.code
+                          ? `${localSubmission.code.split("\n").length} lines of code`
+                          : "Code submitted"}
+                      </div>
+                    </div>
+
+                    <div
+                      className="p-2.5 rounded-lg border space-y-1"
+                      style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
+                    >
+                      <div className="text-[10px] font-mono uppercase text-[var(--t3)] font-semibold flex items-center gap-1">
+                        <Target size={12} className="text-[#06b6d4]" /> Automated Code Tests
+                      </div>
+                      <div className="font-semibold text-emerald-500">
+                        {localSubmission?.totalTests && localSubmission.totalTests > 0
+                          ? `${localSubmission.testsPassed} / ${localSubmission.totalTests} Tests Passed`
+                          : "Code Implementation Submitted"}
+                      </div>
+                      <div className="text-[11px] text-[var(--t2)] font-mono">
+                        Continuous Evaluation (Max 4.0) shown on Experiment Card
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deadline & Upload Policy Card */}
+                <div
+                  className="p-3 rounded-xl border space-y-1.5"
+                  style={{
+                    background: canUploadReport
+                      ? "rgba(6, 182, 212, 0.05)"
+                      : "rgba(239, 68, 68, 0.05)",
+                    borderColor: canUploadReport
+                      ? "rgba(6, 182, 212, 0.3)"
+                      : "rgba(239, 68, 68, 0.3)",
+                  }}
+                >
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold flex items-center gap-1.5" style={{ color: "var(--t1)" }}>
+                      <Calendar size={13} className="text-[#06b6d4]" /> Report Submission Deadline:
+                    </span>
+                    <span className="font-mono font-semibold" style={{ color: "var(--t2)" }}>
+                      {labAssignment.dueDate ? new Date(labAssignment.dueDate).toLocaleString() : "No strict deadline (Open)"}
+                    </span>
+                  </div>
+                  <div className="text-[11px] flex items-center gap-1.5">
+                    {canUploadReport ? (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                        <CheckCircle2 size={12} />
+                        {!isDuePassed
+                          ? "You are within the deadline window. You can upload and attach your report document now."
+                          : "Late document submissions are allowed for this lab experiment."}
+                      </span>
+                    ) : (
+                      <span className="text-red-500 font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} />
+                        The deadline has passed and late submissions are disallowed. Supervisor permission required to upload report.
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Document Upload Interface (when permitted) */}
+                {canUploadReport ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--t1)" }}>
+                        <FileText size={13} className="text-[#06b6d4]" /> Attach Lab Report Document <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[10px] font-mono" style={{ color: "var(--t3)" }}>
+                        .pdf, .doc, .docx (Max 15MB)
+                      </span>
+                    </div>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      onChange={handleReportFileChange}
+                      className="hidden"
+                    />
+
+                    {reportFile ? (
+                      <div
+                        className="p-3 rounded-xl border flex items-center justify-between gap-2"
+                        style={{ background: "var(--srf2)", borderColor: "rgba(6, 182, 212, 0.4)" }}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="h-9 w-9 rounded-lg grid place-items-center bg-[#06b6d4]/10 text-[#06b6d4] shrink-0">
+                            <FileText size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-semibold truncate" style={{ color: "var(--t1)" }}>
+                              {reportFile.name}
+                            </p>
+                            <p className="text-[10px] font-mono" style={{ color: "var(--t3)" }}>
+                              {Math.round(reportFile.size / 1024)} KB • Ready to attach
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReportFile(null)}
+                          className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-red-500 cursor-pointer"
+                          title="Remove file"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDragOverReport(true);
+                        }}
+                        onDragLeave={() => setIsDragOverReport(false)}
+                        onDrop={handleReportFileDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`p-6 rounded-xl border-2 border-dashed text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition ${
+                          isDragOverReport ? "border-[#06b6d4] bg-[#06b6d4]/5" : "hover:border-[#06b6d4]/50"
+                        }`}
+                        style={{
+                          background: isDragOverReport ? "rgba(6, 182, 212, 0.05)" : "var(--srf2)",
+                          borderColor: isDragOverReport ? "#06b6d4" : "var(--bdr)",
+                        }}
+                      >
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center bg-[#06b6d4]/10 text-[#06b6d4]">
+                          <Upload size={18} />
+                        </div>
+                        <div>
+                          <p className="text-[12px] font-semibold" style={{ color: "var(--t1)" }}>
+                            Select or drop your lab report document here
+                          </p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "var(--t3)" }}>
+                            Supports .pdf, .doc, .docx formats up to 15MB
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Remarks / Student Notes */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase tracking-wider block" style={{ color: "var(--t2)" }}>
+                        Remarks / Notes for Supervisor <span className="text-[10px] font-normal text-[var(--t3)]">(Optional)</span>
+                      </label>
+                      <textarea
+                        rows={2}
+                        maxLength={2000}
+                        placeholder="Add any notes about your report, observations, or conclusions..."
+                        value={reportNotes}
+                        onChange={(e) => setReportNotes(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border text-[12px] outline-none resize-none transition"
+                        style={{ background: "var(--srf2)", borderColor: "var(--bdr)", color: "var(--t1)" }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "var(--bdr)" }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowRequestForm(true)}
+                        className="text-[11px] text-[var(--t3)] hover:text-[#06b6d4] underline cursor-pointer bg-transparent border-none p-0"
+                      >
+                        Need to update code as well?
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <Btn2
+                          type="button"
+                          onClick={() => setShowSubmitModal(false)}
+                          disabled={uploadingReport}
+                          className="!h-9 text-[12px] !px-4"
+                        >
+                          Cancel
+                        </Btn2>
+                        <Btn
+                          type="button"
+                          onClick={handleAttachReportDocument}
+                          disabled={!reportFile || uploadingReport}
+                          className="!h-9 text-[12px] !px-5 flex items-center gap-1.5 shadow-md"
+                        >
+                          {uploadingReport ? (
+                            <>
+                              <RefreshCw size={13} className="animate-spin" />
+                              <span>Uploading & Attaching...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload size={13} />
+                              <span>Attach & Submit Report Document</span>
+                            </>
+                          )}
+                        </Btn>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Overdue workflow: Request Supervisor Permission */
+                  <div className="space-y-3 pt-1">
+                    <div
+                      className="p-3.5 rounded-xl border space-y-2"
+                      style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-semibold flex items-center gap-1.5 text-[var(--t1)]">
+                          <Lock size={14} className="text-amber-500" /> Late Report Upload Locked
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20">
+                          Supervisor Permission Required
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--t3)] leading-relaxed">
+                        The submission deadline has passed. To submit your report document now, please request an exception from your faculty supervisor.
+                      </p>
+                      <div className="pt-1 flex justify-end">
+                        <Btn2
+                          type="button"
+                          onClick={() => setShowRequestForm(true)}
+                          className="!h-8 text-[11px] !px-3 flex items-center gap-1.5 cursor-pointer !bg-[#06b6d4]/10 !text-[#06b6d4] hover:!bg-[#06b6d4]/20 border border-[#06b6d4]/30"
+                        >
+                          <RotateCcw size={12} /> Request Upload Permission
+                        </Btn2>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Inline Re-upload Request Reason Form if toggled */}
+                {showRequestForm && (
+                  <form onSubmit={handleRequestReupload} className="p-4 rounded-xl border border-[#06b6d4]/40 bg-[#06b6d4]/5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[12px] font-bold text-[#06b6d4] flex items-center gap-1.5">
+                        <RotateCcw size={14} /> Request Permission from Supervisor
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#06b6d4]/20 text-[#06b6d4]">
+                        Faculty Request
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--t2)]">
+                      Please explain your request clearly to your supervisor (e.g., late report submission reason, or need to correct source code).
+                    </p>
+                    <textarea
+                      rows={3}
+                      required
+                      value={requestReason}
+                      onChange={(e) => setRequestReason(e.target.value)}
+                      placeholder="State your reason clearly for your supervisor..."
+                      className="w-full p-2.5 rounded-xl border text-[12px] outline-none transition focus:border-[#06b6d4] resize-none"
+                      style={{ background: "var(--srf)", borderColor: "var(--bdr)", color: "var(--t1)" }}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <Btn2
+                        type="button"
+                        onClick={() => {
+                          setShowRequestForm(false);
+                          setRequestReason("");
+                        }}
+                        disabled={requestingPermission}
+                        className="!h-8 text-[11px] !px-3"
+                      >
+                        Cancel
+                      </Btn2>
+                      <Btn
+                        type="submit"
+                        disabled={requestingPermission || !requestReason.trim()}
+                        className="!h-8 text-[11px] !px-4 flex items-center gap-1.5 shadow-sm"
+                      >
+                        {requestingPermission ? (
+                          <>
+                            <RefreshCw size={12} className="animate-spin" />
+                            <span>Sending Request...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send size={12} />
+                            <span>Submit Permission Request</span>
+                          </>
+                        )}
+                      </Btn>
+                    </div>
+                  </form>
+                )}
+              </div>
+            ) : hasExistingSubmission && !reuploadMode ? (
+              /* ══════════════════════════════════════════════════════════════════════════
+                 STATE A2: BOTH CODE & REPORT SUBMITTED EARLIER (VIEW DETAILS & RE-UPLOAD)
+                 ══════════════════════════════════════════════════════════════════════════ */
+              <div className="space-y-4">
+                {/* Already Submitted Warning & Status Banner */}
+                <div
+                  className="p-4 rounded-xl border space-y-2"
+                  style={{ background: "rgba(34, 197, 94, 0.06)", borderColor: "rgba(34, 197, 94, 0.35)" }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={18} className="text-emerald-500" />
+                      <span className="text-[13px] font-bold text-emerald-700 dark:text-emerald-300">
+                        You Have Already Submitted Earlier
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                      Attempt #{localSubmission?.attemptNumber || 1}
+                    </span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-[var(--t2)]">
+                    You have already submitted your coding experiment and report on{" "}
+                    <strong className="text-[var(--t1)]">
+                      {localSubmission?.submittedAt
+                        ? new Date(localSubmission.submittedAt).toLocaleString()
+                        : "an earlier date"}
+                    </strong>.
+                    To preserve evaluation integrity, direct re-submission is restricted.
+                  </p>
+                </div>
+
+                {/* Submitted Work Summary Card */}
+                <div
+                  className="p-3.5 rounded-xl border space-y-3"
+                  style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}
+                >
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#06b6d4] flex items-center gap-1.5">
+                    <FileText size={13} /> Your Submitted Work
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[12px]">
+                    {/* Source Code */}
+                    <div
+                      className="p-2.5 rounded-lg border space-y-1"
+                      style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
+                    >
+                      <div className="text-[10px] font-mono uppercase text-[var(--t3)] font-semibold flex items-center gap-1">
+                        <Code2 size={12} className="text-[#06b6d4]" /> Source Code
+                      </div>
+                      <div className="font-semibold text-[var(--t1)]">
+                        {localSubmission?.language || sandboxLang}
+                      </div>
+                      <div className="text-[11px] text-[var(--t2)] font-mono">
+                        {localSubmission?.code
+                          ? `${localSubmission.code.split("\n").length} lines of code`
+                          : "Code submitted"}
+                      </div>
+                    </div>
+
+                    {/* Automated Verification */}
+                    <div
+                      className="p-2.5 rounded-lg border space-y-1"
+                      style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
+                    >
+                      <div className="text-[10px] font-mono uppercase text-[var(--t3)] font-semibold flex items-center gap-1">
+                        <Target size={12} className="text-[#06b6d4]" /> Automated Code Tests
+                      </div>
+                      <div className="font-semibold text-emerald-500">
+                        {localSubmission?.testsPassed !== undefined && localSubmission?.totalTests
+                          ? `${localSubmission.testsPassed} / ${localSubmission.totalTests} Tests Passed`
+                          : "Automated verification recorded"}
+                      </div>
+                      <div className="text-[11px] text-[var(--t2)] font-mono">
+                        Final Marks (Max 4.0: NB 2.0 + Perf 2.0) on Experiment Card
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Attached Report File */}
+                  <div
+                    className="p-2.5 rounded-lg border flex items-center justify-between text-[11px] font-mono"
+                    style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <FileText size={14} className="text-[#06b6d4] shrink-0" />
+                      <span className="font-semibold truncate text-[var(--t1)]">
+                        {localSubmission?.fileName || "Submitted_Report.pdf"}
+                      </span>
+                      <span className="text-[var(--t3)]">({formatFileSize(localSubmission?.fileSize)})</span>
+                    </div>
+                    {localSubmission?.fileUrl && (
+                      <button
+                        type="button"
+                        onClick={handleDownloadSubmissionFile}
+                        className="text-[#06b6d4] hover:underline flex items-center gap-1 shrink-0 font-medium ml-2 cursor-pointer bg-transparent border-none p-0"
+                      >
+                        <Download size={12} /> Download
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Student Remarks */}
+                  {localSubmission?.studentNotes && (
+                    <div className="text-[11px] text-[var(--t2)] pt-1">
+                      <span className="font-semibold text-[var(--t1)]">Your remarks: </span>
+                      "{localSubmission.studentNotes}"
+                    </div>
+                  )}
+
+                  {/* Supervisor Feedback if Graded */}
+                  {localSubmission?.supervisorFeedback && (
+                    <div className="p-2.5 rounded-lg border border-cyan-500/20 bg-cyan-500/5 space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#06b6d4] flex items-center gap-1">
+                        <Sparkles size={11} /> Faculty Supervisor Feedback:
+                      </div>
+                      <p className="text-[12px] italic text-[var(--t1)]">
+                        "{localSubmission.supervisorFeedback}"
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Supervisor Re-upload Permission Control Section */}
+                <div className="pt-1">
+                  {isPermissionApproved ? (
+                    <div className="p-3.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                          <ShieldCheck size={16} /> Supervisor Permission Granted
+                        </span>
+                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                          Authorized for Re-upload
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-[var(--t2)]">
+                        Your faculty supervisor has authorized you to submit a revised code solution and report document. Click below to proceed.
+                      </p>
+                      <div className="pt-1 flex justify-end">
+                        <Btn
+                          type="button"
+                          onClick={() => {
+                            setConfirmedWarning(false);
+                            setReuploadMode(true);
+                          }}
+                          className="!h-9 text-[12px] !px-4 flex items-center gap-1.5 cursor-pointer shadow-sm !bg-emerald-600 hover:!bg-emerald-700 text-white"
+                        >
+                          <RotateCcw size={13} /> Upload Revised Solution Now
+                        </Btn>
+                      </div>
+                    </div>
+                  ) : isPermissionPending ? (
+                    <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                          <Clock size={15} /> Re-upload Permission Pending Review
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold">
+                          Awaiting Supervisor
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-[var(--t2)]">
+                        Your re-upload request is currently pending supervisor review. Once approved, the submission option will unlock automatically.
+                      </p>
+                      {localSubmission?.reuploadReason && (
+                        <div className="text-[11px] italic p-2 rounded-lg border border-amber-500/20 bg-amber-500/5 text-[var(--t1)]">
+                          <span className="font-semibold not-italic text-amber-600 dark:text-amber-400 block mb-0.5">Your Stated Reason:</span>
+                          "{localSubmission.reuploadReason}"
+                        </div>
+                      )}
+                      <div className="pt-1 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setShowRequestForm(true)}
+                          className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline cursor-pointer bg-transparent border-none font-medium"
+                        >
+                          Edit / Update Reason
+                        </button>
+                      </div>
+                    </div>
+                  ) : isPermissionRejected ? (
+                    <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-500/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-bold text-red-500 flex items-center gap-1.5">
+                          <AlertCircle size={15} /> Re-upload Request Declined
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-red-500/20 text-red-500 font-semibold">
+                          Faculty Declined
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-[var(--t2)]">
+                        Your supervisor declined your previous re-upload request. If you have valid academic grounds or corrections, you can request permission again.
+                      </p>
+                      <div className="pt-1 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setShowRequestForm(true)}
+                          className="px-3 py-1.5 rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/10 text-[11px] font-semibold cursor-pointer transition flex items-center gap-1.5"
+                        >
+                          <RotateCcw size={12} /> Request Permission Again
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="p-3.5 rounded-xl border space-y-2"
+                      style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-semibold flex items-center gap-1.5 text-[var(--t1)]">
+                          <Lock size={14} className="text-amber-500" /> Need to re-submit your experiment?
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20">
+                          Supervisor Permission Required
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--t3)] leading-relaxed">
+                        Once submitted, experiment solutions and reports are locked. If you found a bug or need to update your report, you must request permission from your supervisor.
+                      </p>
+                      <div className="pt-1 flex justify-end">
+                        <Btn2
+                          type="button"
+                          onClick={() => setShowRequestForm(true)}
+                          className="!h-8 text-[11px] !px-3 flex items-center gap-1.5 cursor-pointer !bg-[#06b6d4]/10 !text-[#06b6d4] hover:!bg-[#06b6d4]/20 border border-[#06b6d4]/30"
+                        >
+                          <RotateCcw size={12} /> Request Re-upload Permission
+                        </Btn2>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Inline Re-upload Request Reason Form */}
+                {showRequestForm && (
+                  <form onSubmit={handleRequestReupload} className="p-4 rounded-xl border border-[#06b6d4]/40 bg-[#06b6d4]/5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[12px] font-bold text-[#06b6d4] flex items-center gap-1.5">
+                        <RotateCcw size={14} /> Request Re-upload Permission from Supervisor
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#06b6d4]/20 text-[#06b6d4]">
+                        Faculty Request
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--t2)]">
+                      Please explain why you need to re-upload your solution and report (e.g., fixed algorithmic edge case, corrected report diagram, updated documentation).
+                    </p>
+                    <textarea
+                      rows={3}
+                      required
+                      value={requestReason}
+                      onChange={(e) => setRequestReason(e.target.value)}
+                      placeholder="State your reason clearly for your supervisor..."
+                      className="w-full p-2.5 rounded-xl border text-[12px] outline-none transition focus:border-[#06b6d4] resize-none"
+                      style={{ background: "var(--srf)", borderColor: "var(--bdr)", color: "var(--t1)" }}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <Btn2
+                        type="button"
+                        onClick={() => {
+                          setShowRequestForm(false);
+                          setRequestReason("");
+                        }}
+                        disabled={requestingPermission}
+                        className="!h-8 text-[11px] !px-3"
+                      >
+                        Cancel
+                      </Btn2>
+                      <Btn
+                        type="submit"
+                        disabled={requestingPermission || !requestReason.trim()}
+                        className="!h-8 text-[11px] !px-4 flex items-center gap-1.5 shadow-sm"
+                      >
+                        {requestingPermission ? (
+                          <>
+                            <RefreshCw size={12} className="animate-spin" />
+                            <span>Sending Request...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send size={12} />
+                            <span>Submit Permission Request</span>
+                          </>
+                        )}
+                      </Btn>
+                    </div>
+                  </form>
+                )}
+
+                {/* Footer for Already Submitted View */}
+                <div className="flex items-center justify-end pt-2 border-t" style={{ borderColor: "var(--bdr)" }}>
+                  <Btn2
+                    type="button"
+                    onClick={() => setShowSubmitModal(false)}
+                    className="!h-9 text-[12px] !px-5"
+                  >
+                    Close
+                  </Btn2>
+                </div>
+              </div>
+            ) : (
+              /* ══════════════════════════════════════════════════════════════════════════
+                 STATE B: SUBMITTING EXPERIMENT FORM (INITIAL OR APPROVED RE-UPLOAD)
+                 ══════════════════════════════════════════════════════════════════════════ */
+              <div className="space-y-4">
+                {/* ⚠️ Prominent Warning Message Banner */}
+                <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 flex items-start gap-3">
+                  <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="text-[12px] font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                      ⚠️ Important Submission Warning
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-[var(--t2)]">
+                      Once submitted, your source code and laboratory report document will be <strong>locked</strong> for official supervisor evaluation.
+                      You will <strong>not</strong> be able to re-submit again unless your supervisor approves a re-upload permission request.
+                      Please ensure your code passes test cases and your report document is complete before proceeding.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Re-upload Active Notice if Approved */}
+                {reuploadMode && isPermissionApproved && (
+                  <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <ShieldCheck size={14} className="text-emerald-500" />
+                      Submitting Authorized Revised Attempt #{(localSubmission?.attemptNumber || 1) + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setReuploadMode(false)}
+                      className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-semibold"
+                    >
+                      Back to Previous Submission
+                    </button>
+                  </div>
+                )}
+
+                {/* University 4-Mark Practical Scheme Banner */}
+                <div
+                  className="p-3 rounded-xl border space-y-1.5"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)",
+                    borderColor: "rgba(6, 182, 212, 0.25)",
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#06b6d4] flex items-center gap-1.5">
+                      <Sparkles size={13} /> Continuous Practical Evaluation Scheme
+                    </span>
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#06b6d4]/15 text-[#06b6d4]">
+                      Total: 4.0 Marks
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                    <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5 border border-cyan-500/10">
+                      <span className="font-semibold block text-[#06b6d4]">1. Note Book (Max 2.0)</span>
+                      <span className="text-[10px] block opacity-80" style={{ color: "var(--t2)" }}>
+                        Source code implementation + Laboratory document report (.pdf, .doc, .docx).
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5 border border-purple-500/10">
+                      <span className="font-semibold block text-[#8b5cf6]">2. Practical Performance (Max 2.0)</span>
+                      <span className="text-[10px] block opacity-80" style={{ color: "var(--t2)" }}>
+                        Execution correctness, algorithm logic, and practical demonstration.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Code Implementation Summary */}
+                <div className="p-3 rounded-xl border space-y-1.5" style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}>
+                  <span className="text-[10px] font-bold uppercase tracking-wider block" style={{ color: "var(--t3)" }}>
+                    Source Code Solution Status
+                  </span>
+                  <div className="flex items-center justify-between text-[12px] flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Code2 size={15} className="text-[#06b6d4]" />
+                      <span className="font-semibold font-mono" style={{ color: "var(--t1)" }}>
+                        {sandboxActiveFile}
+                      </span>
+                      <Pill color="#06b6d4">{activeLangConfig.name}</Pill>
+                    </div>
+                    <div className="text-[11px] font-mono" style={{ color: "var(--t2)" }}>
+                      {sandboxCode.split("\n").length} lines • {sandboxCode.length} chars
+                    </div>
+                  </div>
+                  {labAssignment.totalTestCount && labAssignment.totalTestCount > 0 ? (
+                    <div className="text-[11px] pt-1 flex items-center gap-1.5" style={{ color: "var(--t2)" }}>
+                      <CheckCircle2 size={13} className="text-[#22c55e]" />
+                      <span>
+                        Unit Test Suite: {labAssignment.totalTestCount} automated test cases will evaluate execution on submit.
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] pt-1 flex items-center gap-1.5 text-slate-400">
+                      <CheckCircle2 size={13} className="text-[#06b6d4]" />
+                      <span>No automated test cases configured — supervisor will evaluate code directly.</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Document Report Upload Section */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--t1)" }}>
+                      <FileText size={13} className="text-[#06b6d4]" /> Lab Report Document
+                      <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400 font-sans ml-1">
+                        (Optional in Lab Class — Upload before deadline)
+                      </span>
+                    </label>
+                    <span className="text-[10px] font-mono" style={{ color: "var(--t3)" }}>
+                      .pdf, .doc, .docx (Max 15MB)
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--t2)] leading-relaxed">
+                    💡 <strong>Lab Session Note:</strong> If you are working in lab class now, you can submit your code first. You can attach your report document later before the deadline ({labAssignment.dueDate ? new Date(labAssignment.dueDate).toLocaleDateString() : "no deadline"}).
+                  </p>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={handleReportFileChange}
+                    className="hidden"
+                  />
+
+                  {reportFile ? (
+                    <div
+                      className="p-3 rounded-xl border flex items-center justify-between gap-2"
+                      style={{ background: "var(--srf2)", borderColor: "rgba(6, 182, 212, 0.4)" }}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="h-9 w-9 rounded-lg grid place-items-center bg-[#06b6d4]/10 text-[#06b6d4] shrink-0">
+                          <FileText size={18} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-semibold truncate" style={{ color: "var(--t1)" }}>
+                            {reportFile.name}
+                          </p>
+                          <p className="text-[10px] font-mono" style={{ color: "var(--t3)" }}>
+                            {Math.round(reportFile.size / 1024)} KB • Ready to upload
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReportFile(null)}
+                        className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-red-500 cursor-pointer"
+                        title="Remove file"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ) : localSubmission?.fileUrl ? (
+                    <div
+                      className="p-3 rounded-xl border flex items-center justify-between gap-2"
+                      style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="h-9 w-9 rounded-lg grid place-items-center bg-emerald-500/10 text-emerald-500 shrink-0">
+                          <CheckCircle2 size={18} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-semibold truncate" style={{ color: "var(--t1)" }}>
+                            {localSubmission.fileName || "Previously_Uploaded_Report.pdf"}
+                          </p>
+                          <p className="text-[10px]" style={{ color: "var(--t3)" }}>
+                            Previously uploaded report attached. Click below to replace with a newer document.
+                          </p>
+                        </div>
+                      </div>
+                      <Btn2
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="!h-7 text-[11px] !px-2.5"
+                      >
+                        Replace
+                      </Btn2>
+                    </div>
+                  ) : (
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragOverReport(true);
+                      }}
+                      onDragLeave={() => setIsDragOverReport(false)}
+                      onDrop={handleReportFileDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`p-6 rounded-xl border-2 border-dashed text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition ${
+                        isDragOverReport ? "border-[#06b6d4] bg-[#06b6d4]/5" : "hover:border-[#06b6d4]/50"
+                      }`}
+                      style={{
+                        background: isDragOverReport ? "rgba(6, 182, 212, 0.05)" : "var(--srf2)",
+                        borderColor: isDragOverReport ? "#06b6d4" : "var(--bdr)",
+                      }}
+                    >
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center bg-[#06b6d4]/10 text-[#06b6d4]">
+                        <Upload size={18} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-semibold" style={{ color: "var(--t1)" }}>
+                          Drop your lab report document here, or <span className="text-[#06b6d4] underline">browse</span>
+                        </p>
+                        <p className="text-[10px] mt-0.5" style={{ color: "var(--t3)" }}>
+                          Supports .pdf, .doc, .docx formats up to 15MB
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Optional Student Notes */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold uppercase tracking-wider block" style={{ color: "var(--t2)" }}>
+                    Student Remarks / Notes <span className="text-[10px] font-normal text-[var(--t3)]">(Optional)</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    maxLength={2000}
+                    placeholder="Add any execution notes, observations, or comments for the supervisor..."
+                    value={reportNotes}
+                    onChange={(e) => setReportNotes(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border text-[12px] outline-none resize-none transition"
+                    style={{ background: "var(--srf2)", borderColor: "var(--bdr)", color: "var(--t1)" }}
+                  />
+                </div>
+
+                {/* ⚠️ Checkbox to Acknowledge Submission Warning */}
+                <label className="flex items-start gap-2.5 p-3 rounded-xl border border-dashed border-[var(--bdr)] bg-[var(--srf2)] cursor-pointer hover:border-[#06b6d4]/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={confirmedWarning}
+                    onChange={(e) => setConfirmedWarning(e.target.checked)}
+                    className="mt-0.5 rounded border-[var(--bdr)] text-[#06b6d4] focus:ring-[#06b6d4]"
+                  />
+                  <span className="text-[11px] leading-snug select-none text-[var(--t1)]">
+                    I confirm that my source code solution is ready for evaluation. {reportFile ? "My report document is attached." : "I understand I can attach my report document later before the deadline."}
+                  </span>
+                </label>
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t" style={{ borderColor: "var(--bdr)" }}>
+                  <Btn2
+                    type="button"
+                    onClick={() => {
+                      if (reuploadMode && hasExistingSubmission) {
+                        setReuploadMode(false);
+                      } else {
+                        setShowSubmitModal(false);
+                      }
+                    }}
+                    disabled={submittingLab || uploadingReport}
+                    className="!h-9 text-[12px] !px-4"
+                  >
+                    Cancel
+                  </Btn2>
+                  <Btn
+                    type="button"
+                    onClick={handleConfirmFinalSubmit}
+                    disabled={
+                      submittingLab ||
+                      uploadingReport ||
+                      !confirmedWarning ||
+                      !sandboxCode.trim()
+                    }
+                    className="!h-9 text-[12px] !px-5 flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                  >
+                    {submittingLab || uploadingReport ? (
+                      <>
+                        <RefreshCw size={13} className="animate-spin" />
+                        <span>{uploadingReport ? "Uploading Report..." : "Evaluating Solution..."}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send size={13} />
+                        <span>{reportFile ? "Submit Code & Report Document" : "Submit Code Solution (Report Later)"}</span>
+                      </>
+                    )}
+                  </Btn>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

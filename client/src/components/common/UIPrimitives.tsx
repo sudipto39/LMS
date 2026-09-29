@@ -95,7 +95,7 @@ export const Btn = ({
     onClick={onClick}
     style={style}
     title={title}
-    className={`h-10 px-5 rounded-full bg-gradient-to-r from-[#06b6d4] to-[#2563eb] text-white font-semibold text-[13px] shadow-[0_4px_16px_rgba(6,182,214,0.28)] hover:shadow-[0_6px_24px_rgba(6,182,214,0.42)] active:scale-[0.98] transition-snappy cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+    className={`h-10 px-5 rounded-full bg-gradient-to-r from-[#06b6d4] to-[#2563eb] text-white font-semibold text-[13px] shadow-[0_4px_16px_rgba(6,182,214,0.28)] hover:shadow-[0_6px_24px_rgba(6,182,214,0.42)] active:scale-[0.98] transition-snappy cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
   >
     {children}
   </button>
@@ -123,7 +123,7 @@ export const Btn2 = ({
     disabled={disabled}
     onClick={onClick}
     title={title}
-    className={`h-9 px-4 rounded-full border text-[12px] font-medium cursor-pointer flex items-center gap-1.5 transition-snappy hover:border-[var(--acc)] active:scale-[0.98] lum-border disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+    className={`h-9 px-4 rounded-full border text-[12px] font-medium cursor-pointer flex items-center justify-center gap-1.5 transition-snappy hover:border-[var(--acc)] active:scale-[0.98] lum-border whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
     style={{
       background: "var(--srf2)",
       borderColor: "var(--bdr)",

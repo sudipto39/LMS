@@ -3,7 +3,6 @@ import React, { useState, useEffect } from "react";
 import {
   FlaskConical,
   Target,
-  FileCode,
   CheckCircle2,
   Sliders,
   Plus,
@@ -16,6 +15,7 @@ import {
   Folder,
   Upload,
   FileText,
+  Code2,
 } from "lucide-react";
 import { Card, Inp, Btn, Btn2, Pill } from "../common/UIPrimitives";
 import { labsApi, batchesApi, getErrorMessage } from "../../api";
@@ -117,31 +117,15 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
   const [starterCode, setStarterCode] = useState(
     `# Python 3 — Lab Experiment Starter Template\n# Implement your solution below\n\ndef solve():\n    # Read input from standard input\n    pass\n\nif __name__ == '__main__':\n    solve()\n`
   );
-  const [totalPoints, setTotalPoints] = useState(100);
+  // Total points defaulted to 100 while custom score input is commented out
+  const totalPoints = 100;
   const [dueDate, setDueDate] = useState("");
   const [timeLimit, setTimeLimit] = useState(2.0);
   const [memoryLimit, setMemoryLimit] = useState(128000);
   const [allowLate, setAllowLate] = useState(false);
 
-  // Test Cases State
-  const [testCases, setTestCases] = useState<TestCase[]>([
-    {
-      id: "tc_1",
-      input: "5\n1 2 3 4 5",
-      expectedOutput: "15",
-      isHidden: false,
-      weight: 1,
-      explanation: "Sample Test 1: Sum of first 5 natural numbers",
-    },
-    {
-      id: "tc_2",
-      input: "3\n10 20 30",
-      expectedOutput: "60",
-      isHidden: true,
-      weight: 2,
-      explanation: "Hidden Edge Case 1",
-    },
-  ]);
+  // Test Cases State (default empty)
+  const [testCases, setTestCases] = useState<TestCase[]>([]);
 
   const LANGUAGE_TEMPLATES: Record<string, string> = {
     all: `# Any Language — Polyglot Lab Experiment Starter Template\n# Students can solve and submit this experiment in any supported language (Python, C++, Java, C, Go, Rust, JS, TS, R).\n\ndef solve():\n    pass\n\nif __name__ == '__main__':\n    solve()\n`,
@@ -210,10 +194,6 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
   };
 
   const handleRemoveTestCase = (index: number) => {
-    if (testCases.length <= 1) {
-      showToast("At least one test case is required");
-      return;
-    }
     setTestCases((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -225,23 +205,13 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
       setActiveTab("details");
       return;
     }
-    if (!objective.trim()) {
-      showToast("Lab Experiment Objective is required 🎯");
-      setActiveTab("details");
-      return;
-    }
-    if (!description.trim()) {
-      showToast("Problem description is required");
-      setActiveTab("details");
-      return;
-    }
     if (!batchId) {
       showToast("Please select a target Batch");
       setActiveTab("details");
       return;
     }
-    if (submissionType === "CODING" && (testCases.length === 0 || testCases.some((t) => !t.expectedOutput.trim()))) {
-      showToast("Please provide expected output for all test cases");
+    if (submissionType === "CODING" && testCases.length > 0 && testCases.some((t) => !t.expectedOutput.trim())) {
+      showToast("Please provide expected output for all added test cases");
       setActiveTab("tests");
       return;
     }
@@ -384,6 +354,7 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
 
           {submissionType === "CODING" && (
             <>
+              {/* TODO: Re-enable Starter Code Boilerplate tab in future update
               <button
                 type="button"
                 onClick={() => setActiveTab("code")}
@@ -396,6 +367,7 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
               >
                 <FileCode size={14} /> 2. Starter Template
               </button>
+              */}
               <button
                 type="button"
                 onClick={() => setActiveTab("tests")}
@@ -406,7 +378,7 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
                 }`}
                 style={{ color: activeTab === "tests" ? "#fff" : "var(--t2)" }}
               >
-                <CheckCircle2 size={14} /> 3. Test Cases ({testCases.length})
+                <CheckCircle2 size={14} /> 2. Test Cases ({testCases.length})
               </button>
             </>
           )}
@@ -421,7 +393,7 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
             }`}
             style={{ color: activeTab === "limits" ? "#fff" : "var(--t2)" }}
           >
-            <Sliders size={14} /> {submissionType === "PDF_REPORT" ? "2. Scoring & Deadline" : "4. Limits & Scoring"}
+            <Sliders size={14} /> {submissionType === "PDF_REPORT" ? "2. Scoring & Deadline" : "3. Limits & Deadline"}
           </button>
         </div>
 
@@ -539,17 +511,17 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
                 />
               </div>
 
-              {/* 🎯 LAB EXPERIMENT OBJECTIVE (PRIMARY FEATURE) */}
+              {/* 🎯 LAB EXPERIMENT OBJECTIVE */}
               <div className="p-4 rounded-xl border" style={{ background: "rgba(6, 182, 212, 0.05)", borderColor: "rgba(6, 182, 212, 0.3)" }}>
                 <label className="text-[12px] font-bold flex items-center gap-1.5 text-[#06b6d4] uppercase tracking-wide mb-1">
-                  <Target size={14} /> Lab Experiment Objective & Pedagogical Goals <span className="text-red-500">*</span>
+                  <Target size={14} /> Lab Experiment Objective & Pedagogical Goals <span className="text-[10px] font-normal text-[var(--t2)]">(Optional)</span>
                 </label>
                 <p className="text-[11px] mb-2" style={{ color: "var(--t2)" }}>
-                  Clearly state what algorithm, system concept, or scientific problem the students are expected to solve and master.
+                  State what algorithm, concept, or problem the students are expected to solve and master (optional).
                 </p>
                 <textarea
                   rows={3}
-                  placeholder="e.g. Understand divide-and-conquer strategy, implement balanced tree insertions with O(log N) average time complexity, and handle duplicate node edge cases without memory leaks."
+                  placeholder="e.g. Understand divide-and-conquer strategy, implement balanced tree insertions with O(log N) average time complexity... (optional)"
                   value={objective}
                   onChange={(e) => setObjective(e.target.value)}
                   className="w-full p-3 rounded-xl border text-[12px] outline-none transition resize-none leading-relaxed font-sans"
@@ -574,11 +546,11 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
 
               <div>
                 <label className="text-[11px] font-bold uppercase tracking-wider block mb-1" style={{ color: "var(--t2)" }}>
-                  Full Problem Statement & Specifications <span className="text-red-500">*</span>
+                  Full Problem Statement & Specifications <span className="text-[10px] font-normal text-[var(--t2)]">(Optional)</span>
                 </label>
                 <textarea
                   rows={5}
-                  placeholder="Describe input format, output format, constraints (e.g. 1 <= N <= 10^5), and sample explanation..."
+                  placeholder="Describe input format, output format, constraints (e.g. 1 <= N <= 10^5), and sample explanation... (optional)"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full p-3 rounded-xl border text-[12px] outline-none transition resize-none leading-relaxed font-sans"
@@ -654,7 +626,7 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
             </div>
           )}
 
-          {/* TAB 2: STARTER TEMPLATE */}
+          {/* TODO: Re-enable Starter Code Boilerplate tab in future update
           {activeTab === "code" && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -684,39 +656,82 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
               />
             </div>
           )}
+          */}
 
-          {/* TAB 3: TEST SUITE */}
+          {/* TAB 3: TEST SUITE (OPTIONAL) */}
           {activeTab === "tests" && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="min-w-0">
                   <h4 className="font-bold text-[13px] flex items-center gap-1.5">
-                    <CheckCircle2 size={15} className="text-[#22c55e]" /> Unit Test Suite ({testCases.length})
+                    <CheckCircle2 size={15} className="text-[#22c55e] shrink-0" /> Unit Test Suite ({testCases.length}) <span className="text-[11px] font-normal text-[var(--t2)]">(Optional)</span>
                   </h4>
-                  <p className="text-[11px]" style={{ color: "var(--t2)" }}>
-                    Public tests provide instant student feedback in Sandbox; Hidden tests evaluate final grading.
+                  <p className="text-[11px] mt-0.5" style={{ color: "var(--t2)" }}>
+                    Public tests provide instant student feedback in Sandbox; Hidden tests evaluate automated test score. (Optional - you can leave this empty).
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Btn2
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <button
                     type="button"
                     onClick={() => handleAddTestCase(false)}
-                    className="!h-8 text-[11px] !px-2.5 flex items-center gap-1 cursor-pointer"
+                    className="whitespace-nowrap shrink-0 h-9 px-4 rounded-full border text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-snappy hover:border-[var(--acc)] hover:bg-black/5 dark:hover:bg-white/5 active:scale-[0.98]"
+                    style={{
+                      background: "var(--srf2)",
+                      borderColor: "var(--bdr)",
+                      color: "var(--t1)",
+                    }}
                   >
-                    <Plus size={13} /> Add Public Test
-                  </Btn2>
-                  <Btn
+                    <Plus size={14} className="text-cyan-500" />
+                    <span>Add Public Test</span>
+                  </button>
+                  <button
                     type="button"
                     onClick={() => handleAddTestCase(true)}
-                    className="!h-8 text-[11px] !px-2.5 flex items-center gap-1 cursor-pointer !bg-[#8b5cf6] hover:!bg-[#7c3aed]"
+                    className="whitespace-nowrap shrink-0 h-9 px-4 rounded-full text-white text-xs font-semibold cursor-pointer flex items-center gap-1.5 shadow-[0_4px_14px_rgba(139,92,246,0.35)] hover:shadow-[0_6px_20px_rgba(139,92,246,0.5)] bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] hover:from-[#7c3aed] hover:to-[#6d28d9] active:scale-[0.98] transition-snappy"
                   >
-                    <EyeOff size={13} /> Add Hidden Test
-                  </Btn>
+                    <EyeOff size={14} />
+                    <span>Add Hidden Test</span>
+                  </button>
                 </div>
               </div>
 
               <div className="space-y-3">
-                {testCases.map((tc, idx) => (
+                {testCases.length === 0 ? (
+                  <div
+                    className="p-8 rounded-xl border border-dashed text-center flex flex-col items-center justify-center gap-2.5"
+                    style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-cyan-500/10 text-cyan-500">
+                      <Code2 size={20} />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-semibold" style={{ color: "var(--t1)" }}>
+                        No test cases added
+                      </p>
+                      <p className="text-[11px] mt-0.5 max-w-md mx-auto" style={{ color: "var(--t2)" }}>
+                        Test cases are optional. You can add public test cases for student guidance or hidden test cases for automated grading, or proceed without test cases.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2.5 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAddTestCase(false)}
+                        className="whitespace-nowrap h-8 px-3.5 rounded-full border text-xs font-medium cursor-pointer flex items-center gap-1.5 transition-snappy hover:border-[var(--acc)] active:scale-[0.98]"
+                        style={{ background: "var(--srf)", borderColor: "var(--bdr)", color: "var(--t1)" }}
+                      >
+                        <Plus size={13} className="text-cyan-500" /> Add Public Test
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddTestCase(true)}
+                        className="whitespace-nowrap h-8 px-3.5 rounded-full text-white text-xs font-medium cursor-pointer flex items-center gap-1.5 bg-[#8b5cf6] hover:bg-[#7c3aed] active:scale-[0.98] transition-snappy shadow-sm"
+                      >
+                        <EyeOff size={13} /> Add Hidden Test
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  testCases.map((tc, idx) => (
                   <div
                     key={tc.id || idx}
                     className="p-4 rounded-xl border space-y-3 transition"
@@ -804,7 +819,7 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
                       </div>
                     </div>
                   </div>
-                ))}
+                )))}
               </div>
             </div>
           )}
@@ -813,6 +828,7 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
           {activeTab === "limits" && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* TODO: Re-enable Total Maximum Score (Points) input in future update
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider block mb-1" style={{ color: "var(--t2)" }}>
                     Total Maximum Score (Points)
@@ -825,6 +841,7 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
                     onChange={(e) => setTotalPoints(Number(e.target.value))}
                   />
                 </div>
+                */}
 
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider block mb-1" style={{ color: "var(--t2)" }}>
@@ -895,10 +912,10 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
                 : "Step 2 of 2: Set Scoring & Deadline"
             ) : (
               <>
-                {activeTab === "details" && "Step 1 of 4: Define Objective & Problem"}
-                {activeTab === "code" && "Step 2 of 4: Prepare Starter Code"}
-                {activeTab === "tests" && `Step 3 of 4: ${testCases.length} Test Cases configured`}
-                {activeTab === "limits" && "Step 4 of 4: Set Marks & Limits"}
+                {activeTab === "details" && "Step 1 of 3: Define Objective & Problem"}
+                {/* Starter Code step temporarily commented out */}
+                {activeTab === "tests" && `Step 2 of 3: Unit Test Suite (${testCases.length} configured)`}
+                {activeTab === "limits" && "Step 3 of 3: Set Limits & Deadline"}
               </>
             )}
           </div>
@@ -915,9 +932,10 @@ export const CreateLabAssignmentModal: React.FC<CreateLabAssignmentModalProps> =
                   if (submissionType === "PDF_REPORT") {
                     setActiveTab("limits");
                   } else {
-                    if (activeTab === "details") setActiveTab("code");
-                    else if (activeTab === "code") setActiveTab("tests");
+                    // Starter code step is disabled/hidden for now -> navigate directly to test cases
+                    if (activeTab === "details") setActiveTab("tests");
                     else if (activeTab === "tests") setActiveTab("limits");
+                    else setActiveTab("limits");
                   }
                 }}
                 className="cursor-pointer"

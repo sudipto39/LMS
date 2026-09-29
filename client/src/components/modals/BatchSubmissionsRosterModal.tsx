@@ -1,5 +1,5 @@
-// src/components/modals/BatchSubmissionsRosterModal.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { renderAsync } from "docx-preview";
 import {
   Users,
   Target,
@@ -195,11 +195,21 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
   const [data, setData] = useState<LabRosterResponse | null>(null);
   const [selectedItem, setSelectedItem] = useState<LabRosterItem | null>(null);
 
-  // PDF Preview & In-Modal Viewer State
+  // Document Preview (.docx / .doc / .pdf) & In-Modal Viewer State
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [rawFileBlob, setRawFileBlob] = useState<Blob | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [docxRendering, setDocxRendering] = useState(false);
+  const [docxError, setDocxError] = useState<string | null>(null);
   const [isPdfExpanded, setIsPdfExpanded] = useState(false);
+  const [supervisorDetailTab, setSupervisorDetailTab] = useState<"code" | "document">("code");
+  const docxContainerRef = useRef<HTMLDivElement>(null);
+
+  const isWordDoc = Boolean(
+    selectedItem?.latestSubmission?.fileName?.toLowerCase().endsWith(".docx") ||
+    selectedItem?.latestSubmission?.fileName?.toLowerCase().endsWith(".doc")
+  );
 
   // University Excel Marks Distribution (Sheet 1: PRACTICAL - Note Book: 2, Performance: 2)
   const [notebookScore, setNotebookScore] = useState<number | "">("");
@@ -269,39 +279,64 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
     return () => window.removeEventListener("wheel", handleWheel);
   }, [show]);
 
-  // Load and cache PDF blob for instant embedded preview without downloading
+  // Load and cache document blob for instant embedded preview
   useEffect(() => {
     let active = true;
     let createdUrl: string | null = null;
 
     if (selectedItem?.latestSubmission?.fileUrl) {
-      const fetchPdf = async () => {
+      const fetchDocument = async () => {
         try {
           setPdfLoading(true);
           setPdfError(null);
+          setDocxError(null);
           const rawUrl = selectedItem.latestSubmission!.fileUrl!;
-          const endpoint = getCleanApiEndpoint(rawUrl);
-          const res = await client.get(endpoint, { responseType: "blob" });
+          let blobData: Blob;
+          if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+            const res = await fetch(rawUrl);
+            if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+            blobData = await res.blob();
+          } else {
+            const endpoint = getCleanApiEndpoint(rawUrl);
+            const res = await client.get(endpoint, { responseType: "blob" });
+            blobData = res.data as Blob;
+          }
           if (!active) return;
-          const blob = new Blob([res.data], { type: "application/pdf" });
-          createdUrl = URL.createObjectURL(blob);
-          setPdfBlobUrl(createdUrl);
+          setRawFileBlob(blobData);
+
+          const fileName = (selectedItem.latestSubmission?.fileName || "").toLowerCase();
+          const isWord = fileName.endsWith(".docx") || fileName.endsWith(".doc");
+
+          if (!isWord) {
+            const blob = new Blob([blobData], { type: "application/pdf" });
+            createdUrl = URL.createObjectURL(blob);
+            setPdfBlobUrl(createdUrl);
+          } else {
+            setPdfBlobUrl(null);
+          }
         } catch (err: any) {
-          console.error("Failed to load PDF preview via blob:", err);
+          console.error("Failed to load document preview via blob:", err);
           if (active) {
-            // Fallback to direct authenticated url
-            const directUrl = getDirectFileUrl(selectedItem.latestSubmission!.fileUrl!);
-            setPdfBlobUrl(directUrl);
+            const fileName = (selectedItem?.latestSubmission?.fileName || "").toLowerCase();
+            const isWord = fileName.endsWith(".docx") || fileName.endsWith(".doc");
+            if (isWord) {
+              setDocxError("Unable to fetch document from server. Please click Download Document to view.");
+            } else {
+              const directUrl = getDirectFileUrl(selectedItem.latestSubmission!.fileUrl!);
+              setPdfBlobUrl(directUrl);
+            }
           }
         } finally {
           if (active) setPdfLoading(false);
         }
       };
-      fetchPdf();
+      fetchDocument();
     } else {
       setPdfBlobUrl(null);
+      setRawFileBlob(null);
       setPdfLoading(false);
       setPdfError(null);
+      setDocxError(null);
     }
 
     return () => {
@@ -311,6 +346,54 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
       }
     };
   }, [selectedItem?.student.id, selectedItem?.latestSubmission?.fileUrl]);
+
+  // Render Word document (.docx / .doc) via docx-preview directly into in-modal viewer
+  useEffect(() => {
+    let isCancelled = false;
+    const fileName = (selectedItem?.latestSubmission?.fileName || "").toLowerCase();
+    const isWord = fileName.endsWith(".docx") || fileName.endsWith(".doc");
+
+    if (!rawFileBlob || !isWord) return;
+
+    // Small delay ensures container div is mounted in the DOM when document tab is selected
+    const timer = setTimeout(async () => {
+      if (!docxContainerRef.current) return;
+      try {
+        setDocxRendering(true);
+        setDocxError(null);
+        docxContainerRef.current.innerHTML = "";
+        await renderAsync(rawFileBlob, docxContainerRef.current, undefined, {
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          breakPages: true,
+          experimental: true,
+          trimXmlDeclaration: true,
+          renderHeaders: true,
+          renderFooters: true,
+        });
+        if (isCancelled) return;
+      } catch (err: any) {
+        console.error("docx-preview rendering error:", err);
+        if (!isCancelled) {
+          setDocxError(
+            err?.message?.includes("end of central directory")
+              ? "This document appears to be in binary Word (.doc) format or protected. Please click Download to view."
+              : "Unable to render Word document preview in browser."
+          );
+        }
+      } finally {
+        if (!isCancelled) {
+          setDocxRendering(false);
+        }
+      }
+    }, 60);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [rawFileBlob, selectedItem?.latestSubmission?.id, supervisorDetailTab]);
 
   const loadRoster = async () => {
     try {
@@ -355,6 +438,14 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
       setManualScoreOverride(typeof sub.score === "number" ? sub.score : "");
       setIsManualOverride(false);
       setFeedback(sub.supervisorFeedback || "");
+
+      if (sub.code && !sub.fileUrl) {
+        setSupervisorDetailTab("code");
+      } else if (!sub.code && sub.fileUrl) {
+        setSupervisorDetailTab("document");
+      } else {
+        setSupervisorDetailTab("code");
+      }
     } else {
       setNotebookScore("");
       setPerformanceScore("");
@@ -396,6 +487,16 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        showToast(`Downloaded ${fileName} ✅`);
+      } else if (rawFileBlob) {
+        const url = URL.createObjectURL(rawFileBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
         showToast(`Downloaded ${fileName} ✅`);
       } else {
         const endpoint = getCleanApiEndpoint(selectedItem.latestSubmission.fileUrl);
@@ -809,7 +910,11 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                             <div className="text-[10px] font-mono" style={{ color: "var(--t3)" }}>
                               {typeof sub.notebookScore === "number" && typeof sub.performanceScore === "number"
                                 ? `NB:${sub.notebookScore} P:${sub.performanceScore} (Exp: ${((sub.notebookScore || 0) + (sub.performanceScore || 0)).toFixed(1)}/4)`
-                                : sub.fileUrl || !sub.code
+                                : sub.code && sub.fileUrl
+                                ? "Code + Report"
+                                : sub.code && !sub.fileUrl
+                                ? "Code (Report Pending)"
+                                : sub.fileUrl
                                 ? "📄 PDF Report"
                                 : `${sub.testsPassed}/${sub.totalTests} tests`}
                             </div>
@@ -920,16 +1025,32 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                           Revoke Permission
                         </button>
                       </div>
-                    ) : (
-                      <div className="p-2.5 rounded-xl border flex items-center justify-between text-[11px]" style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}>
-                        <span style={{ color: "var(--t2)" }}>
-                          Re-upload Status: <span className="font-semibold text-slate-400">Locked (Requires Supervisor Approval)</span>
+                    ) : (selectedItem.latestSubmission.code && !selectedItem.latestSubmission.fileUrl) ? (
+                      <div className="p-2.5 rounded-xl border flex items-center justify-between text-[11px] border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <Clock size={13} className="text-amber-500 shrink-0" />
+                          Report Upload Status: <strong className="font-semibold">Open (Student can upload report document before deadline)</strong>
                         </span>
                         <button
                           type="button"
                           disabled={reviewingReupload}
                           onClick={() => handleReviewReupload("APPROVE")}
-                          className="text-[11px] text-[#06b6d4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none font-medium"
+                          className="text-[11px] text-[#06b6d4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none font-medium shrink-0"
+                          title="Authorize student to re-submit code solution if needed"
+                        >
+                          <RotateCcw size={11} /> Grant Code Re-submit
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl border flex items-center justify-between text-[11px]" style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}>
+                        <span style={{ color: "var(--t2)" }}>
+                          Re-upload Status: <span className="font-semibold text-slate-400">Locked (Requires Supervisor Approval to change)</span>
+                        </span>
+                        <button
+                          type="button"
+                          disabled={reviewingReupload}
+                          onClick={() => handleReviewReupload("APPROVE")}
+                          className="text-[11px] text-[#06b6d4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none font-medium shrink-0"
                           title="Authorize this student to submit a revised report without waiting for a request"
                         >
                           <RotateCcw size={11} /> Grant Re-upload Permission
@@ -937,8 +1058,36 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                       </div>
                     )}
 
-                    {/* PDF Report Submission with In-App Preview */}
-                    {!selectedItem.latestSubmission.code || Boolean(selectedItem.latestSubmission.fileUrl) ? (
+                    {/* Segmented Control when both Code and Report Document exist */}
+                    {Boolean(selectedItem.latestSubmission.code) && Boolean(selectedItem.latestSubmission.fileUrl) && (
+                      <div className="flex items-center gap-1.5 p-1 rounded-xl border bg-black/5 dark:bg-white/5" style={{ borderColor: "var(--bdr)" }}>
+                        <button
+                          type="button"
+                          onClick={() => setSupervisorDetailTab("code")}
+                          className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                            supervisorDetailTab === "code"
+                              ? "bg-[#06b6d4] text-white shadow-sm"
+                              : "hover:bg-black/5 dark:hover:bg-white/5 text-[var(--t2)]"
+                          }`}
+                        >
+                          <Code2 size={14} /> Source Code & Automated Tests
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSupervisorDetailTab("document")}
+                          className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                            supervisorDetailTab === "document"
+                              ? "bg-[#06b6d4] text-white shadow-sm"
+                              : "hover:bg-black/5 dark:hover:bg-white/5 text-[var(--t2)]"
+                          }`}
+                        >
+                          <FileText size={14} /> Lab Report Document ({selectedItem.latestSubmission.fileName?.split('.').pop()?.toUpperCase() || "PDF"})
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Report Document Section (when document view is active or only document exists) */}
+                    {Boolean(selectedItem.latestSubmission.fileUrl) && (!selectedItem.latestSubmission.code || supervisorDetailTab === "document") && (
                       <div className="p-4 rounded-xl border space-y-3" style={{ background: "var(--srf2)", borderColor: "var(--bdr)" }}>
                         <div className="flex items-center justify-between gap-3 flex-wrap">
                           <div className="flex items-center gap-2.5">
@@ -950,46 +1099,44 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                                 {selectedItem.latestSubmission.fileName || "Student_Lab_Report.pdf"}
                               </div>
                               <div className="text-[11px] font-mono" style={{ color: "var(--t3)" }}>
-                                {selectedItem.latestSubmission.fileSize ? `${Math.round(selectedItem.latestSubmission.fileSize / 1024)} KB` : "PDF Report"} • Submitted {new Date(selectedItem.latestSubmission.submittedAt).toLocaleTimeString()}
+                                {selectedItem.latestSubmission.fileSize ? `${Math.round(selectedItem.latestSubmission.fileSize / 1024)} KB` : "Document Report"} • Submitted {new Date(selectedItem.latestSubmission.submittedAt).toLocaleTimeString()}
                               </div>
                             </div>
                           </div>
 
-                          {selectedItem.latestSubmission.fileUrl && (
-                            <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsPdfExpanded((prev) => !prev)}
+                              className="h-8.5 px-3 rounded-lg font-semibold text-[12px] border hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1.5 transition cursor-pointer"
+                              style={{ borderColor: "var(--bdr)", color: "var(--t1)" }}
+                              title={isPdfExpanded ? "Compact preview" : "Expand preview window"}
+                            >
+                              {isPdfExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                              {isPdfExpanded ? "Compact View" : "Expand Viewer"}
+                            </button>
+
+                            {pdfBlobUrl && !isWordDoc && (
                               <button
                                 type="button"
-                                onClick={() => setIsPdfExpanded((prev) => !prev)}
+                                onClick={() => window.open(pdfBlobUrl, "_blank")}
                                 className="h-8.5 px-3 rounded-lg font-semibold text-[12px] border hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1.5 transition cursor-pointer"
                                 style={{ borderColor: "var(--bdr)", color: "var(--t1)" }}
-                                title={isPdfExpanded ? "Compact preview" : "Expand preview window"}
+                                title="Open document in a new browser tab"
                               >
-                                {isPdfExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                                {isPdfExpanded ? "Compact View" : "Expand Viewer"}
+                                <ExternalLink size={13} /> Open in Tab
                               </button>
+                            )}
 
-                              {pdfBlobUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() => window.open(pdfBlobUrl, "_blank")}
-                                  className="h-8.5 px-3 rounded-lg font-semibold text-[12px] border hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1.5 transition cursor-pointer"
-                                  style={{ borderColor: "var(--bdr)", color: "var(--t1)" }}
-                                  title="Open PDF in a new browser tab"
-                                >
-                                  <ExternalLink size={13} /> Open in Tab
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={handleDownloadPdf}
-                                className="h-8.5 px-3 rounded-lg font-semibold text-[12px] bg-[#06b6d4] hover:bg-[#0891b2] text-white flex items-center gap-1.5 cursor-pointer shadow-sm transition"
-                                title="Download the verified student submission PDF"
-                              >
-                                <Download size={13} /> Download PDF
-                              </button>
-                            </div>
-                          )}
+                            <button
+                              type="button"
+                              onClick={handleDownloadPdf}
+                              className="h-8.5 px-3 rounded-lg font-semibold text-[12px] bg-[#06b6d4] hover:bg-[#0891b2] text-white flex items-center gap-1.5 cursor-pointer shadow-sm transition"
+                              title="Download the student submission document"
+                            >
+                              <Download size={13} /> Download Document
+                            </button>
+                          </div>
                         </div>
 
                         {selectedItem.latestSubmission.studentNotes && (
@@ -999,8 +1146,61 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                           </div>
                         )}
 
-                        {/* In-Modal Embedded PDF Viewer */}
-                        {selectedItem.latestSubmission.fileUrl && (
+                        {/* In-Modal Viewer: Word (.docx/.doc) or PDF Viewer */}
+                        {isWordDoc ? (
+                          <div className="mt-2 rounded-xl overflow-hidden border shadow-inner transition-all" style={{ borderColor: "var(--bdr)" }}>
+                            <div className="flex items-center justify-between px-3 py-1.5 border-b bg-black/5 dark:bg-white/5 text-[11px]" style={{ borderColor: "var(--bdr)", color: "var(--t2)" }}>
+                              <span className="font-semibold flex items-center gap-1.5">
+                                <FileText size={13} className="text-[#06b6d4]" />
+                                Word Document Viewer <span className="text-[10px] font-normal opacity-75">(In-Browser Preview)</span>
+                              </span>
+                              <span className="text-[10px] font-mono text-[#06b6d4]">DOCX Renderer Active</span>
+                            </div>
+
+                            <div
+                              className={`w-full overflow-y-auto overflow-x-auto transition-all duration-300 relative ${
+                                isPdfExpanded ? "h-[580px]" : "h-[400px]"
+                              }`}
+                              style={{ background: "var(--srf)" }}
+                            >
+                              {(docxRendering || pdfLoading) && (
+                                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2.5 bg-black/5 dark:bg-white/5 backdrop-blur-[1px]">
+                                  <div className="h-7 w-7 border-2 border-[#06b6d4] border-t-transparent rounded-full animate-spin" />
+                                  <span className="text-[12px] font-mono" style={{ color: "var(--t2)" }}>
+                                    {pdfLoading ? "Fetching Word document..." : "Rendering Word document pages..."}
+                                  </span>
+                                </div>
+                              )}
+
+                              {docxError ? (
+                                <div className="p-6 flex flex-col items-center justify-center gap-2.5 text-center min-h-[300px]">
+                                  <div className="w-12 h-12 rounded-xl grid place-items-center bg-amber-500/10 text-amber-500">
+                                    <FileText size={24} />
+                                  </div>
+                                  <div>
+                                    <h5 className="font-bold text-[13px]" style={{ color: "var(--t1)" }}>
+                                      {selectedItem.latestSubmission.fileName}
+                                    </h5>
+                                    <p className="text-[11px] mt-1 max-w-md text-amber-600 dark:text-amber-400">
+                                      {docxError.includes("end of central directory")
+                                        ? "This file appears to be in legacy binary Word (.doc) format or protected. Please click below to download and view in Microsoft Word."
+                                        : docxError}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={handleDownloadPdf}
+                                    className="h-8 px-4 rounded-lg font-semibold text-xs bg-[#06b6d4] hover:bg-[#0891b2] text-white flex items-center gap-1.5 cursor-pointer shadow-sm transition"
+                                  >
+                                    <Download size={13} /> Download Document
+                                  </button>
+                                </div>
+                              ) : (
+                                <div ref={docxContainerRef} className="docx-preview-container min-h-full" />
+                              )}
+                            </div>
+                          </div>
+                        ) : (
                           <div className="mt-2 rounded-xl overflow-hidden border shadow-inner transition-all" style={{ borderColor: "var(--bdr)" }}>
                             <div className="flex items-center justify-between px-3 py-1.5 border-b bg-black/5 dark:bg-white/5 text-[11px]" style={{ borderColor: "var(--bdr)", color: "var(--t2)" }}>
                               <span className="font-semibold flex items-center gap-1.5">
@@ -1038,12 +1238,27 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                           </div>
                         )}
                       </div>
-                    ) : (
-                      <>
+                    )}
+
+                    {/* Source Code & Automated Tests Section (when code view is active or only code exists) */}
+                    {Boolean(selectedItem.latestSubmission.code) && (!selectedItem.latestSubmission.fileUrl || supervisorDetailTab === "code") && (
+                      <div className="space-y-3">
+                        {Boolean(selectedItem.latestSubmission.code) && !selectedItem.latestSubmission.fileUrl && (
+                          <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-2 text-[12px]">
+                            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                              <Clock size={15} className="text-amber-500 shrink-0" />
+                              <span>Student submitted code during lab class. Lab report document (.pdf/.doc) is pending upload before deadline.</span>
+                            </div>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold shrink-0">
+                              Report Pending
+                            </span>
+                          </div>
+                        )}
+
                         {/* Automated Test Results Breakdown */}
                         <div>
                           <h4 className="text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--t2)" }}>
-                            Automated Test Evaluation: {selectedItem.latestSubmission.testsPassed} / {selectedItem.latestSubmission.totalTests} Passed
+                            Automated Test Evaluation: {selectedItem.latestSubmission.testsPassed || 0} / {selectedItem.latestSubmission.totalTests || 0} Passed
                           </h4>
                           <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
                             <div className="p-2 rounded-lg border bg-black/5 dark:bg-white/5" style={{ borderColor: "var(--bdr)" }}>
@@ -1055,18 +1270,25 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                           </div>
                         </div>
 
+                        {selectedItem.latestSubmission.studentNotes && !selectedItem.latestSubmission.fileUrl && (
+                          <div className="p-2.5 rounded-lg border text-[12px] bg-black/5 dark:bg-white/5" style={{ borderColor: "var(--bdr)" }}>
+                            <span className="font-bold text-[10px] uppercase tracking-wider text-[#06b6d4] block mb-0.5">Student Notes:</span>
+                            <p style={{ color: "var(--t1)" }}>"{selectedItem.latestSubmission.studentNotes}"</p>
+                          </div>
+                        )}
+
                         {/* Code Viewer */}
                         <div>
                           <div className="flex items-center justify-between mb-1">
                             <label className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1" style={{ color: "var(--t2)" }}>
-                              <Code2 size={13} className="text-[#06b6d4]" /> Student Source Code ({selectedItem.latestSubmission.language})
+                              <Code2 size={13} className="text-[#06b6d4]" /> Student Source Code ({selectedItem.latestSubmission.language || "code"})
                             </label>
                           </div>
-                          <pre className="p-3 rounded-xl border text-[11px] font-mono overflow-x-auto max-h-[160px] bg-[#0d1b22] text-[#38bdf8] leading-relaxed" style={{ borderColor: "var(--bdr)" }}>
+                          <pre className="p-3 rounded-xl border text-[11px] font-mono overflow-x-auto max-h-[220px] bg-[#0d1b22] text-[#38bdf8] leading-relaxed" style={{ borderColor: "var(--bdr)" }}>
                             {selectedItem.latestSubmission.code}
                           </pre>
                         </div>
-                      </>
+                      </div>
                     )}
 
                     {/* Faculty Evaluation & Grading: University Excel Rubric Distribution */}
@@ -1082,17 +1304,17 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
 
                       {/* Official University Experiment Rubric Input Grid (Max 4.0 pts) */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {/* 1. Note Book (Lab Record) */}
+                        {/* 1. Note Book (Code & Report) */}
                         <div className="p-3 rounded-xl border bg-black/5 dark:bg-white/5 flex flex-col justify-between" style={{ borderColor: "var(--bdr)" }}>
                           <div>
                             <div className="flex items-center justify-between mb-1">
                               <label className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1" style={{ color: "var(--t1)" }}>
-                                <BookOpen size={12} className="text-[#06b6d4]" /> Note Book
+                                <BookOpen size={12} className="text-[#06b6d4]" /> Note Book (Code & Report)
                               </label>
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#06b6d4]/10 text-[#06b6d4]">Max 2.0</span>
                             </div>
                             <p className="text-[10px] mb-2" style={{ color: "var(--t3)" }}>
-                              Lab manual record, write-up, diagrams & observation.
+                              Source code implementation + accompanying laboratory report document.
                             </p>
                           </div>
                           <div className="relative">
@@ -1117,12 +1339,12 @@ export const BatchSubmissionsRosterModal: React.FC<BatchSubmissionsRosterModalPr
                           <div>
                             <div className="flex items-center justify-between mb-1">
                               <label className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1" style={{ color: "var(--t1)" }}>
-                                <Target size={12} className="text-emerald-500" /> Performance
+                                <Target size={12} className="text-emerald-500" /> Practical Performance
                               </label>
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500">Max 2.0</span>
                             </div>
                             <p className="text-[10px] mb-2" style={{ color: "var(--t3)" }}>
-                              Execution, algorithm logic, output correctness & tests.
+                              Execution correctness, algorithm logic, and live demonstration.
                             </p>
                           </div>
                           <div className="relative">

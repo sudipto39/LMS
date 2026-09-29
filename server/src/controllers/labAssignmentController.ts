@@ -56,9 +56,12 @@ export const createLabAssignment = catchAsync(
       status?: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
     };
 
-    if (!title || !objective || !description || !batchId) {
-      throw new BadRequestError("Title, Objective, Description, and Batch ID are required");
+    if (!title?.trim() || !batchId) {
+      throw new BadRequestError("Title and Batch ID are required");
     }
+
+    const effectiveObjective = typeof objective === "string" ? objective.trim() : "";
+    const effectiveDescription = typeof description === "string" ? description.trim() : "";
 
     const batch = await prisma.batch.findUnique({
       where: { id: batchId },
@@ -81,9 +84,9 @@ export const createLabAssignment = catchAsync(
 
     const labAssignment = await prisma.labAssignment.create({
       data: {
-        title,
-        objective,
-        description,
+        title: title.trim(),
+        objective: effectiveObjective,
+        description: effectiveDescription,
         subject: subject?.trim() || "General Programming",
         ...(prerequisites !== undefined ? { prerequisites } : {}),
         batchId,
@@ -183,6 +186,16 @@ export const getLabAssignments = catchAsync(
             submittedAt: true,
             supervisorFeedback: true,
             manualScoreAdjust: true,
+            fileUrl: true,
+            fileName: true,
+            fileSize: true,
+            studentNotes: true,
+            code: true,
+            language: true,
+            reuploadStatus: true,
+            notebookScore: true,
+            performanceScore: true,
+            testResults: true,
           },
         },
       },
@@ -313,6 +326,7 @@ export const getLabAssignmentById = catchAsync(
         ...assignmentData,
         testCases: safeTestCases,
         mySubmissions: userSubmissions,
+        mySubmission: userSubmissions[0] || null,
         ...(user.role !== "STUDENT" ? { submissions } : {}),
       },
     });
@@ -394,15 +408,14 @@ export const submitLabAssignment = catchAsync(
   async (req: Request, res: Response) => {
     const id = requireParam(req.params["id"], "id");
     const user = req.user!;
-    const { code, language } = req.body as { code: string; language?: string };
-
-    if (!code) {
-      throw new BadRequestError("Source code is required for submission");
-    }
-
-    if (Buffer.byteLength(code, "utf8") > 50 * 1024) {
-      throw new BadRequestError("Source code size exceeds maximum allowed size of 50KB");
-    }
+    const { code, language, fileUrl, fileName, fileSize, studentNotes } = req.body as {
+      code?: string;
+      language?: string;
+      fileUrl?: string;
+      fileName?: string;
+      fileSize?: number;
+      studentNotes?: string;
+    };
 
     try {
       const redisKey = `ratelimit:labsubmit:${user.id}`;
@@ -444,30 +457,7 @@ export const submitLabAssignment = catchAsync(
       }
     }
 
-    // Check deadline
-    if (
-      assignment.dueDate &&
-      new Date() > new Date(assignment.dueDate) &&
-      !assignment.allowLate
-    ) {
-      throw new BadRequestError("Submission deadline has passed and late submissions are not allowed");
-    }
-
-    const allTests = ((assignment.testCases as unknown) as TestCaseItem[]) || [];
-    const assignmentLang = assignment.language || "python";
-    const selectedLang = (language || (assignmentLang === "all" ? "python" : assignmentLang)).toLowerCase();
-
-    const evaluation = await gradingService.evaluateCode({
-      sourceCode: code,
-      language: selectedLang,
-      testCases: allTests,
-      timeLimit: assignment.timeLimit,
-      memoryLimit: assignment.memoryLimit,
-      totalPoints: assignment.totalPoints,
-      isSubmission: true,
-    });
-
-    // Determine attempt number and check supervisor permission for re-uploads
+    // Fetch previous submissions for student
     const previousSubmissions = await prisma.labSubmission.findMany({
       where: {
         assignmentId: id,
@@ -478,7 +468,89 @@ export const submitLabAssignment = catchAsync(
 
     const previousSubmissionsCount = previousSubmissions.length;
     const latestSub = previousSubmissions[0];
+    const isSupervisorApproved = latestSub?.reuploadStatus === "APPROVED";
 
+    const isWithinDeadline =
+      !assignment.dueDate ||
+      new Date() <= new Date(assignment.dueDate) ||
+      Boolean(assignment.allowLate);
+
+    // If student submitted code during lab class, allow uploading / attaching report document later within deadline (or with supervisor approval)
+    const isAttachingReportLater =
+      Boolean(fileUrl) &&
+      previousSubmissionsCount > 0 &&
+      Boolean(latestSub) &&
+      (!latestSub?.fileUrl || (isWithinDeadline && latestSub?.notebookScore == null && !latestSub?.supervisorFeedback)) &&
+      (isWithinDeadline || isSupervisorApproved);
+
+    // Sanitize uploaded document filename to prevent stored XSS and path traversal
+    let sanitizedFileName: string | null = null;
+    if (fileName) {
+      sanitizedFileName = fileName
+        .replace(/[<>"'`]/g, "_")
+        .replace(/[\r\n\0]/g, "")
+        .substring(0, 255);
+    }
+
+    // Case 1: Student is attaching/updating their report document after submitting code in lab class
+    if (isAttachingReportLater && latestSub && fileUrl) {
+      const updated = await prisma.labSubmission.update({
+        where: { id: latestSub.id },
+        data: {
+          fileUrl,
+          fileName: sanitizedFileName || latestSub.fileName,
+          fileSize: fileSize ?? latestSub.fileSize,
+          studentNotes: studentNotes?.trim() || latestSub.studentNotes,
+          ...(latestSub.reuploadStatus === "APPROVED" ? { reuploadStatus: "CONSUMED" } : {}),
+        },
+      });
+
+      await logActivity({
+        type: "LAB_SUBMISSION_COMPLETED",
+        userId: user.id,
+        payload: {
+          assignmentId: id,
+          assignmentTitle: assignment.title,
+          batchName: assignment.batch.name,
+          score: updated.score,
+          fileName: updated.fileName,
+          action: "ATTACH_REPORT_LATER",
+        },
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: {
+          submission: updated,
+          evaluation: {
+            status: updated.status,
+            score: updated.score,
+            testsPassed: updated.testsPassed || 0,
+            totalTests: updated.totalTests || 0,
+            testResults: (updated.testResults as any) || [],
+            maxExecutionTime: updated.executionTime || 0,
+            maxMemoryUsed: updated.memoryUsed || 0,
+          },
+        },
+      });
+      return;
+    }
+
+    // Case 2: Submitting source code solution (Initial submission or Supervisor-approved full re-upload)
+    if (!code) {
+      throw new BadRequestError("Source code is required for submission");
+    }
+
+    if (Buffer.byteLength(code, "utf8") > 50 * 1024) {
+      throw new BadRequestError("Source code size exceeds maximum allowed size of 50KB");
+    }
+
+    // Check deadline for code submissions (supervisor approval grants deadline exception)
+    if (!isWithinDeadline && !isSupervisorApproved) {
+      throw new BadRequestError("Submission deadline has passed and late submissions are not allowed");
+    }
+
+    // Check supervisor permission if attempting a full code re-submission
     if (previousSubmissionsCount > 0) {
       if (latestSub?.reuploadStatus !== "APPROVED") {
         if (latestSub?.reuploadStatus === "PENDING") {
@@ -492,13 +564,63 @@ export const submitLabAssignment = catchAsync(
       }
     }
 
+    const allTests = ((assignment.testCases as unknown) as TestCaseItem[]) || [];
+    const assignmentLang = assignment.language || "python";
+    const selectedLang = (language || (assignmentLang === "all" ? "python" : assignmentLang)).toLowerCase();
+
+    let evaluation: {
+      status: "PASSED" | "FAILED" | "EVALUATED" | "PENDING";
+      score: number;
+      testsPassed: number;
+      totalTests: number;
+      testResults: any[];
+      maxExecutionTime: number;
+      maxMemoryUsed: number;
+    };
+
+    if (allTests.length > 0) {
+      const evalRes = await gradingService.evaluateCode({
+        sourceCode: code,
+        language: selectedLang,
+        testCases: allTests,
+        timeLimit: assignment.timeLimit,
+        memoryLimit: assignment.memoryLimit,
+        totalPoints: assignment.totalPoints,
+        isSubmission: true,
+      });
+      evaluation = {
+        status: evalRes.status,
+        score: evalRes.score,
+        testsPassed: evalRes.testsPassed,
+        totalTests: evalRes.totalTests,
+        testResults: evalRes.testResults,
+        maxExecutionTime: evalRes.maxExecutionTime,
+        maxMemoryUsed: evalRes.maxMemoryUsed,
+      };
+    } else {
+      // If no unit test cases are configured, record submission cleanly for manual supervisor review
+      evaluation = {
+        status: "PENDING",
+        score: 0,
+        testsPassed: 0,
+        totalTests: 0,
+        testResults: [],
+        maxExecutionTime: 0,
+        maxMemoryUsed: 0,
+      };
+    }
+
     const submission = await prisma.labSubmission.create({
       data: {
         assignmentId: id,
         studentId: user.id,
         code,
         language: selectedLang,
-        status: evaluation.status === "PASSED" ? "PASSED" : "EVALUATED",
+        fileUrl: fileUrl || null,
+        fileName: sanitizedFileName || null,
+        fileSize: fileSize || null,
+        studentNotes: studentNotes?.trim() || null,
+        status: evaluation.status === "PASSED" ? "PASSED" : (evaluation.status === "FAILED" ? "FAILED" : "PENDING"),
         score: evaluation.score,
         testsPassed: evaluation.testsPassed,
         totalTests: evaluation.totalTests,
@@ -575,15 +697,7 @@ export const submitLabReport = catchAsync(
       }
     }
 
-    // Check deadline
-    if (
-      assignment.dueDate &&
-      new Date() > new Date(assignment.dueDate) &&
-      !assignment.allowLate
-    ) {
-      throw new BadRequestError("Submission deadline has passed and late submissions are not allowed");
-    }
-
+    // Fetch previous submissions for student
     const previousSubmissions = await prisma.labSubmission.findMany({
       where: {
         assignmentId: id,
@@ -594,8 +708,26 @@ export const submitLabReport = catchAsync(
 
     const previousSubmissionsCount = previousSubmissions.length;
     const latestSub = previousSubmissions[0];
+    const isSupervisorApproved = latestSub?.reuploadStatus === "APPROVED";
 
-    if (previousSubmissionsCount > 0) {
+    const isWithinDeadline =
+      !assignment.dueDate ||
+      new Date() <= new Date(assignment.dueDate) ||
+      Boolean(assignment.allowLate);
+
+    // Check deadline (supervisor approval grants exception)
+    if (!isWithinDeadline && !isSupervisorApproved) {
+      throw new BadRequestError("Submission deadline has passed and late submissions are not allowed");
+    }
+
+    // If student submitted code during lab class, allow uploading / attaching report document later within deadline (or with supervisor approval)
+    const isAttachingReportLater =
+      previousSubmissionsCount > 0 &&
+      Boolean(latestSub) &&
+      (!latestSub?.fileUrl || (isWithinDeadline && latestSub?.notebookScore == null && !latestSub?.supervisorFeedback)) &&
+      (isWithinDeadline || isSupervisorApproved);
+
+    if (previousSubmissionsCount > 0 && !isAttachingReportLater) {
       if (latestSub?.reuploadStatus !== "APPROVED") {
         if (latestSub?.reuploadStatus === "PENDING") {
           throw new ForbiddenError(
@@ -617,6 +749,41 @@ export const submitLabReport = catchAsync(
       .substring(0, 255)
       || "report";
     const fileSize = file.size || 0;
+
+    if (isAttachingReportLater && latestSub) {
+      const updated = await prisma.labSubmission.update({
+        where: { id: latestSub.id },
+        data: {
+          fileUrl,
+          fileName,
+          fileSize,
+          studentNotes: studentNotes?.trim() || latestSub.studentNotes,
+          ...(latestSub.reuploadStatus === "APPROVED" ? { reuploadStatus: "CONSUMED" } : {}),
+        },
+        include: {
+          assignment: { select: { id: true, title: true, totalPoints: true } },
+          student: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      await logActivity({
+        type: "LAB_SUBMISSION_COMPLETED",
+        userId: user.id,
+        payload: {
+          assignmentId: id,
+          assignmentTitle: assignment.title,
+          batchName: assignment.batch.name,
+          fileName,
+          submissionType: "ATTACH_REPORT_LATER",
+        },
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: updated,
+      });
+      return;
+    }
 
     const submission = await prisma.labSubmission.create({
       data: {

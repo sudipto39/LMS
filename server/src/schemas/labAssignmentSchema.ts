@@ -13,8 +13,8 @@ export const testCaseSchema = z.object({
 export const createLabAssignmentSchema = z.object({
   body: z.object({
     title: z.string().min(3, "Title must be at least 3 characters"),
-    objective: z.string().min(5, "Objective must be at least 5 characters"),
-    description: z.string().min(5, "Description must be at least 5 characters"),
+    objective: z.string().optional().default(""),
+    description: z.string().optional().default(""),
     subject: z.string().optional().default("General Programming"),
     prerequisites: z.string().optional(),
     batchId: z.string().min(1, "Target Batch ID is required"),
@@ -36,8 +36,8 @@ export const createLabAssignmentSchema = z.object({
 export const updateLabAssignmentSchema = z.object({
   body: z.object({
     title: z.string().min(3).optional(),
-    objective: z.string().min(5).optional(),
-    description: z.string().min(5).optional(),
+    objective: z.string().optional(),
+    description: z.string().optional(),
     subject: z.string().optional(),
     prerequisites: z.string().optional(),
     batchId: z.string().optional(),
@@ -67,6 +67,10 @@ export const submitLabCodeSchema = z.object({
   body: z.object({
     code: z.string().min(1, "Source code is required"),
     language: z.string().optional().default("python"),
+    fileUrl: z.string().optional().nullable(),
+    fileName: z.string().optional().nullable(),
+    fileSize: z.number().optional().nullable(),
+    studentNotes: z.string().optional().nullable(),
   }),
 });
 

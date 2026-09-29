@@ -23,6 +23,7 @@ import {
   PowerOff,
   AlertTriangle,
   X,
+  Clock,
   FileText,
 } from "lucide-react";
 import { Card, Inp, Btn, Btn2, Pill } from "../components/common/UIPrimitives";
@@ -1054,8 +1055,8 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
                           )}
                         </div>
 
-                        <span className="font-mono font-bold text-[13px] px-2 py-0.5 rounded-md border" style={{ background: "var(--srf2)", borderColor: "var(--bdr)", color: "var(--t1)" }}>
-                          {assignment.totalPoints} pts
+                        <span className="font-mono font-bold text-[12px] px-2.5 py-0.5 rounded-md border text-[#06b6d4] bg-[#06b6d4]/10 border-[#06b6d4]/30" title="Continuous Practical Evaluation (Max 4.0 Marks: Note Book 2.0 + Performance 2.0)">
+                          4.0 Marks
                         </span>
                       </div>
 
@@ -1072,53 +1073,106 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
                         </div>
                       </div>
 
-                      {/* 🎯 PROMINENT LAB EXPERIMENT OBJECTIVE */}
-                      <div
-                        className="p-3 rounded-xl border space-y-1"
-                        style={{
-                          background: "rgba(6, 182, 212, 0.05)",
-                          borderColor: "rgba(6, 182, 212, 0.25)",
-                        }}
-                      >
-                        <div className="text-[11px] font-bold flex items-center gap-1 text-[#06b6d4] uppercase tracking-wide">
-                          <Target size={13} /> Experiment Objective:
+                      {/* 🎯 LAB EXPERIMENT OBJECTIVE (IF DEFINED) */}
+                      {assignment.objective?.trim() && (
+                        <div
+                          className="p-3 rounded-xl border space-y-1"
+                          style={{
+                            background: "rgba(6, 182, 212, 0.05)",
+                            borderColor: "rgba(6, 182, 212, 0.25)",
+                          }}
+                        >
+                          <div className="text-[11px] font-bold flex items-center gap-1 text-[#06b6d4] uppercase tracking-wide">
+                            <Target size={13} /> Experiment Objective:
+                          </div>
+                          <p className="text-[12px] leading-relaxed line-clamp-3" style={{ color: "var(--t1)" }}>
+                            {assignment.objective}
+                          </p>
                         </div>
-                        <p className="text-[12px] leading-relaxed line-clamp-3" style={{ color: "var(--t1)" }}>
-                          {assignment.objective}
-                        </p>
-                      </div>
+                      )}
 
                       {/* Test Cases or Document Report Specs */}
                       {isPDF ? (
                         <div className="flex items-center gap-3 text-[11px] font-mono" style={{ color: "var(--t2)" }}>
                           <span>📄 Document / PDF Report Format</span>
-                          <span>📊 {assignment.totalPoints} Maximum Marks</span>
+                          <span>📊 4.0 Max Marks (Note Book: 2.0 + Performance: 2.0)</span>
                           {assignment.manualUrl && <span className="text-[#8b5cf6]">📎 Guide Manual Attached</span>}
                         </div>
                       ) : (
-                        <div className="flex items-center gap-3 text-[11px] font-mono" style={{ color: "var(--t2)" }}>
+                        <div className="flex items-center gap-3 text-[11px] font-mono flex-wrap" style={{ color: "var(--t2)" }}>
                           <span>🧪 {rawTests.length} Test Cases</span>
+                          <span>📄 Report Required (.pdf/.doc/.docx)</span>
+                          <span>📊 4.0 Max Marks (NB: 2.0 + Perf: 2.0)</span>
                           <span>⏱ {assignment.timeLimit || 2}s Timeout</span>
                           <span>💾 {Math.round((assignment.memoryLimit || 262144) / 1024)}MB RAM</span>
                         </div>
                       )}
 
                       {/* Student My Submission Status Banner */}
-                      {!isSupervisorOrAdmin && mySub && (
-                        <div className="p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-emerald-500 flex items-center gap-1">
-                            <CheckCircle2 size={13} />
-                            {isPDF
-                              ? mySub.status === "EVALUATED"
-                                ? "Report Evaluated"
-                                : "Report Submitted (Pending Review)"
-                              : `Submitted (${mySub.testsPassed}/${mySub.totalTests} tests passed)`}
-                          </span>
-                          <span className="font-bold font-mono text-emerald-500">
-                            Score: {mySub.score + (mySub.manualScoreAdjust || 0)}/{assignment.totalPoints}
-                          </span>
-                        </div>
-                      )}
+                      {!isSupervisorOrAdmin && mySub && (() => {
+                        const hasNbOrPerf = mySub.notebookScore != null || mySub.performanceScore != null;
+                        const nbVal = Number(mySub.notebookScore) || 0;
+                        const perfVal = Number(mySub.performanceScore) || 0;
+                        const isEvaluated = mySub.status === "EVALUATED" || hasNbOrPerf;
+                        const scoreOutOf4 = hasNbOrPerf
+                          ? Math.min(4, Math.round((nbVal + perfVal) * 10) / 10)
+                          : typeof mySub.score === "number" && mySub.score > 0
+                          ? Math.min(4, Math.round(((mySub.score + (mySub.manualScoreAdjust || 0)) / (assignment.totalPoints || 100)) * 4 * 10) / 10)
+                          : null;
+
+                        return (
+                          <div
+                            className={`p-2.5 rounded-lg border flex items-center justify-between text-[11px] ${
+                              !isPDF && !mySub.fileUrl
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300"
+                                : isEvaluated
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500"
+                                : "bg-[#06b6d4]/10 border-[#06b6d4]/30 text-[#06b6d4]"
+                            }`}
+                          >
+                            <span className="font-semibold flex items-center gap-1.5">
+                              {!isPDF && !mySub.fileUrl ? (
+                                <>
+                                  <Clock size={13} className="text-amber-500" />
+                                  Code Submitted • Report Document Pending
+                                </>
+                              ) : isEvaluated ? (
+                                <>
+                                  <CheckCircle2 size={13} className="text-emerald-500" />
+                                  <span>Faculty Continuous Evaluation Complete</span>
+                                  {hasNbOrPerf && (
+                                    <span className="text-[10px] font-normal text-[var(--t3)] font-mono">
+                                      (NB: {nbVal.toFixed(1)}/2 + Perf: {perfVal.toFixed(1)}/2)
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 size={13} className="text-[#06b6d4]" />
+                                  {(mySub.totalTests ?? 0) > 0
+                                    ? `Code Tests Passed (${mySub.testsPassed ?? 0}/${mySub.totalTests}) • Report Submitted`
+                                    : "Report Submitted • Pending Faculty Review"}
+                                </>
+                              )}
+                            </span>
+                            <span className="font-bold font-mono">
+                              {!isPDF && !mySub.fileUrl ? (
+                                (mySub.totalTests ?? 0) > 0
+                                  ? `Tests: ${mySub.testsPassed ?? 0}/${mySub.totalTests} passed`
+                                  : "Upload PDF/DOC Report"
+                              ) : isEvaluated && scoreOutOf4 !== null ? (
+                                <span className="text-emerald-500 text-[12px]">
+                                  Score: {scoreOutOf4.toFixed(1)} / 4.0
+                                </span>
+                              ) : (
+                                <span className="text-amber-500">
+                                  Pending Faculty Marks (Max 4.0)
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Card Actions */}
@@ -1194,9 +1248,15 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
                           <div className="text-[11px]" style={{ color: "var(--t2)" }}>
                             {mySub ? (
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-emerald-500 font-medium">
-                                  {mySub.status === "EVALUATED" ? "Grading Completed" : "Submitted"}
-                                </span>
+                                {!isPDF && !mySub.fileUrl ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                                    <Clock size={12} /> Report Document Pending
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-500 font-medium">
+                                    {mySub.status === "EVALUATED" ? "Grading Completed" : "Submitted"}
+                                  </span>
+                                )}
                                 {mySub.reuploadStatus === "APPROVED" && (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
                                     ✓ Re-upload Allowed
@@ -1226,6 +1286,27 @@ export const LabAssignmentsScreen: React.FC<LabAssignmentsScreenProps> = ({
                             >
                               <FileText size={13} /> {mySub ? "View My Report" : "Upload PDF Report"} <ArrowRight size={13} />
                             </Btn>
+                          ) : mySub && !mySub.fileUrl ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Btn
+                                type="button"
+                                disabled={isDeactivated}
+                                onClick={() => setPdfSubmitAssignment(assignment)}
+                                className="!h-8 text-[11px] !px-3.5 flex items-center gap-1.5 cursor-pointer shadow-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-semibold"
+                                title="Attach and submit your lab report document (.pdf, .docx, .doc)"
+                              >
+                                <FileText size={13} /> Submit Report (PDF/DOC) <ArrowRight size={13} />
+                              </Btn>
+                              <Btn2
+                                type="button"
+                                disabled={isDeactivated}
+                                onClick={() => onOpenSandboxWithAssignment(assignment)}
+                                className="!h-8 text-[11px] !px-3 flex items-center gap-1.5 cursor-pointer"
+                                title="Open code solution in Sandbox"
+                              >
+                                <Code2 size={13} /> View Code
+                              </Btn2>
+                            </div>
                           ) : (
                             <Btn
                               type="button"

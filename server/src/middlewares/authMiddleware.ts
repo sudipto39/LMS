@@ -19,6 +19,8 @@ export const protect: RequestHandler = catchAsync(
       token = authHeader.split(" ")[1];
     } else if (req.cookies && typeof req.cookies["accessToken"] === "string" && req.cookies["accessToken"]) {
       token = req.cookies["accessToken"];
+    } else if (typeof req.query["token"] === "string" && req.query["token"]) {
+      token = req.query["token"];
     }
 
     if (!token) throw new UnauthorizedError("You are not logged in");

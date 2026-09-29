@@ -11,8 +11,8 @@ import type {
 
 export interface CreateLabAssignmentPayload {
   title: string;
-  objective: string;
-  description: string;
+  objective?: string;
+  description?: string;
   subject?: string;
   prerequisites?: string;
   batchId: string;
@@ -89,12 +89,25 @@ export const labsApi = {
 
   submitLabAssignment: async (
     id: string,
-    code: string,
+    codeOrPayload:
+      | string
+      | {
+          code: string;
+          language?: string;
+          fileUrl?: string | null;
+          fileName?: string | null;
+          fileSize?: number | null;
+          studentNotes?: string | null;
+        },
     language?: string
   ): Promise<ApiResponse<SubmitLabResponse>> => {
+    const body =
+      typeof codeOrPayload === "string"
+        ? { code: codeOrPayload, language }
+        : codeOrPayload;
     const res = await client.post<ApiResponse<SubmitLabResponse>>(
       `/v1/lab-assignments/${id}/submit`,
-      { code, language }
+      body
     );
     return res.data;
   },

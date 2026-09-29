@@ -12,7 +12,7 @@ import { env } from "../config/env.js";
 export const s3 = s3Client;
 export const BUCKET = BUCKET_NAME;
 
-const ALLOWED_EXTENSIONS = new Set([".pdf", ".jpg", ".jpeg", ".png", ".zip"]);
+const ALLOWED_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".zip"]);
 
 const fileFilter = (
   _req: Request,
@@ -21,6 +21,8 @@ const fileFilter = (
 ): void => {
   const allowedMime = [
     "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "image/jpeg",
     "image/png",
     "application/zip",
@@ -31,7 +33,7 @@ const fileFilter = (
 
   // Validate both extension and MIME type to prevent polyglots and extension spoofing
   if (!ALLOWED_EXTENSIONS.has(ext) || !allowedMime.includes(file.mimetype)) {
-    cb(new AppError("Only PDF, JPG, PNG, ZIP allowed.", 400));
+    cb(new AppError("Only PDF, DOC, DOCX, JPG, PNG, ZIP allowed.", 400));
     return;
   }
 
@@ -75,6 +77,12 @@ export const validateMagicBytes = async (filePath: string, ext: string): Promise
 
     if (ext === ".pdf") {
       return buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46;
+    }
+    if (ext === ".docx") {
+      return buffer[0] === 0x50 && buffer[1] === 0x4b;
+    }
+    if (ext === ".doc") {
+      return buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0;
     }
     if (ext === ".png") {
       return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;

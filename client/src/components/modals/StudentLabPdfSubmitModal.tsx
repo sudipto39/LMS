@@ -88,13 +88,15 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
   if (!show || !assignment) return null;
 
   const isDuePassed = assignment.dueDate ? new Date() > new Date(assignment.dueDate) : false;
-  const hasExistingSubmission = Boolean(localSub);
+  const hasReportAttached = Boolean(localSub?.fileUrl);
+  const isAttachingReportFirstTime = Boolean(localSub && !localSub.fileUrl);
   const isPermissionApproved = localSub?.reuploadStatus === "APPROVED";
   const isPermissionPending = localSub?.reuploadStatus === "PENDING";
   const isPermissionRejected = localSub?.reuploadStatus === "REJECTED";
 
-  // Re-upload is ONLY permitted when supervisor has approved it
-  const canUpload = !hasExistingSubmission
+  // Re-upload is ONLY permitted when supervisor has approved it,
+  // BUT if student submitted code and has not attached report yet, uploading report is directly allowed!
+  const canUpload = (!hasReportAttached || isAttachingReportFirstTime)
     ? (!isDuePassed || assignment.allowLate)
     : (reuploadMode && isPermissionApproved);
 
@@ -128,12 +130,18 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
     }
   };
 
+  const isValidDocument = (file: File) => {
+    const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+    const validExts = [".pdf", ".docx", ".doc"];
+    return validExts.includes(ext) || file.type === "application/pdf";
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      showToast("Only PDF documents (.pdf) are supported");
+    if (!isValidDocument(file)) {
+      showToast("Only PDF (.pdf) and Word documents (.docx, .doc) are supported");
       return;
     }
 
@@ -152,8 +160,8 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
 
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      showToast("Only PDF documents (.pdf) are supported");
+    if (!isValidDocument(file)) {
+      showToast("Only PDF (.pdf) and Word documents (.docx, .doc) are supported");
       return;
     }
 
@@ -275,7 +283,7 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                 </span>
               </div>
               <p className="text-[12px] mt-0.5" style={{ color: "var(--t2)" }}>
-                {assignment.subject || "General Programming"} • Max Points: {assignment.totalPoints} pts
+                {assignment.subject || "General Programming"} • Continuous Practical Rubric: 4.0 Marks (Note Book: 2.0 + Performance: 2.0)
               </p>
             </div>
           </div>
@@ -335,8 +343,8 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
             </div>
           )}
 
-          {/* Current Submission Status Card if student already submitted */}
-          {localSub && !reuploadMode && (
+          {/* Current Submission Status Card if student already submitted report */}
+          {localSub && hasReportAttached && !reuploadMode && (
             <div
               className="p-4 rounded-xl border space-y-3"
               style={{ background: "rgba(34, 197, 94, 0.05)", borderColor: "rgba(34, 197, 94, 0.3)" }}
@@ -353,12 +361,12 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
 
                 <div className="text-right font-mono">
                   {localSub.status === "EVALUATED" ? (
-                    <span className="font-bold text-[14px] text-emerald-500">
-                      Score: {localSub.score}/{assignment.totalPoints} pts
+                    <span className="font-semibold text-[12px] text-emerald-500">
+                      ✓ Evaluated • View Marks on Lab Card
                     </span>
                   ) : (
                     <span className="text-[11px] text-amber-500 font-semibold flex items-center gap-1">
-                      <Clock size={12} /> Awaiting Supervisor Review
+                      <Clock size={12} /> Awaiting Faculty Evaluation
                     </span>
                   )}
                 </div>
@@ -552,6 +560,19 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
             </form>
           )}
 
+          {/* Notice banner if code was submitted in lab class and report is pending */}
+          {localSub && !hasReportAttached && (
+            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 space-y-1.5 text-[12px]">
+              <div className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-300">
+                <Clock size={16} className="text-amber-500" />
+                Code Submitted in Lab Class • Report Document Pending
+              </div>
+              <p className="text-[11px] text-[var(--t2)] leading-relaxed">
+                Your code implementation has been recorded. Please select and upload your laboratory writeup/report document (.pdf, .docx, .doc) below to complete your Continuous Practical Evaluation.
+              </p>
+            </div>
+          )}
+
           {/* Upload Form */}
           {canUpload && (
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -572,7 +593,7 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
 
               <div>
                 <label className="text-[11px] font-bold uppercase tracking-wider block mb-1.5" style={{ color: "var(--t2)" }}>
-                  {reuploadMode ? "Upload Revised Lab Report PDF" : "Upload Lab Report PDF"} <span className="text-red-500">*</span>
+                  {reuploadMode ? "Upload Revised Lab Report Document" : "Upload Lab Report Document (.pdf, .docx, .doc)"} <span className="text-red-500">*</span>
                 </label>
 
                 <div
@@ -595,7 +616,7 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="application/pdf,.pdf"
+                    accept=".pdf,.docx,.doc,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     className="hidden"
                     onChange={handleFileChange}
                   />
@@ -608,7 +629,7 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                       <div>
                         <div className="font-semibold text-[13px] text-emerald-500">{selectedFile.name}</div>
                         <div className="text-[11px] font-mono" style={{ color: "var(--t3)" }}>
-                          {formatFileSize(selectedFile.size)} • Click or drop another PDF to replace
+                          {formatFileSize(selectedFile.size)} • Click or drop another document to replace
                         </div>
                       </div>
                     </>
@@ -619,10 +640,10 @@ export const StudentLabPdfSubmitModal: React.FC<StudentLabPdfSubmitModalProps> =
                       </div>
                       <div>
                         <div className="font-semibold text-[13px]" style={{ color: "var(--t1)" }}>
-                          Drag & drop your lab report PDF here
+                          Drag & drop your lab report document here
                         </div>
                         <div className="text-[11px] mt-0.5" style={{ color: "var(--t3)" }}>
-                          or click to browse from device (PDF only, up to 15MB)
+                          or click to browse from device (PDF, DOCX, DOC, up to 15MB)
                         </div>
                       </div>
                     </>
