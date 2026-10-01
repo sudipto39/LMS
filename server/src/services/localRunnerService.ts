@@ -131,7 +131,13 @@ export class LocalRunnerService {
     if (lang === "python" || lang === "py") {
       const { dir, filePath } = await this.createTempFile("py", sourceCode);
       try {
-        const res = await this.runProcess("python", [filePath], dir, stdin, timeoutMs);
+        // Cloud Run (Linux) only has python3; Windows/local may use "python"
+        // Try python3 first, then fall back to python if not found
+        let res = await this.runProcess("python3", [filePath], dir, stdin, timeoutMs);
+        const notFound = res.exitCode === 1 && (res.stderr.includes("ENOENT") || res.stderr.includes("not found"));
+        if (notFound) {
+          res = await this.runProcess("python", [filePath], dir, stdin, timeoutMs);
+        }
         const isSuccess = res.exitCode === 0 && !res.stderr;
         return {
           stdout: res.stdout,
