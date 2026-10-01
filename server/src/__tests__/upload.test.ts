@@ -7,11 +7,10 @@ import { upload } from "../middlewares/fileUploadMiddleware.js";
 import { uploadToS3 } from "../middlewares/uploadMiddleware.js";
 
 describe("File Upload Validation Tests", () => {
-  const studentToken = signAccessToken("student-1", "STUDENT");
   const supervisorToken = signAccessToken("supervisor-1", "SUPERVISOR");
 
   beforeEach(() => {
-    jest.spyOn(prisma.user, "findUnique").mockImplementation((args: any) => {
+    (jest.spyOn(prisma.user, "findUnique") as any).mockImplementation((args: any) => {
       const id = args.where?.id;
       if (id === "student-1") {
         return Promise.resolve({
@@ -88,7 +87,7 @@ describe("File Upload Validation Tests", () => {
         filter({} as any, file as any, (err: any, accepted: boolean) => {
           expect(err).toBeDefined();
           expect(err.statusCode).toBe(400);
-          expect(err.message).toContain("Only PDF, JPG, PNG, ZIP allowed");
+          expect(err.message).toContain("Only PDF");
           expect(accepted).toBeFalsy();
           count++;
           if (count === unsafeFiles.length) done();
@@ -111,7 +110,7 @@ describe("File Upload Validation Tests", () => {
       const filter = (uploadToS3 as any).fileFilter;
       const disallowedFile = { mimetype: "application/x-bat", originalname: "malware.bat" };
 
-      filter({} as any, disallowedFile as any, (err: any, accepted: boolean) => {
+      filter({} as any, disallowedFile as any, (err: any, _accepted: boolean) => {
         expect(err).toBeDefined();
         expect(err.message).toContain("Invalid file type");
         done();

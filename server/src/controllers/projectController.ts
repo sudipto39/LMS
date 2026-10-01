@@ -170,6 +170,22 @@ export const createProject = catchAsync(async (req: Request, res: Response) => {
     parentProjectId?: string;
   };
 
+  // M-01: Validate project title length and format
+  if (!title || typeof title !== "string" || !title.trim()) {
+    throw new BadRequestError("Project title is required");
+  }
+  if (title.trim().length > 200) {
+    throw new BadRequestError("Project title cannot exceed 200 characters");
+  }
+  if (description !== undefined && typeof description === "string" && description.length > 5000) {
+    throw new BadRequestError("Project description cannot exceed 5000 characters");
+  }
+  if (customRepoName !== undefined && typeof customRepoName === "string") {
+    if (customRepoName.length > 100 || !/^[a-zA-Z0-9._-]{1,100}$/.test(customRepoName)) {
+      throw new BadRequestError("Repository name must be 1-100 alphanumeric characters (dashes, dots allowed)");
+    }
+  }
+
   const user = await prisma.user.findUnique({
     where: { id: req.user!.id },
     select: {
@@ -318,13 +334,19 @@ export const createProject = catchAsync(async (req: Request, res: Response) => {
 
   if (Array.isArray(customMilestones) && customMilestones.length > 0) {
     await prisma.milestone.createMany({
-      data: customMilestones.map((m, idx) => ({
-        projectId: project.id,
-        title: m.title,
-        dueDate: m.due || m.dueDate ? new Date(m.due || m.dueDate!) : null,
-        order: idx + 1,
-        status: idx === 0 ? "IN_PROGRESS" : "PENDING",
-      })),
+      data: customMilestones.map((m, idx) => {
+        // L-03: Validate each custom milestone dueDate — new Date("invalid-string") is Invalid Date
+        const rawDate = m.due || m.dueDate;
+        const parsedDate = rawDate ? new Date(rawDate) : null;
+        const safeDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null;
+        return {
+          projectId: project.id,
+          title: m.title,
+          dueDate: safeDate,
+          order: idx + 1,
+          status: idx === 0 ? "IN_PROGRESS" : "PENDING",
+        };
+      }),
     });
   } else {
     await prisma.milestone.createMany({
@@ -837,6 +859,10 @@ export const replyProjectFeedback = catchAsync(async (req: Request, res: Respons
   const { content } = req.body;
 
   if (!content?.trim()) throw new BadRequestError("Reply content is required");
+  // M-04: Cap reply content to match postProjectFeedback — prevents memory-bloat via unbounded replies
+  if (typeof content === "string" && content.length > 10240) {
+    throw new BadRequestError("Reply content cannot exceed 10 KB");
+  }
 
   const reply = await prisma.projectFeedback.create({
     data: {
@@ -1010,13 +1036,19 @@ export const extendProject = catchAsync(async (req: Request, res: Response) => {
 
   if (Array.isArray(customMilestones) && customMilestones.length > 0) {
     await prisma.milestone.createMany({
-      data: customMilestones.map((m, idx) => ({
-        projectId: extended.id,
-        title: m.title,
-        dueDate: m.due || m.dueDate ? new Date(m.due || m.dueDate) : null,
-        order: idx + 1,
-        status: idx === 0 ? "IN_PROGRESS" : "PENDING",
-      })),
+      data: customMilestones.map((m, idx) => {
+        // L-03: Validate each custom milestone dueDate in extendProject too
+        const rawDate = m.due || m.dueDate;
+        const parsedDate = rawDate ? new Date(rawDate) : null;
+        const safeDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null;
+        return {
+          projectId: extended.id,
+          title: m.title,
+          dueDate: safeDate,
+          order: idx + 1,
+          status: idx === 0 ? "IN_PROGRESS" : "PENDING",
+        };
+      }),
     });
   } else {
     await prisma.milestone.createMany({

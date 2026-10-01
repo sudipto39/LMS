@@ -1,5 +1,6 @@
 // src/screens/CodeSandboxScreen.tsx
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Code2,
   Play,
@@ -35,8 +36,15 @@ import {
 import { Card, Btn, Btn2, Pill } from "../components/common/UIPrimitives";
 import { executeApi, labsApi } from "../api";
 import { useToast } from "../context/ToastContext";
+import { useTheme } from "../context/ThemeContext";
 import { checkRateLimit } from "../utils/security";
 import { downloadFileBlob } from "../utils/fileDownload";
+import {
+  getFullscreenElement,
+  requestFullscreenSafe,
+  exitFullscreenSafe,
+  addFullscreenChangeListener,
+} from "../utils/fullscreen";
 import type { LabAssignment, SingleTestResult, LabSubmission } from "../types";
 
 interface AlgorithmPreset {
@@ -244,6 +252,9 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
   const [history, setHistory] = useState<ExecutionHistoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<"output" | "history" | "labTests">("output");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const isNativeFullscreenRef = useRef(false);
+  const lineGutterRef = useRef<HTMLDivElement>(null);
+  const { themeStyles } = useTheme();
 
   // ── Intelligent Input Prompts Detection ───────────────────────────────────
   const detectedPrompts = React.useMemo(() => {
@@ -563,9 +574,64 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
   };
 
 
-  // ── Keyboard Shortcut: Ctrl + Enter / Cmd + Enter ─────────────────────────
+  // ── Fullscreen toggle with HTML5 Fullscreen API and portal fallback ────────
+  const handleToggleFullscreen = async () => {
+    if (!isFullscreen) {
+      setIsFullscreen(true);
+      const success = await requestFullscreenSafe(document.documentElement);
+      isNativeFullscreenRef.current = Boolean(success);
+    } else {
+      setIsFullscreen(false);
+      isNativeFullscreenRef.current = false;
+      await exitFullscreenSafe();
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const fsEl = getFullscreenElement();
+      if (!fsEl) {
+        if (isNativeFullscreenRef.current || isFullscreen) {
+          isNativeFullscreenRef.current = false;
+          setIsFullscreen(false);
+        }
+      } else {
+        isNativeFullscreenRef.current = true;
+        setIsFullscreen(true);
+      }
+    };
+
+    const cleanup = addFullscreenChangeListener(handleFullscreenChange);
+    return cleanup;
+  }, [isFullscreen]);
+
+  // Lock background body scroll when fullscreen workspace is active
+  useEffect(() => {
+    if (isFullscreen && typeof document !== "undefined") {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isFullscreen]);
+
+  // Clean up native fullscreen on unmount if active
+  useEffect(() => {
+    return () => {
+      if (isNativeFullscreenRef.current) {
+        exitFullscreenSafe();
+      }
+    };
+  }, []);
+
+  // ── Keyboard Shortcut: Ctrl + Enter / Cmd + Enter & Escape to exit fullscreen ─
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        e.preventDefault();
+        handleToggleFullscreen();
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         handleRunSandbox();
@@ -573,7 +639,14 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  });
+  }, [isFullscreen, sandboxCode, sandboxStdin, structuredInputs, inputMode, sandboxLang]);
+
+  // Synchronize line numbers gutter scroll with editor textarea
+  const handleEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (lineGutterRef.current) {
+      lineGutterRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
 
   // ── Handle Tab key in Textarea ───────────────────────────────────────────
   const handleKeyDownInEditor = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -758,15 +831,25 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
     }
   };
 
-  return (
-    <div className={`w-full max-w-[1800px] mx-auto space-y-4 ${isFullscreen ? "fixed inset-0 z-50 p-4 bg-[var(--bg)] overflow-y-auto" : ""}`}>
+  const content = (
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[99999] w-screen h-screen flex flex-col p-3 sm:p-4 space-y-3 overflow-hidden text-[var(--t1,#f0f8fc)] select-none"
+          : "w-full max-w-[1800px] mx-auto space-y-4"
+      }
+      style={{
+        ...themeStyles,
+        background: "var(--bg, #0b1117)",
+      }}
+    >
       {/* Lab Assignment Banner (If in Lab Mode) */}
       {labAssignment && (
-        <Card className="p-4 sm:p-4.5 border-2 border-[#06b6d4]/35 bg-gradient-to-r from-[#06b6d4]/10 via-[#06b6d4]/5 to-transparent space-y-3">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
-              <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl sm:rounded-2xl grid place-items-center bg-gradient-to-br from-[#06b6d4] to-[#0284c7] text-white shadow-md shadow-cyan-500/20 shrink-0 mt-0.5 sm:mt-0">
-                <FlaskConical size={21} className="stroke-[2.2]" />
+        <Card className={`${isFullscreen ? "p-2.5 sm:p-3" : "p-4 sm:p-4.5"} border-2 border-[#06b6d4]/35 bg-gradient-to-r from-[#06b6d4]/10 via-[#06b6d4]/5 to-transparent space-y-2 shrink-0`}>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
+              <div className={`${isFullscreen ? "h-8 w-8 rounded-lg" : "h-10 w-10 sm:h-11 sm:w-11 rounded-xl sm:rounded-2xl"} grid place-items-center bg-gradient-to-br from-[#06b6d4] to-[#0284c7] text-white shadow-md shadow-cyan-500/20 shrink-0 mt-0.5 sm:mt-0`}>
+                <FlaskConical size={isFullscreen ? 17 : 21} className="stroke-[2.2]" />
               </div>
               <div className="min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -783,7 +866,7 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
                     🎯 4.0 Marks (2.0 Notebook + 2.0 Performance)
                   </Pill>
                 </div>
-                <h2 className="text-[18px] sm:text-[20px] font-extrabold text-[var(--t1)] tracking-tight leading-snug">
+                <h2 className={`${isFullscreen ? "text-[16px] sm:text-[17px]" : "text-[18px] sm:text-[20px]"} font-extrabold text-[var(--t1)] tracking-tight leading-snug truncate`}>
                   {labAssignment.title}
                 </h2>
               </div>
@@ -863,9 +946,8 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
           </div>
 
           {/* 🎯 LAB EXPERIMENT OBJECTIVE HIGHLIGHT */}
-          {/* 🎯 LAB EXPERIMENT OBJECTIVE HIGHLIGHT (IF DEFINED) */}
           {(labAssignment.objective?.trim() || labAssignment.prerequisites?.trim()) && (
-            <div className="p-3 rounded-xl border space-y-1 bg-[var(--srf)] border-[#06b6d4]/30">
+            <div className="p-2.5 rounded-xl border space-y-1 bg-[var(--srf)] border-[#06b6d4]/30">
               {labAssignment.objective?.trim() && (
                 <>
                   <div className="text-[11px] font-bold flex items-center gap-1 text-[#06b6d4] uppercase tracking-wide">
@@ -887,34 +969,48 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 ${isFullscreen ? "hidden md:flex" : ""}`}>
         <div>
-          <h1 className="text-[22px] sm:text-[24px] font-bold flex items-center gap-2">
-            <Code2 size={24} style={{ color: "var(--acc)" }} />
+          <h1 className={`${isFullscreen ? "text-[18px]" : "text-[22px] sm:text-[24px]"} font-bold flex items-center gap-2`}>
+            <Code2 size={isFullscreen ? 20 : 24} style={{ color: "var(--acc)" }} />
             {labAssignment ? `Lab IDE: ${labAssignment.title}` : "Multi-Language Judge0 Sandbox"}
           </h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "var(--t2)" }}>
-            {labAssignment
-              ? "Implement and verify your solution against unit test suites in an isolated sandbox"
-              : "Compile, run, and benchmark algorithm test cases across 8 languages in isolated GCP containers"}
-          </p>
+          {!isFullscreen && (
+            <p className="text-[13px] mt-0.5" style={{ color: "var(--t2)" }}>
+              {labAssignment
+                ? "Implement and verify your solution against unit test suites in an isolated sandbox"
+                : "Compile, run, and benchmark algorithm test cases across 8 languages in isolated GCP containers"}
+            </p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Pill color="#06b6d4">Judge0 CE Engine</Pill>
-          <button
-            type="button"
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="h-8 w-8 rounded-lg border grid place-items-center cursor-pointer transition hover:border-[var(--acc)]"
-            style={{ background: "var(--srf)", borderColor: "var(--bdr)", color: "var(--t2)" }}
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Editor"}
-          >
-            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
+          {isFullscreen ? (
+            <button
+              type="button"
+              onClick={handleToggleFullscreen}
+              className="h-8 px-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-400 hover:bg-red-500/25 flex items-center gap-1.5 cursor-pointer transition font-medium text-[11px] shrink-0 whitespace-nowrap shadow-sm"
+              title="Exit Fullscreen (Esc)"
+            >
+              <Minimize2 size={13} />
+              <span>Exit Fullscreen</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleToggleFullscreen}
+              className="h-8 w-8 rounded-lg border grid place-items-center cursor-pointer transition hover:border-[var(--acc)] hover:text-[var(--acc)] shrink-0"
+              style={{ background: "var(--srf)", borderColor: "var(--bdr)", color: "var(--t2)" }}
+              title="Fullscreen Editor"
+            >
+              <Maximize2 size={14} />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Controls & Toolbar */}
-      <Card className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <Card className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
         {/* Left: Language & Presets */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Language Selector */}
@@ -1027,17 +1123,41 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
               </>
             )}
           </Btn>
+
+          {/* Fullscreen Toggle (prominent exit button when in fullscreen on mobile) */}
+          {isFullscreen && (
+            <button
+              type="button"
+              onClick={handleToggleFullscreen}
+              className="h-9 px-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 hover:bg-red-500/25 flex items-center gap-1.5 cursor-pointer transition font-medium text-[11px] shrink-0 whitespace-nowrap md:hidden shadow-sm"
+              title="Exit Fullscreen (Esc)"
+            >
+              <Minimize2 size={13} />
+              <span>Exit</span>
+            </button>
+          )}
         </div>
       </Card>
 
       {/* Main Workspace Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_480px] gap-4">
+      <div
+        className={
+          isFullscreen
+            ? "flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[1fr_480px] gap-3 h-full overflow-hidden"
+            : "grid grid-cols-1 lg:grid-cols-[1fr_480px] gap-4"
+        }
+      >
         {/* ── CODE EDITOR CONTAINER ────────────────────────────────────── */}
-        <div className="space-y-3">
-          <Card className="overflow-hidden border shadow-sm" style={{ background: "#060e15" }}>
+        <div className={`flex flex-col ${isFullscreen ? "h-full min-h-0 space-y-0" : "space-y-3"}`}>
+          <Card
+            className={`overflow-hidden border shadow-sm flex flex-col ${
+              isFullscreen ? "h-full min-h-0 flex-1" : ""
+            }`}
+            style={{ background: "#060e15" }}
+          >
             {/* Editor Window Header */}
             <div
-              className="h-10 border-b flex items-center gap-2 px-4 select-none"
+              className="h-10 border-b flex items-center gap-2 px-4 select-none shrink-0"
               style={{ borderColor: "#1a3a50", background: "#0a1724" }}
             >
               {/* Traffic Lights */}
@@ -1074,10 +1194,11 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
             </div>
 
             {/* Line Numbers & Editor Textarea */}
-            <div className="flex relative">
+            <div className={`flex relative ${isFullscreen ? "flex-1 min-h-0 h-full overflow-hidden" : ""}`}>
               {/* Line Numbers */}
               <div
-                className="w-12 bg-[#040a10] text-right pr-3 py-3 select-none text-[#3a5a6a] mono text-[12px] leading-[22px] border-r border-[#1a3a50]"
+                ref={lineGutterRef}
+                className="w-12 bg-[#040a10] text-right pr-3 py-3 select-none text-[#3a5a6a] mono text-[12px] leading-[22px] border-r border-[#1a3a50] overflow-hidden"
               >
                 {sandboxCode.split("\n").map((_, i) => (
                   <div key={i}>{i + 1}</div>
@@ -1090,7 +1211,10 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
                 value={sandboxCode}
                 onChange={(e) => setSandboxCode(e.target.value)}
                 onKeyDown={handleKeyDownInEditor}
-                className="flex-1 p-3 mono focus:outline-none resize-none bg-[#060e15] text-[#e0f2f7] min-h-[480px] leading-[22px]"
+                onScroll={handleEditorScroll}
+                className={`flex-1 p-3 mono focus:outline-none resize-none bg-[#060e15] text-[#e0f2f7] leading-[22px] custom-scrollbar ${
+                  isFullscreen ? "h-full min-h-0 overflow-auto" : "min-h-[480px]"
+                }`}
                 style={{ fontSize }}
                 spellCheck={false}
               />
@@ -1099,13 +1223,15 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
         </div>
 
         {/* ── CONSOLE & INTERACTIVE TABS CONTAINER ─────────────────────── */}
-        <div className="space-y-3">
+        <div className={`flex flex-col ${isFullscreen ? "h-full min-h-0 space-y-0" : "space-y-3"}`}>
           <div
-            className="rounded-2xl border overflow-hidden bg-[#060e15] shadow-sm flex flex-col min-h-[530px]"
+            className={`rounded-2xl border overflow-hidden bg-[#060e15] shadow-sm flex flex-col ${
+              isFullscreen ? "h-full min-h-0 flex-1" : "min-h-[530px]"
+            }`}
             style={{ borderColor: "#1a3a50" }}
           >
             {/* Terminal Navigation Header */}
-            <div className="h-10 flex items-center justify-between px-3 bg-[#0a1724] border-b border-[#1a3a50]">
+            <div className="h-10 flex items-center justify-between px-3 bg-[#0a1724] border-b border-[#1a3a50] shrink-0">
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -1162,9 +1288,11 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
 
             {/* TAB 1: Unified Interactive Console View */}
             {activeTab === "output" && (
-              <div className="flex-1 flex flex-col justify-between p-3.5 min-h-[460px] space-y-3">
+              <div className={`flex-1 flex flex-col justify-between p-3.5 space-y-3 ${isFullscreen ? "min-h-0 h-full overflow-hidden" : "min-h-[460px]"}`}>
                 {/* Scrollable Terminal Output */}
-                <pre className="text-[11px] mono whitespace-pre-wrap flex-1 overflow-auto text-[#cbd5e1] leading-relaxed max-h-[300px] min-h-[160px] p-3 rounded-xl bg-[#040a10] border border-[#1a3a50]/60">
+                <pre className={`text-[11px] mono whitespace-pre-wrap flex-1 overflow-auto text-[#cbd5e1] leading-relaxed p-3 rounded-xl bg-[#040a10] border border-[#1a3a50]/60 custom-scrollbar ${
+                  isFullscreen ? "min-h-0" : "max-h-[300px] min-h-[160px]"
+                }`}>
                   {running ? (
                     <span className="text-[#f59e0b] animate-pulse flex items-center gap-2">
                       <RotateCcw size={13} className="animate-spin" /> Sending payload to Judge0 Sandbox VM container...
@@ -1379,7 +1507,7 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
 
             {/* TAB 3: Execution History */}
             {activeTab === "history" && (
-              <div className="p-4 space-y-2 flex-1 overflow-y-auto max-h-[460px]">
+              <div className={`p-4 space-y-2 flex-1 overflow-y-auto custom-scrollbar ${isFullscreen ? "min-h-0 h-full" : "max-h-[460px]"}`}>
                 {history.length === 0 ? (
                   <div className="text-center py-12 text-[#64748b] text-[11px] space-y-2">
                     <Clock size={24} className="mx-auto opacity-40" />
@@ -1421,7 +1549,7 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
 
             {/* TAB 4: Lab Test Suite Results */}
             {activeTab === "labTests" && (
-              <div className="p-4 space-y-3 flex-1 overflow-y-auto max-h-[460px]">
+              <div className={`p-4 space-y-3 flex-1 overflow-y-auto custom-scrollbar ${isFullscreen ? "min-h-0 h-full" : "max-h-[460px]"}`}>
                 {/* Automated Unit Test Execution Card */}
                 {labAssignment && (
                   <div className="p-3 rounded-xl border flex items-center justify-between bg-[#06b6d4]/10 border-[#06b6d4]/30">
@@ -1532,7 +1660,7 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
 
       {/* ── Final Submission Modal for Coding Experiment + Report ────────── */}
       {showSubmitModal && labAssignment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
           <div
             className="relative w-full max-w-xl rounded-2xl border p-6 space-y-4 shadow-2xl overflow-y-auto max-h-[90vh]"
             style={{ background: "var(--srf)", borderColor: "var(--bdr)" }}
@@ -2517,6 +2645,10 @@ export const CodeSandboxScreen: React.FC<CodeSandboxScreenProps> = ({
       )}
     </div>
   );
+
+  return isFullscreen && typeof document !== "undefined"
+    ? createPortal(content, document.body)
+    : content;
 };
 
 export default CodeSandboxScreen;

@@ -2,6 +2,7 @@
 import axios from "axios";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/appError.js";
+import { localRunnerService } from "./localRunnerService.js";
 
 // Standard Judge0 Language IDs
 export const JUDGE0_LANGUAGE_MAP: Record<string, number> = {
@@ -57,7 +58,9 @@ const judge0Client = axios.create({
       ? { Authorization: `Bearer ${env.JUDGE0_AUTH_TOKEN}` }
       : {}),
   },
-  timeout: 2500,
+  // Raised from 2500ms — cold starts + network latency on cloud deployments
+  // require at least 10-15s to avoid premature timeouts
+  timeout: 15000,
 });
 
 /**
@@ -157,8 +160,9 @@ export const judge0Service = {
       throw new AppError("No executable source code found in workspace", 400);
     }
 
+    // ── Judge0 attempt (primary) ──────────────────────────────────────────────
+    let judge0Failed = false;
     try {
-      // Send synchronous execution request with ?wait=true
       const res = await judge0Client.post<any>("/submissions?wait=true", {
         language_id: languageId,
         source_code: sourceCode,
@@ -169,39 +173,62 @@ export const judge0Service = {
       });
 
       const data = res.data;
-
       const statusId = data.status?.id ?? 3;
-      const statusDescription = data.status?.description ?? "Completed";
-      const exitCode = statusId === 3 ? 0 : 1;
 
-      const outputText =
-        data.stdout ||
-        data.compile_output ||
-        data.stderr ||
-        data.message ||
-        "";
+      // Status 13 = "Internal Error", 14 = "Exec Format Error", 15 = "Box Initialization Error"
+      // These occur when isolate / cgroup isn't available (WSL2, Docker without --privileged)
+      // Fall through to localRunnerService rather than surfacing a confusing internal error
+      if (statusId >= 13) {
+        judge0Failed = true;
+      } else {
+        const statusDescription = data.status?.description ?? "Completed";
+        const exitCode = statusId === 3 ? 0 : 1;
+        const outputText =
+          data.stdout ||
+          data.compile_output ||
+          data.stderr ||
+          data.message ||
+          "";
 
-      return {
-        stdout: data.stdout || "",
-        stderr: data.stderr || "",
-        compileOutput: data.compile_output || "",
-        message: data.message || "",
-        output: outputText,
-        status: {
-          id: statusId,
-          description: statusDescription,
-        },
-        time: data.time ? `${(parseFloat(data.time) * 1000).toFixed(0)}ms` : null,
-        memory: data.memory ? Math.round(data.memory / 1024) : null,
-        exitCode,
-      };
-    } catch (err: any) {
-      const errMsg = err?.message || "Service connection failed";
-      throw new AppError(
-        `Code Execution Engine is currently unavailable (${errMsg}). Please ensure Judge0 sandbox is running.`,
-        503
-      );
+        return {
+          stdout: data.stdout || "",
+          stderr: data.stderr || "",
+          compileOutput: data.compile_output || "",
+          message: data.message || "",
+          output: outputText,
+          status: { id: statusId, description: statusDescription },
+          time: data.time ? `${(parseFloat(data.time) * 1000).toFixed(0)}ms` : null,
+          memory: data.memory ? Math.round(data.memory / 1024) : null,
+          exitCode,
+        };
+      }
+    } catch {
+      // Judge0 unreachable (ECONNREFUSED, timeout, network error) → fall through
+      judge0Failed = true;
     }
+
+    // ── localRunnerService fallback (automatic) ───────────────────────────────
+    // Triggered when: Judge0 is unreachable, or isolate returns Internal Error
+    // (e.g. cgroup v1 unavailable on WSL2 / Docker without --privileged)
+    if (judge0Failed) {
+      try {
+        return await localRunnerService.execute({
+          language: engine,
+          sourceCode,
+          stdin,
+          timeLimit: cpuTimeLimit,
+          memoryLimitKb,
+        });
+      } catch (localErr: any) {
+        throw new AppError(
+          `Code execution failed on both Judge0 and local runner: ${localErr?.message ?? "unknown error"}`,
+          503
+        );
+      }
+    }
+
+    // Should be unreachable — but keeps TypeScript happy
+    throw new AppError("Code Execution Engine is currently unavailable", 503);
   },
 
   async getSupportedLanguages() {

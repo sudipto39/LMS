@@ -7,10 +7,9 @@ import { prisma } from "../config/db.js";
 describe("Role-Based Access Control (RBAC) Integration Tests", () => {
   const studentToken = signAccessToken("student-1", "STUDENT");
   const supervisorToken = signAccessToken("supervisor-1", "SUPERVISOR");
-  const adminToken = signAccessToken("admin-1", "ADMIN");
 
   beforeEach(() => {
-    jest.spyOn(prisma.user, "findUnique").mockImplementation((args: any) => {
+    (jest.spyOn(prisma.user, "findUnique") as any).mockImplementation((args: any) => {
       const id = args.where?.id;
       if (id === "student-1") {
         return Promise.resolve({

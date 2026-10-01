@@ -9,7 +9,7 @@ describe("Security Hardening Regression Tests", () => {
   const studentToken = signAccessToken(studentId, "STUDENT");
 
   beforeEach(() => {
-    jest.spyOn(prisma.user, "findUnique").mockImplementation((args: any) => {
+    (jest.spyOn(prisma.user, "findUnique") as any).mockImplementation((args: any) => {
       const id = args.where?.id;
       if (id === studentId) {
         return Promise.resolve({
@@ -293,7 +293,7 @@ describe("Security Hardening Regression Tests", () => {
       const { signRefreshToken } = await import("../utils/createSendToken.js");
       const validRefreshToken = signRefreshToken(studentId);
 
-      jest.spyOn(prisma.user, "findUnique").mockImplementation((_args: any) => {
+      (jest.spyOn(prisma.user, "findUnique") as any).mockImplementation((_args: any) => {
         return Promise.resolve({
           id: studentId,
           role: "STUDENT",

@@ -10,7 +10,7 @@ describe("Judge0 Code Execution Integration & Resilience Tests", () => {
   const studentToken = signAccessToken("student-1", "STUDENT");
 
   beforeEach(() => {
-    jest.spyOn(prisma.user, "findUnique").mockImplementation((args: any) => {
+    (jest.spyOn(prisma.user, "findUnique") as any).mockImplementation((args: any) => {
       const id = args.where?.id;
       if (id === "student-1") {
         return Promise.resolve({

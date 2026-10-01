@@ -50,6 +50,11 @@ body {
 }
 
 /* Custom smooth scrollbar utility classes */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bdr, #265466) transparent;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -62,6 +67,18 @@ body {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--acc, #06b6d4);
+}
+
+/* Utility to hide scrollbars while preserving scrollability */
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox, Chrome 121+, Safari 18+ */
+}
+
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* Safari and older Chrome */
 }
 
 /* ==========================================================================
@@ -78,7 +95,6 @@ textarea,
 dialog,
 [role="dialog"] {
   scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
 }
 
@@ -94,7 +110,6 @@ dialog,
 .overflow-x-auto {
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* GPU Hardware compositing on main content viewport for 60-120fps scrolling */

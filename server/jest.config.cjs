@@ -4,6 +4,7 @@ module.exports = {
   testEnvironment: 'node',
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
   setupFiles: ['<rootDir>/src/__tests__/setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/__tests__/setupAfterEnv.ts'],
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',

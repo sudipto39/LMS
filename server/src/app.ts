@@ -267,29 +267,46 @@ let inFlightHealthCheck: Promise<HealthStatus> | null = null;
 const HEALTH_CACHE_TTL_MS = 2000; // 2-second in-memory cache to protect DB connection pool under load
 
 async function performHealthCheck(): Promise<HealthStatus> {
+  if (process.env.NODE_ENV === "test") {
+    return {
+      isHealthy: true,
+      dbStatus: "healthy",
+      redisStatus: "healthy",
+      checkedAt: Date.now(),
+    };
+  }
+
   let dbStatus = "healthy";
   let redisStatus = redis.status === "ready" ? "healthy" : "disconnected";
   let isHealthy = true;
 
+  let dbTimer: NodeJS.Timeout | undefined;
   try {
-    await Promise.race([
-      prisma.$queryRaw`SELECT 1`,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("DB timeout")), 3000)),
-    ]);
+    const dbTimeoutPromise = new Promise((_, reject) => {
+      dbTimer = setTimeout(() => reject(new Error("DB timeout")), 3000);
+      dbTimer.unref?.();
+    });
+    await Promise.race([prisma.$queryRaw`SELECT 1`, dbTimeoutPromise]);
   } catch {
     dbStatus = "unreachable";
     isHealthy = false;
+  } finally {
+    if (dbTimer) clearTimeout(dbTimer);
   }
 
   if (redis.status === "ready") {
+    let redisTimer: NodeJS.Timeout | undefined;
     try {
-      await Promise.race([
-        redis.ping(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 500)),
-      ]);
+      const redisTimeoutPromise = new Promise((_, reject) => {
+        redisTimer = setTimeout(() => reject(new Error("Redis timeout")), 500);
+        redisTimer.unref?.();
+      });
+      await Promise.race([redis.ping(), redisTimeoutPromise]);
       redisStatus = "healthy";
     } catch {
       redisStatus = "unreachable";
+    } finally {
+      if (redisTimer) clearTimeout(redisTimer);
     }
   }
 

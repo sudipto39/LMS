@@ -291,9 +291,26 @@ export const upsertStudentEvaluation = catchAsync(async (req: Request, res: Resp
 
   const student = await prisma.user.findUnique({
     where: { id: studentId },
-    select: { id: true, name: true, department: true },
+    select: { id: true, name: true, department: true, enrollments: { select: { batchId: true } } },
   });
   if (!student) throw new NotFoundError("Student");
+
+  // M-03: BOLA guard — only ADMIN or a supervisor with a lab assignment in the student's batch may grade
+  if (req.user?.role !== "ADMIN") {
+    const studentBatchIds = student.enrollments.map((e) => e.batchId);
+    if (studentBatchIds.length > 0) {
+      const hasLabInBatch = await prisma.labAssignment.findFirst({
+        where: {
+          creatorId: req.user!.id,
+          batchId: { in: studentBatchIds },
+        },
+        select: { id: true },
+      });
+      if (!hasLabInBatch) {
+        throw new NotFoundError("Course or batch");
+      }
+    }
+  }
 
   const computed = computeEvaluationTotals(req.body);
   const evaluatorId = req.user?.id ?? null;

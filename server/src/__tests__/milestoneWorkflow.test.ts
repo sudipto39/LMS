@@ -14,7 +14,7 @@ describe("Milestone Workflow State Machine Tests", () => {
   const supervisorToken = signAccessToken(supervisorId, "SUPERVISOR");
 
   beforeEach(() => {
-    jest.spyOn(prisma.user, "findUnique").mockImplementation((args: any) => {
+    (jest.spyOn(prisma.user, "findUnique") as any).mockImplementation((args: any) => {
       const id = args.where?.id;
       if (id === studentId) {
         return Promise.resolve({ id: studentId, role: "STUDENT", isEmailVerified: true } as any);
@@ -74,7 +74,7 @@ describe("Milestone Workflow State Machine Tests", () => {
         .send({});
 
       expect(res.statusCode).toBe(400);
-      expect(res.body.message).toContain("Milestone already approved");
+      expect(res.body.message).toContain("already approved");
     });
 
     it("should reject submission if milestone is already SUBMITTED and pending review", async () => {
@@ -90,7 +90,7 @@ describe("Milestone Workflow State Machine Tests", () => {
         .send({});
 
       expect(res.statusCode).toBe(400);
-      expect(res.body.message).toContain("Milestone already submitted and awaiting review");
+      expect(res.body.message).toContain("currently submitted and awaiting");
     });
 
     it("should return 403 when non-owner student attempts to submit milestone", async () => {

@@ -15,14 +15,14 @@ describe("Global Error Handler & Prisma DB Resilience Tests", () => {
     responseStatusCode = 200;
     mockRequest = {};
     mockResponse = {
-      status: jest.fn().mockImplementation((code: number) => {
+      status: (jest.fn() as any).mockImplementation((code: number) => {
         responseStatusCode = code;
         return mockResponse as Response;
-      }) as any,
-      json: jest.fn().mockImplementation((data: any) => {
+      }),
+      json: (jest.fn() as any).mockImplementation((data: any) => {
         responseData = data;
         return mockResponse as Response;
-      }) as any,
+      }),
     };
   });
 

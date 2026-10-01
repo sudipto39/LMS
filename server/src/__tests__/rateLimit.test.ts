@@ -1,8 +1,12 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 import { app } from "../app.js";
+import { prisma } from "../config/db.js";
 
 describe("Rate Limiting (Brute-Force Protection) Tests", () => {
+  beforeAll(() => {
+    jest.spyOn(prisma.user, "findUnique").mockResolvedValue(null);
+  });
   it("should trigger HTTP 429 Too Many Requests when auth rate limit is exceeded", async () => {
     // Send 10 requests to consume the allowed quota
     for (let i = 0; i < 10; i++) {

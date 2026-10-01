@@ -127,6 +127,20 @@ function MainApp() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ── Anti-flash overlay: covers the dashboard mount on auth transitions ──────
+  const prevIsAuthRef = useRef(false);
+  const [isEnteringApp, setIsEnteringApp] = useState(false);
+
+  useEffect(() => {
+    if (!prevIsAuthRef.current && isAuthenticated) {
+      // Just became authenticated (demo or real login) — show cover overlay
+      setIsEnteringApp(true);
+      const t = setTimeout(() => setIsEnteringApp(false), 550);
+      return () => clearTimeout(t);
+    }
+    prevIsAuthRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
   // Navigation and Views State
   const [authView, setAuthView] = useState<"landing" | "auth">("landing");
   const [authInitialMode, setAuthInitialMode] = useState<"login" | "register">("login");
@@ -924,7 +938,22 @@ function MainApp() {
       className="h-screen w-full text-[13px] flex overflow-hidden"
       style={{ background: "var(--bg)", color: "var(--t1)" }}
     >
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'); *{font-family:Inter,sans-serif} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'); *{font-family:Inter,sans-serif} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+      @keyframes gf-fade-cover { 0%,60% { opacity:1; } 100% { opacity:0; } }`}</style>
+
+      {/* Anti-flash overlay — covers dashboard mount whenever auth state transitions */}
+      {isEnteringApp && (
+        <div
+          className="fixed inset-0 z-[99999] flex flex-col items-center justify-center gap-3 pointer-events-none"
+          style={{
+            background: "var(--bg, #0b1117)",
+            animation: "gf-fade-cover 0.55s ease-in-out forwards",
+          }}
+        >
+          <div className="h-9 w-9 rounded-full border-2 border-[#06b6d4] border-t-transparent animate-spin" />
+          <span className="text-[13px] font-semibold text-[#8aafbb]">Entering Dashboard...</span>
+        </div>
+      )}
 
       {/* Sidebar */}
       <Sidebar

@@ -12,15 +12,16 @@ import { redis } from "../config/redis.js";
 
 export const protect: RequestHandler = catchAsync(
   async (req: Request, _res: Response, next: NextFunction) => {
-    // 1. Extract token from Authorization header or secure cookie
+    // 1. Extract token from Authorization header or secure cookie ONLY
+    // H-01: The ?token= query-string fallback has been intentionally removed.
+    //       JWTs in URLs are logged into server logs, browser history, and
+    //       forwarded in Referer headers — defeating the purpose of token auth.
     let token: string | undefined;
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Bearer ")) {
       token = authHeader.split(" ")[1];
     } else if (req.cookies && typeof req.cookies["accessToken"] === "string" && req.cookies["accessToken"]) {
       token = req.cookies["accessToken"];
-    } else if (typeof req.query["token"] === "string" && req.query["token"]) {
-      token = req.query["token"];
     }
 
     if (!token) throw new UnauthorizedError("You are not logged in");

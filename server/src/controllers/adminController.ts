@@ -1030,11 +1030,16 @@ export const getSupervisorRequests = catchAsync(
 export const reviewSupervisorRequest = catchAsync(
   async (req: Request, res: Response) => {
     const projectId = requireParam(req.params["id"], "id");
-    const { status, assignedSupervisorId, adminNote } = req.body as {
+    const { status, assignedSupervisorId, adminNote: rawAdminNote } = req.body as {
       status: "APPROVED" | "REJECTED";
       assignedSupervisorId?: string;
       adminNote?: string;
     };
+
+    // L-02: Sanitize adminNote before writing to project.feedback to prevent HTML injection / oversized column writes
+    const adminNote = typeof rawAdminNote === "string"
+      ? rawAdminNote.replace(/[<>"'`]/g, "_").replace(/[\r\n\0]/g, " ").substring(0, 2000)
+      : undefined;
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },

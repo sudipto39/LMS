@@ -7,7 +7,6 @@ import { prisma } from "../config/db.js";
 describe("Refresh Token Lifecycle & Session Rotation Tests", () => {
   const userId = "user-test-123";
   const validRefreshToken = signRefreshToken(userId);
-  const userAccessToken = signAccessToken(userId, "STUDENT");
 
   beforeEach(() => {
     jest.spyOn(prisma.user, "update").mockResolvedValue({

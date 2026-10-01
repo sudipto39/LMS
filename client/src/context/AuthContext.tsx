@@ -50,28 +50,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const fallbackRt = sessionStorage.getItem("giteaforge_rt");
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (fallbackRt) {
-          headers["X-Refresh-Token"] = fallbackRt;
-        }
-
-        // Attempt silent refresh via HTTP-only cookie or fallback token
+        // Attempt silent refresh via HTTP-only cookie only — body/header fallbacks removed (R3 H-01/L-02)
         const res = await fetch(`${env.API_BASE_URL}/v1/auth/refresh-token`, {
           method: "POST",
-          headers,
-          body: fallbackRt ? JSON.stringify({ refreshToken: fallbackRt }) : JSON.stringify({}),
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
         });
 
         if (res.ok) {
           const json = await res.json();
           const token = json.accessToken as string;
-          if (json.refreshToken) {
-            sessionStorage.setItem("giteaforge_rt", json.refreshToken);
-          }
           if (token) {
             tokenStore.set(token);
             const userRes = await fetch(`${env.API_BASE_URL}/v1/users/me`, {

@@ -77,6 +77,13 @@ export const createRepository = catchAsync(
     };
     if (!name) throw new BadRequestError("Repository name is required");
 
+    // M-02: Validate repo name to prevent path traversal in Gitea API URL construction
+    if (!/^[a-zA-Z0-9._-]{1,100}$/.test(name)) {
+      throw new BadRequestError(
+        "Repository name must be 1-100 characters: letters, numbers, dashes, underscores, and dots only"
+      );
+    }
+
     if (!req.user!.giteaUsername) {
       throw new BadRequestError("Gitea account not linked. Please contact admin.");
     }
@@ -143,8 +150,13 @@ export const listContents = catchAsync(
     const repo = requireParam(req.params["repo"], "repo");
     await verifyRepoAccess(req, owner, repo, false);
 
-    const path = (req.query["path"] as string) || "";
-    const data = await giteaService.getRepoContents(owner, repo, path);
+    // L-01: Sanitize path to prevent path traversal into Gitea internals
+    const rawPath = (req.query["path"] as string) || "";
+    const normalPath = rawPath.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\//, "");
+    if (normalPath.includes("..") || normalPath.includes("\0")) {
+      throw new BadRequestError("Invalid or unsafe path");
+    }
+    const data = await giteaService.getRepoContents(owner, repo, normalPath);
     res.status(200).json({ status: "success", data });
   }
 );

@@ -229,7 +229,10 @@ export const evaluateProjectRubric = catchAsync(async (req: Request, res: Respon
     throw new ForbiddenError("Only the assigned supervisor or an administrator can evaluate this project");
   }
 
-  const totalScore = typeof score === "number" ? score : 85;
+  // H-02: Clamp totalScore and sub-scores to valid ranges — prevents grade inflation/sabotage
+  const rawScore = typeof score === "number" ? score : 85;
+  const totalScore = Math.max(0, Math.min(100, rawScore));
+  const clamp25 = (v: unknown) => Math.max(0, Math.min(25, typeof v === "number" ? v : 0));
   const grade = letterGrade || scoreToGrade(totalScore);
 
   const evaluation = await prisma.rubricEvaluation.upsert({
@@ -238,22 +241,22 @@ export const evaluateProjectRubric = catchAsync(async (req: Request, res: Respon
       projectId: id,
       totalScore,
       letterGrade: grade,
-      codeQuality: codeQuality || 0,
-      documentation: documentation || 0,
-      presentation: presentation || 0,
-      innovation: innovation || 0,
-      teamwork: teamwork || 0,
+      codeQuality: clamp25(codeQuality),
+      documentation: clamp25(documentation),
+      presentation: clamp25(presentation),
+      innovation: clamp25(innovation),
+      teamwork: clamp25(teamwork),
       feedback: feedback || "Approved with distinction.",
       evaluatorId: req.user!.id,
     },
     update: {
       totalScore,
       letterGrade: grade,
-      codeQuality: codeQuality || 0,
-      documentation: documentation || 0,
-      presentation: presentation || 0,
-      innovation: innovation || 0,
-      teamwork: teamwork || 0,
+      codeQuality: clamp25(codeQuality),
+      documentation: clamp25(documentation),
+      presentation: clamp25(presentation),
+      innovation: clamp25(innovation),
+      teamwork: clamp25(teamwork),
       feedback: feedback || "Approved with distinction.",
       evaluatorId: req.user!.id,
     },

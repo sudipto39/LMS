@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Code2,
@@ -29,6 +29,12 @@ import {
 import { Card } from "../../../components/common/UIPrimitives";
 import { executeApi, projectsApi } from "../../../api";
 import { useTheme } from "../../../context/ThemeContext";
+import {
+  getFullscreenElement,
+  requestFullscreenSafe,
+  exitFullscreenSafe,
+  addFullscreenChangeListener,
+} from "../../../utils/fullscreen";
 import SandboxNewFileModal from "../modals/SandboxNewFileModal";
 import SandboxCommitModal from "../modals/SandboxCommitModal";
 import type { ProjectFile } from "../../../types";
@@ -910,31 +916,21 @@ export const ProjectSandboxTab: React.FC<ProjectSandboxTabProps> = ({
         setRunning(false);
         return;
       }
-    } catch {
-      // Local fallback handled below
-    }
-
-    setTimeout(() => {
-      const elapsed = Math.floor(Math.random() * 80 + 35);
-      let output = "";
-      if (lang === "python") {
-        if (activeFile.content.includes("fibonacci")) {
-          output = `GiteaForge Standalone Code Sandbox\n====================================\nFibonacci(10): [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]\nSum: 88\n\n✓ All tests passed`;
-        } else {
-          output = `=== GiteaForge Backend Service ===\nDataset: [10, 20, 30, 40, 50]\nMean: 30.0\n✓ Backend tasks executed successfully.`;
-        }
-      } else if (lang === "r") {
-        output = `=== GiteaForge R Sandbox ===\nSample Size: 20\nMean Score:  78.42\nStd Dev:     9.18\n\nSummary:\n   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.\n  61.20   72.10   78.60   78.42   84.90   96.80`;
-      } else if (lang === "javascript") {
-        output = `[LMS Client] Node runtime initialized\nCounter: 0\nSum: 15\n✓ Execution finished`;
-      } else {
-        output = `Hello GiteaForge!\nProcess executed successfully with exit code 0.`;
-      }
-
-      const fullOutput = `> Judge0 Remote Engine • ${activeFile.name}\n> Status: Accepted (Exit: 0)\n> Execution Time: ${elapsed}ms • Memory: 3.8 MB\n\n${output}\n\n────────────────────────────────────────\n✓ Process exited with code 0\n⏱ ${elapsed}ms • ${new Date().toLocaleTimeString()}`;
-      setCodeOut(fullOutput);
+    } catch (err: any) {
+      // Server returned an error (network issue, server down, etc.)
+      const errMessage =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Could not connect to execution service";
+      setCodeOut(
+        `> Execution Error\n> ${errMessage}\n\n` +
+        `The server-side execution engine could not process your code.\n` +
+        `• Check your network connection\n` +
+        `• Ensure the LMS server is running\n` +
+        `• Try again in a moment\n\n⏱ ${new Date().toLocaleTimeString()}`
+      );
       setRunning(false);
-    }, 450 + Math.random() * 200);
+    }
   };
 
   const handleCommitAndPush = async () => {
@@ -976,38 +972,47 @@ export const ProjectSandboxTab: React.FC<ProjectSandboxTabProps> = ({
     }
   };
 
+  const isNativeFullscreenRef = useRef(false);
+
   // Fullscreen toggle with HTML5 Fullscreen API and portal fallback
   const handleToggleFullscreen = async () => {
     if (!sandboxExpanded) {
       setSandboxExpanded(true);
-      try {
-        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-          await document.documentElement.requestFullscreen();
-        }
-      } catch {
-        // Fallback to CSS portal overlay
-      }
+      const success = await requestFullscreenSafe(document.documentElement);
+      isNativeFullscreenRef.current = Boolean(success);
     } else {
       setSandboxExpanded(false);
-      try {
-        if (document.fullscreenElement && document.exitFullscreen) {
-          await document.exitFullscreen();
-        }
-      } catch {
-        // Safe to ignore exit failure
-      }
+      isNativeFullscreenRef.current = false;
+      await exitFullscreenSafe();
     }
   };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && sandboxExpanded) {
-        setSandboxExpanded(false);
+      const fsEl = getFullscreenElement();
+      if (!fsEl) {
+        if (isNativeFullscreenRef.current || sandboxExpanded) {
+          isNativeFullscreenRef.current = false;
+          setSandboxExpanded(false);
+        }
+      } else {
+        isNativeFullscreenRef.current = true;
+        setSandboxExpanded(true);
       }
     };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+
+    const cleanup = addFullscreenChangeListener(handleFullscreenChange);
+    return cleanup;
   }, [sandboxExpanded]);
+
+  // Clean up native fullscreen on unmount if active
+  useEffect(() => {
+    return () => {
+      if (isNativeFullscreenRef.current) {
+        exitFullscreenSafe();
+      }
+    };
+  }, []);
 
   // Lock background body scroll when fullscreen workspace is active
   useEffect(() => {
