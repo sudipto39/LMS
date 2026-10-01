@@ -1,3 +1,4 @@
+
 # --- Stage 1: Build -----------------------------------------------------------
 FROM node:20-alpine AS builder
 
@@ -29,6 +30,16 @@ WORKDIR /app
 ENV NODE_ENV=production
 # Cloud Run injects PORT=8080 - this sets a safe default
 ENV PORT=8080
+
+# ── Language runtimes for localRunnerService fallback ─────────────────────────
+# Used when Judge0 CE is unreachable or returns Internal Error (status >= 13)
+RUN apk add --no-cache \
+    python3 \
+    gcc \
+    g++ \
+    openjdk17-jre \
+    && ln -sf python3 /usr/bin/python \
+    && rm -rf /var/cache/apk/*
 
 # Install production-only dependencies
 COPY package.json package-lock.json ./
