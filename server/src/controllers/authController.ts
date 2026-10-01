@@ -12,6 +12,7 @@ import {
   storeRefreshToken,
   getStoredRefreshToken,
   matchesRefreshToken,
+  generateSignedCsrfToken,
 } from "../utils/createSendToken.js";
 import { env } from "../config/env.js";
 import { prisma } from "../config/db.js";
@@ -100,7 +101,18 @@ export const refreshToken = catchAsync(
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    res.status(200).json({ status: "success", accessToken });
+    // Issue refreshed double-submit CSRF token
+    const csrfToken = generateSignedCsrfToken();
+    res.cookie("csrfToken", csrfToken, {
+      httpOnly: false,
+      secure: env.NODE_ENV === "production",
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    res.setHeader("X-CSRF-Token", csrfToken);
+
+    res.status(200).json({ status: "success", accessToken, csrfToken });
   }
 );
 

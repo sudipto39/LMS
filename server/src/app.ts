@@ -186,7 +186,8 @@ app.use((req, res, next) => {
   }
 
   const cookieCsrf = req.cookies?.["csrfToken"];
-  const headerCsrf = req.headers["x-csrf-token"];
+  const rawHeaderCsrf = req.headers["x-csrf-token"];
+  const headerCsrf = Array.isArray(rawHeaderCsrf) ? rawHeaderCsrf[0] : rawHeaderCsrf;
 
   // Enforce CSRF token verification whenever csrfToken cookie is present
   if (cookieCsrf) {

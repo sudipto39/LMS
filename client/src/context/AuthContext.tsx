@@ -10,6 +10,7 @@ import {
 import type { User, Role, LoginPayload, RegisterPayload, VerifyEmailPayload } from "../types";
 import { tokenStore, getErrorMessage } from "../api/client";
 import { authApi } from "../api";
+import { setCSRFToken, ensureCSRFToken, clearCSRFToken } from "../utils/security";
 import env from "../config/env";
 
 export const initialMockUsers: User[] = [];
@@ -48,6 +49,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Session Restoration on Mount ───────────────────────────────────────────
   useEffect(() => {
+    // Prime CSRF token handshake in background
+    ensureCSRFToken().catch(() => {});
+
     const restoreSession = async () => {
       try {
         // Attempt silent refresh via HTTP-only cookie only — body/header fallbacks removed (R3 H-01/L-02)
@@ -58,7 +62,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         if (res.ok) {
+          const csrfHeader = res.headers.get("x-csrf-token");
+          if (csrfHeader) {
+            setCSRFToken(csrfHeader);
+          }
+
           const json = await res.json();
+          if (json.csrfToken) {
+            setCSRFToken(json.csrfToken);
+          }
+
           const token = json.accessToken as string;
           if (token) {
             tokenStore.set(token);
@@ -108,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for custom logout events from API client
     const handleRemoteLogout = () => {
       tokenStore.clear();
+      clearCSRFToken();
       sessionStorage.removeItem("giteaforge_rt");
       sessionStorage.removeItem("giteaforge_demo_auth");
       sessionStorage.removeItem("giteaforge_role");
@@ -134,6 +148,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (payload: LoginPayload, selectedRole: Role = "STUDENT") => {
       try {
         const res = await authApi.login(payload);
+        if (res.csrfToken) {
+          setCSRFToken(res.csrfToken);
+        }
         if (res.accessToken) {
           tokenStore.set(res.accessToken);
           if (res.refreshToken) {
@@ -195,6 +212,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (payload: VerifyEmailPayload) => {
       try {
         const res = await authApi.verifyEmail(payload);
+        if (res.csrfToken) {
+          setCSRFToken(res.csrfToken);
+        }
         if (res.accessToken) {
           tokenStore.set(res.accessToken);
           const meRes = await authApi.getMe();

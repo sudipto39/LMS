@@ -43,6 +43,7 @@ export interface AuthResponse {
   message?: string;
   accessToken?: string;
   refreshToken?: string;
+  csrfToken?: string;
   data?: {
     user?: User;
     userId?: string;

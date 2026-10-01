@@ -220,6 +220,7 @@ export const createSendToken = async (
   res.status(statusCode).json({
     status: "success",
     accessToken,
+    csrfToken,
     data: { user },
   });
 };

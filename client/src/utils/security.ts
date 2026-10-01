@@ -1,4 +1,6 @@
 // src/utils/security.ts
+import env from "../config/env";
+
 /**
  * ============================================
  * GiteaForge LMS — Production Security Utilities
@@ -195,14 +197,46 @@ export function resetRateLimit(action: string): void {
 }
 
 // ── CSRF Management ───────────────────────────────────────────────────────────
+const CSRF_STORAGE_KEY = "giteaforge_csrf";
 let _csrfToken: string | null = null;
+let _csrfFetchPromise: Promise<string | null> | null = null;
 
 export function setCSRFToken(token: string): void {
+  if (!token || typeof token !== "string") return;
   _csrfToken = token;
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    try {
+      window.sessionStorage.setItem(CSRF_STORAGE_KEY, token);
+    } catch {
+      // ignore storage quota / restricted iframe errors
+    }
+  }
+}
+
+export function clearCSRFToken(): void {
+  _csrfToken = null;
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    try {
+      window.sessionStorage.removeItem(CSRF_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export function getCSRFToken(): string | null {
   if (_csrfToken) return _csrfToken;
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    try {
+      const stored = window.sessionStorage.getItem(CSRF_STORAGE_KEY);
+      if (stored) {
+        _csrfToken = stored;
+        return _csrfToken;
+      }
+    } catch {
+      // ignore
+    }
+  }
   if (typeof document !== "undefined") {
     const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]*)/);
     if (match && match[1]) {
@@ -211,6 +245,46 @@ export function getCSRFToken(): string | null {
     }
   }
   return _csrfToken;
+}
+
+/**
+ * Ensures a valid CSRF token is available. If missing or forced,
+ * asynchronously handshakes with /api/v1/auth/csrf with credentials.
+ */
+export async function ensureCSRFToken(forceRefresh: boolean = false): Promise<string | null> {
+  if (!forceRefresh) {
+    const existing = getCSRFToken();
+    if (existing) return existing;
+  }
+
+  if (_csrfFetchPromise) {
+    return _csrfFetchPromise;
+  }
+
+  _csrfFetchPromise = (async () => {
+    try {
+      const res = await fetch(`${env.API_BASE_URL}/v1/auth/csrf`, {
+        method: "GET",
+        credentials: "include",
+      });
+      if (res.ok) {
+        const headerToken = res.headers.get("x-csrf-token");
+        const json = await res.json().catch(() => ({}));
+        const token = (json?.csrfToken || headerToken) as string | undefined;
+        if (token) {
+          setCSRFToken(token);
+          return token;
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ CSRF token preflight handshake warning:", err);
+    } finally {
+      _csrfFetchPromise = null;
+    }
+    return getCSRFToken();
+  })();
+
+  return _csrfFetchPromise;
 }
 
 // ── CSV Formula Injection Defense (CWE-1236) ──────────────────────────────────

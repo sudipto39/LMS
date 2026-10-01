@@ -1,6 +1,6 @@
 // src/api/client.ts
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
-import { getCSRFToken, setCSRFToken } from "../utils/security";
+import { getCSRFToken, setCSRFToken, ensureCSRFToken } from "../utils/security";
 import env from "../config/env";
 
 // ── In-Memory Token Store (No Plain Tokens in LocalStorage) ────────────────────
@@ -28,7 +28,7 @@ export const client = axios.create({
 });
 
 // ── Request Interceptor ───────────────────────────────────────────────────────
-client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+client.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   // 1. Attach memory access token if present
   const token = tokenStore.get();
   if (token && config.headers) {
@@ -36,10 +36,15 @@ client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   }
 
   // 2. Attach CSRF token for mutating methods
-  const csrf = getCSRFToken();
   const mutating = ["post", "put", "patch", "delete"];
-  if (csrf && config.headers && mutating.includes(config.method?.toLowerCase() ?? "")) {
-    config.headers["X-CSRF-Token"] = csrf;
+  if (config.headers && mutating.includes(config.method?.toLowerCase() ?? "")) {
+    let csrf = getCSRFToken();
+    if (!csrf) {
+      csrf = await ensureCSRFToken();
+    }
+    if (csrf) {
+      config.headers["X-CSRF-Token"] = csrf;
+    }
   }
 
   return config;
@@ -56,14 +61,43 @@ const processQueue = (token: string) => {
 
 client.interceptors.response.use(
   (response) => {
-    const newCsrf = response.headers["x-csrf-token"];
-    if (newCsrf) setCSRFToken(newCsrf as string);
+    const newCsrf =
+      (typeof response.headers?.get === "function"
+        ? response.headers.get("x-csrf-token")
+        : null) ||
+      response.headers?.["x-csrf-token"] ||
+      response.headers?.["X-CSRF-Token"] ||
+      (response.data as any)?.csrfToken;
+    if (newCsrf && typeof newCsrf === "string") {
+      setCSRFToken(newCsrf);
+    }
     return response;
   },
   async (error: AxiosError) => {
     const original = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
+      _csrfRetry?: boolean;
     };
+
+    // ── Handle CSRF 403 error retry ──
+    const errMessage = (error.response?.data as any)?.message;
+    if (
+      error.response?.status === 403 &&
+      !original?._csrfRetry &&
+      typeof errMessage === "string" &&
+      errMessage.toLowerCase().includes("csrf")
+    ) {
+      original._csrfRetry = true;
+      try {
+        const freshCsrf = await ensureCSRFToken(true);
+        if (freshCsrf && original?.headers) {
+          original.headers["X-CSRF-Token"] = freshCsrf;
+          return client(original);
+        }
+      } catch {
+        // Fall through to reject
+      }
+    }
 
     if (error.response?.status === 401 && !original?._retry) {
       const skipUrls = [
@@ -112,6 +146,14 @@ client.interceptors.response.use(
           }
         );
         const newToken = res.data.accessToken as string;
+        const newCsrf =
+          res.data.csrfToken ||
+          (typeof res.headers?.get === "function" ? res.headers.get("x-csrf-token") : null) ||
+          res.headers?.["x-csrf-token"];
+        if (newCsrf && typeof newCsrf === "string") {
+          setCSRFToken(newCsrf);
+        }
+
         if (res.data.refreshToken && typeof sessionStorage !== "undefined") {
           sessionStorage.setItem("giteaforge_rt", res.data.refreshToken);
         }
