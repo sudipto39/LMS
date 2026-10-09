@@ -471,7 +471,7 @@ export const GradesScreen: React.FC<GradesScreenProps> = ({
 
                     {/* Exp Total (40) */}
                     <td className="p-2 text-center border-r font-mono font-semibold" style={{ borderColor: "var(--bdr)" }}>
-                      {row.experimentsTotal ?? 0}
+                      {Math.round(Number(row.experimentsTotal || 0) * 10) / 10}
                     </td>
 
                     {/* Continuous Viva (10) Input */}
@@ -490,7 +490,7 @@ export const GradesScreen: React.FC<GradesScreenProps> = ({
 
                     {/* Total Internal (50) */}
                     <td className="p-2 text-center border-r font-mono font-bold bg-[#06b6d4]/10 text-[#06b6d4]" style={{ borderColor: "var(--bdr)" }}>
-                      {row.totalInternal ?? 0}
+                      {Math.round(Number(row.totalInternal || 0) * 10) / 10}
                     </td>
 
                     {/* Lab Test / Mini Project (30) Input */}
@@ -523,12 +523,12 @@ export const GradesScreen: React.FC<GradesScreenProps> = ({
 
                     {/* Total End Sem (50) */}
                     <td className="p-2 text-center border-r font-mono font-bold bg-purple-500/10 text-purple-400" style={{ borderColor: "var(--bdr)" }}>
-                      {row.totalEndSem ?? 0}
+                      {Math.round(Number(row.totalEndSem || 0) * 10) / 10}
                     </td>
 
                     {/* Final Grade (100) */}
                     <td className="p-2 text-center border-r font-mono font-black text-[13px] bg-green-500/10 text-green-400" style={{ borderColor: "var(--bdr)" }}>
-                      {row.finalMarks ?? 0}
+                      {Math.round(Number(row.finalMarks || 0) * 10) / 10}
                     </td>
 
                     {/* Action Button */}

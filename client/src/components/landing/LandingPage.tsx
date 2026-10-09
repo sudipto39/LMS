@@ -13,7 +13,6 @@ import {
   Clock,
   Sparkles,
   Zap,
-  Play,
   Check,
   ChevronUp,
 } from "lucide-react";
@@ -27,13 +26,11 @@ import "./landing.css";
 interface LandingPageProps {
   onSignIn: () => void;
   onGetStarted: () => void;
-  onExploreDemo?: (role: "STUDENT" | "SUPERVISOR" | "ADMIN") => void;
 }
 
 export default function LandingPage({
   onSignIn,
   onGetStarted,
-  onExploreDemo,
 }: LandingPageProps) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -529,12 +526,10 @@ export default function LandingPage({
                 <Sparkles size={18} /> Get Started Free
               </button>
               <button
-                onClick={() =>
-                  onExploreDemo ? onExploreDemo("STUDENT") : onSignIn()
-                }
+                onClick={onSignIn}
                 className="btn-lnd btn-lnd--outline btn-lnd--lg"
               >
-                <Play size={16} /> Explore Live Demo
+                Sign In to Portal
               </button>
             </div>
 
@@ -862,12 +857,10 @@ export default function LandingPage({
                 <Sparkles size={18} /> Get Started Free
               </button>
               <button
-                onClick={() =>
-                  onExploreDemo ? onExploreDemo("SUPERVISOR") : onSignIn()
-                }
+                onClick={onSignIn}
                 className="btn-lnd btn-lnd--outline btn-lnd--lg"
               >
-                Explore Supervisor Portal
+                Sign In to Portal
               </button>
             </div>
             <p className="cta-section__note">
@@ -924,7 +917,7 @@ export default function LandingPage({
                 <ul className="lnd-footer__col-links">
                   <li>
                     <button
-                      onClick={() => onExploreDemo?.("STUDENT")}
+                      onClick={onSignIn}
                       className="lnd-footer__link text-left"
                     >
                       Student Portal
@@ -932,7 +925,7 @@ export default function LandingPage({
                   </li>
                   <li>
                     <button
-                      onClick={() => onExploreDemo?.("SUPERVISOR")}
+                      onClick={onSignIn}
                       className="lnd-footer__link text-left"
                     >
                       Supervisor Portal
@@ -940,7 +933,7 @@ export default function LandingPage({
                   </li>
                   <li>
                     <button
-                      onClick={() => onExploreDemo?.("ADMIN")}
+                      onClick={onSignIn}
                       className="lnd-footer__link text-left"
                     >
                       Admin Governance

@@ -121,7 +121,7 @@ const RoleGuard = ({
 };
 
 function MainApp() {
-  const { user, role, isAuthenticated, isLoading, logout, exploreDemo, users, setUsers } =
+  const { user, role, isAuthenticated, isLoading, logout, users, setUsers } =
     useAuth();
   const showToast = useToast();
   const navigate = useNavigate();
@@ -911,9 +911,6 @@ function MainApp() {
           onGetStarted={() => {
             setAuthInitialMode("register");
             setAuthView("auth");
-          }}
-          onExploreDemo={(demoRole) => {
-            exploreDemo(demoRole);
           }}
         />
       );

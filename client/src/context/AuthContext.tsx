@@ -30,7 +30,6 @@ interface AuthContextValue extends AuthState {
   logout: () => Promise<void>;
   setRole: (role: Role) => void;
   updateUser: (user: Partial<User>) => void;
-  exploreDemo: (role: Role) => void;
   users: User[];
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
 }
@@ -305,25 +304,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [users, state.isAuthenticated, state.user?.role]
   );
 
-  const exploreDemo = useCallback(
-    (role: Role) => {
-      sessionStorage.setItem("giteaforge_demo_auth", "true");
-      sessionStorage.setItem("giteaforge_role", role);
-      const targetUser =
-        users.find((u) => u.role === role) ||
-        users[0] ||
-        getFallbackDemoUser(role);
-      setState({
-        user: targetUser,
-        accessToken: null,
-        isAuthenticated: true,
-        isLoading: false,
-        role,
-      });
-    },
-    [users]
-  );
-
   const updateUser = useCallback((updated: Partial<User>) => {
     setState((prev) => {
       if (!prev.user) return prev;
@@ -345,7 +325,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         setRole,
         updateUser,
-        exploreDemo,
         users,
         setUsers,
       }}
