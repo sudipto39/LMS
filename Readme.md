@@ -1,608 +1,393 @@
-# GiteaForge — How to Connect Frontend to Backend (Simple Guide)
+# GiteaForge LMS
 
-> This is a plain English guide for developers. No jargon. Just steps.
+### Sovereign Academic Project Governance, Sandboxed Code Execution & Continuous Practical Evaluation
 
----
-
-## What You Have Right Now
-
-The frontend (this project) is a **complete UI** that currently runs on **fake/mock data**.
-It looks real but doesn't talk to any server yet. All the data you see (users, projects,
-milestones, activity) is hardcoded in `src/data.ts`.
-
-To make it **actually work**, you need 3 things running:
-
-```
-1. MongoDB        — stores all your data (users, projects, etc.)
-2. Express Server — your backend API that the frontend talks to
-3. Gitea Server   — hosts the Git repositories (self-hosted GitHub alternative)
-```
-
-The frontend already has all the API calling code written and ready.
-It just needs a real backend to talk to.
+[![Node.js Version](https://img.shields.io/badge/Node.js-v20%20%7C%20v22-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Express 5](https://img.shields.io/badge/Express-v5.2-000000?logo=express&logoColor=white)](https://expressjs.com/)
+[![React 19](https://img.shields.io/badge/React-v19.2-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-v5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Prisma ORM](https://img.shields.io/badge/Prisma-v7.7-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![Gitea](https://img.shields.io/badge/Gitea-Self--Hosted-609926?logo=gitea&logoColor=white)](https://gitea.io/)
+[![Judge0](https://img.shields.io/badge/Judge0%20CE-Isolated%20Worker-4B5563)](https://judge0.com/)
+[![Tailwind CSS v4](https://img.shields.io/badge/Tailwind-v4.1-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![License](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
 
 ---
 
-## The Big Picture (How It All Connects)
+## Executive Summary
 
-```
-   YOUR BROWSER                YOUR SERVER
-┌────────────────┐       ┌──────────────────┐
-│                │       │                  │
-│  React App     │──────▶│  Express API     │──────▶ MongoDB (data)
-│  (this code)   │ HTTP  │  (you build)     │
-│  Port 5173     │       │  Port 5000       │──────▶ Gitea (repos)
-│                │       │                  │        Port 3000
-└────────────────┘       └──────────────────┘
-```
+Higher education institutions face a systemic crisis in evaluating student computing projects. Fragmented workflows across public code repositories, email chains, and paper marksheet registers create severe vulnerabilities:
 
-- The React app makes HTTP requests (GET, POST, etc.) to the Express server
-- The Express server reads/writes data in MongoDB
-- When a student creates a project, Express also calls Gitea to create a Git repo
-- When someone pushes code to Gitea, Gitea sends a webhook to Express
+1. **Purchased & Outsourced Projects**: Students submit code written off-campus with zero verifiable development history.
+2. **"It Worked on My Machine" Laboratory Disputes**: Discrepancies between student laptops and departmental computers disrupt practical exams.
+3. **Loss of University Intellectual Property**: Student research, code, and project deliverables are leaked to third-party commercial platforms.
+4. **Error-Prone Manual Registers**: Faculty spend hundreds of hours re-tallying continuous assessment marks across physical registers and unstructured spreadsheets.
+
+**GiteaForge LMS** solves this end-to-end. It is a sovereign, institutional-grade Learning Management System that unifies **self-hosted Git repository governance (Gitea)**, **kernel-sandboxed online multi-language code execution (Judge0 CE)**, **phased capstone milestone defenses**, and a **statutory 100-mark Continuous Practical Evaluation Register** with automated one-click export to official Controller of Examinations Excel spreadsheets.
 
 ---
 
-## Step-by-Step Setup
+## Key Capability Pillars
 
-### STEP 1: Install MongoDB
+### 1. Sovereign Git Infrastructure & Telemetry (Gitea Integration)
+- Autonomous private Git repository provisioning the moment a project is approved.
+- Real-time Git push telemetry captured via HMAC-SHA256 signed webhooks.
+- Visual commit streaks, branch inspections, diff views, and line-by-line in-app code reviews.
+- Zero dependency on public commercial Git services; 100% student IP remains on institutional servers.
 
-**Option A: Local install**
-```bash
-# Mac
-brew install mongodb-community
-brew services start mongodb-community
+### 2. In-Browser Sandboxed Code Execution & IDE (Monaco + Judge0 CE)
+- Browser-based development environment powered by the Monaco Editor with zero local machine installation.
+- Containerized execution supporting Python, C++, Java, Go, JavaScript, TypeScript, Rust, and C#.
+- Dual test evaluation: instant execution against public test cases; rigorous grading against hidden test cases with memory and CPU time telemetry.
 
-# Ubuntu/Debian
-sudo apt install mongodb
-sudo systemctl start mongodb
+### 3. Statutory University Continuous Evaluation Register (100 Marks)
+- Fully aligned with university practical examination regulations:
+  $$\text{Continuous Internal (50 Marks)} = \left(\sum_{i=1}^{10} [\text{Notebook}_i (2) + \text{Performance}_i (2)] = 40\right) + \text{Internal Viva} (10)$$
+  $$\text{End-Semester Examination (50 Marks)} = \text{Lab Test} (30) + \text{End-Sem Viva} (20)$$
+  $$\textbf{Total Final Marks} = \text{Continuous Internal} + \text{End-Semester} = \mathbf{100\text{ Marks}}$$
+- Automatic arithmetic aggregation, class average tracking, and one-click export to official `.xlsx` marksheets via ExcelJS.
 
-# Windows
-# Download from https://www.mongodb.com/try/download/community
-```
+### 4. Phased Capstone Lifecycle & Milestone Defense
+- Four-phase progression model: Problem Selection $\rightarrow$ Autonomous Repository Provisioning $\rightarrow$ Phased Milestone Reviews $\rightarrow$ Final Viva & Grade Registration.
+- Enforced hard gates: students cannot advance to subsequent project milestones without supervisor sign-off.
+- Deliverable uploads protected with binary magic-byte inspection, UUID disk isolation, and student notes.
 
-**Option B: Use Docker (easier)**
-```bash
-docker run -d --name mongo -p 27017:27017 mongo:7
-```
+### 5. Multi-Tier Academic Role Governance
+- **Student**: Manages capstone repositories, tracks commit streaks, runs sandboxed code, and submits lab assignments.
+- **Supervisor**: Mentors assigned cohorts, approves milestone gates, reviews line-by-line diffs, and grades practical evaluations.
+- **Administrator**: Governs degree courses, academic batches, CSV roster imports (with CSV formula sanitization), and inspects tamper-evident audit logs.
 
-**Option C: Use MongoDB Atlas (cloud — free tier)**
-- Go to https://cloud.mongodb.com
-- Create a free cluster
-- Get the connection string like: `mongodb+srv://user:pass@cluster.mongodb.net/giteaforge`
+---
 
-**How to verify it works:**
-```bash
-# If installed locally:
-mongosh
-# You should see a prompt. Type "show dbs" to see databases.
+## System Architecture
+
+```mermaid
+flowchart TB
+    subgraph Browser ["Client Application (React 19 SPA)"]
+        SPA["Vite 7 + React 19 UI"]
+        Monaco["Monaco Editor (IDE)"]
+        Excel["ExcelJS Export Engine"]
+    end
+
+    subgraph Gateway ["Express 5.2 API Gateway"]
+        AuthMW["Signed CSRF & Helmet & CORS"]
+        JWTRTR["Dual-Token JWT & Redis RTR Guard"]
+        Router["API Route Controllers"]
+        UploadGuard["Magic-Byte & Traversal Validator"]
+    end
+
+    subgraph CoreServices ["Application Services"]
+        AuthService["Auth & OTP Service"]
+        ProjectService["Capstone Milestone Engine"]
+        GradingService["Automated Lab Test Runner"]
+        EvalService["100-Mark Continuous Assessment"]
+        GiteaClient["Gitea API & Webhook Service"]
+        RunnerService["Judge0 Execution Router"]
+    end
+
+    subgraph DataPlane ["Persistence & Infrastructure"]
+        Postgres[("PostgreSQL 15 (Prisma ORM)")]
+        RedisDB[("Redis 7 (Tokens, RTR, Cache)")]
+        GiteaServer["Self-Hosted Gitea Server"]
+        Judge0Worker["Judge0 CE Isolated Container (cgroups / seccomp)"]
+        FileStore["Storage (Local Disk / AWS S3)"]
+    end
+
+    SPA -->|"HTTPS / REST"| Gateway
+    Gateway --> CoreServices
+    AuthService --> Postgres
+    AuthService --> RedisDB
+    ProjectService --> Postgres
+    GradingService --> Postgres
+    EvalService --> Postgres
+    RunnerService --> Judge0Worker
+    GiteaClient --> GiteaServer
+    UploadGuard --> FileStore
+    GiteaServer -.->|"HMAC-SHA256 Webhook"| Gateway
 ```
 
 ---
 
-### STEP 2: Install Gitea
+## Visual Platform Tour
 
-**Using Docker (recommended):**
-```bash
-docker run -d \
-  --name gitea \
-  -p 3000:3000 \
-  -p 2222:22 \
-  -v gitea_data:/data \
-  gitea/gitea:latest
-```
+### 1. Landing & Academic Project Lifecycle
+The public landing page outlines the complete four-phase capstone lifecycle and platform pillars for university deans, department heads, and students.
 
-**Then set it up:**
-1. Open http://localhost:3000 in your browser
-2. It shows a setup page. Keep defaults, click "Install Gitea"
-3. Create an admin account (remember the username/password)
-4. After login, go to: Settings → Applications → Generate Token
-5. Copy that token — you'll need it later
-6. Create an Organization (e.g., "institute") — this is where all student repos go
+![Platform Landing Page](screenshots/01_landing_page.png)
 
-**How to verify it works:**
-- Open http://localhost:3000 — you should see the Gitea dashboard
+| Workflow & Features | Capability Highlights |
+|---|---|
+| ![Platform Features](screenshots/01b_landing_features.png) | **Six Core Pillars**: Sovereign Git hosting, milestone governance, in-browser code execution, continuous practical evaluation, RBAC, and tamper-evident audit logging. |
+| ![Capstone Workflow](screenshots/01c_landing_workflow.png) | **Hard-Gated Lifecycle**: Problem selection $\rightarrow$ Autonomous repository provisioning $\rightarrow$ Milestone defense $\rightarrow$ Final viva mark registration. |
 
 ---
 
-### STEP 3: Create the Backend (Express Server)
+### 2. Student Dashboard & Project Workspace
+The daily command center for enrolled students, showing live commit counters, upcoming milestone deadlines, and active capstones.
 
-Create a new folder for your backend:
+![Student Dashboard](screenshots/02_student_dashboard.png)
 
+| View | Description |
+|---|---|
+| ![Student Projects](screenshots/03_student_projects.png) | **Project Portfolio**: Multi-project oversight with status tags, supervisor badges, and quick links to the project command center. |
+| ![Project Detail View](screenshots/04_project_detail_view.png) | **Project Command Center**: Consolidated tabs for repository overview, progress telemetry, milestones, files, and sandboxed code. |
+| ![Milestones Screen](screenshots/05_project_milestones.png) | **Phase-Gated Milestones**: Due dates, deliverable uploads, commit references, and supervisor feedback history. |
+
+---
+
+### 3. Laboratory Curriculum & In-Browser Code Sandbox
+Departmental lab portal organizing experiments by degree course and batch, coupled with an in-browser development IDE.
+
+![Code Sandbox IDE](screenshots/07_code_sandbox_ide.png)
+
+| Screen | Description |
+|---|---|
+| ![Lab Assignments](screenshots/06_lab_assignments.png) | **Curriculum Portal**: Batch-scoped practical experiments with mark allocations, faculty manual downloads, and coding submissions. |
+| ![Problem Statement Bank](screenshots/08_problem_statements.png) | **Problem Statement Bank**: Curated catalogue classified by domain (AI/ML, Cyber Security, Cloud, Web3), difficulty, and prerequisites. |
+
+---
+
+### 4. Continuous Practical Evaluation & Faculty Governance
+Faculty control center for reviewing pending submissions, grading rubrics, and managing the official 100-mark statutory practical evaluation register.
+
+![Continuous Evaluation Register](screenshots/10_grades_evaluation_register.png)
+
+| Screen | Description |
+|---|---|
+| ![Supervisor Dashboard](screenshots/09_supervisor_dashboard.png) | **Faculty Dashboard**: Assigned project roster, pending-review queues, upcoming defenses, and recent student activities. |
+| ![Pending Reviews Queue](screenshots/10b_pending_reviews.png) | **Review Queue**: Batch inspection of milestone deliverables, code commit references, inline feedback, and approvals. |
+
+---
+
+### 5. Institutional Administration & Infrastructure Health
+University administrator governance dashboard with telemetry across users, degree courses, academic cohorts, and self-hosted Gitea clusters.
+
+![Admin Governance Dashboard](screenshots/11_admin_governance_dashboard.png)
+
+| Screen | Description |
+|---|---|
+| ![Batches & Courses](screenshots/12_batches_and_courses.png) | **Degree Courses & Cohorts**: Academic batch lifecycle management, course codes, and enrollment rosters. |
+| ![Users & Roles](screenshots/12b_users_and_roles.png) | **User Management**: Multi-tier role governance (`STUDENT`, `SUPERVISOR`, `ADMIN`) with CSV roster import. |
+| ![Gitea Config](screenshots/13_gitea_infrastructure_config.png) | **Infrastructure Health**: Live connection status, webhook latency, and repository provisioning controls. |
+| ![Audit Logs](screenshots/14_audit_security_logs.png) | **Security Audit Logs**: Tamper-evident record of grading events, milestone rejections, and administrative updates. |
+
+---
+
+## Technology Stack
+
+| Layer | Technologies |
+|---|---|
+| **Frontend SPA** | React 19.2, TypeScript 5.9, Vite 7.3, Tailwind CSS v4, Lucide React, Framer Motion (`motion`) |
+| **Document & Excel Engine** | ExcelJS, SheetJS (`xlsx`), Mammoth, docx-preview, Canvas Confetti |
+| **Backend API Gateway** | Node.js (v20+), Express 5.2, TypeScript 5.9 (ESM), Helmet 8, CORS, Compression, Morgan |
+| **Data & ORM** | PostgreSQL 15, Prisma ORM 7.7 (`@prisma/adapter-pg`, `pg`), Connection Pooling |
+| **In-Memory Cache & Sessions** | Redis 7 (`ioredis`) for Refresh Token Rotation (RTR) and Rate Limiting |
+| **Version Control Service** | Self-Hosted Gitea Server, Gitea REST API v1, HMAC-SHA256 Webhooks |
+| **Code Execution Sandbox** | Judge0 CE (Containerized with cgroups & seccomp) + Fallback `LocalRunnerService` |
+| **Storage & Uploads** | Multer, UUID disk storage, binary magic-byte validation, AWS SDK v3 (`@aws-sdk/client-s3`) |
+| **Email & Notifications** | Nodemailer (SMTP / Gmail App Passwords), Resend API |
+| **Documentation & Quality** | OpenAPI 3.0 / Swagger UI (`/api-docs`), Jest, ts-jest, Supertest, ESLint 10, Autocannon |
+
+---
+
+## Repository Structure
+
+```
+LMS/
+├── client/                     # React 19 + Vite 7 + Tailwind CSS v4 SPA
+│   ├── src/
+│   │   ├── api/                # Modular Axios API services (auth, projects, labs, evaluations)
+│   │   ├── components/         # Common UI, Auth containers, Modals, Landing views
+│   │   ├── context/            # AuthContext, ThemeContext, ToastContext
+│   │   ├── screens/            # Full-page screens (Dashboards, Grades, Sandbox, Labs, Batches)
+│   │   │   └── project/        # Capstone command center (Overview, Progress, Milestones, Sandbox)
+│   │   └── utils/              # Excel export engine & CSV formula injection sanitizer
+│   ├── README.md               # Frontend developer guide
+│   └── vite.config.ts
+├── server/                     # Express 5 + TypeScript + Prisma ORM + PostgreSQL Backend
+│   ├── prisma/
+│   │   ├── schema.prisma       # Prisma data model definitions
+│   │   └── seed.ts             # University, course, batch, and user seed scripts
+│   ├── src/
+│   │   ├── config/             # DB, Redis, Gitea, and Zod env configuration
+│   │   ├── controllers/        # Express route handlers
+│   │   ├── middlewares/        # Auth, CSRF, Multer magic-byte, and error handling
+│   │   ├── routes/             # REST API endpoint definitions
+│   │   ├── services/           # Gitea client, Judge0 runner, grading engine, email service
+│   │   └── __tests__/          # Jest unit and integration test suites
+│   ├── docs/
+│   │   ├── API.md              # Complete REST API specification
+│   │   └── Readme.md           # Backend developer documentation
+│   └── Dockerfile              # Production container build definition
+├── docs/
+│   ├── ARCHITECTURE.md         # In-depth architectural specifications & threat model
+│   └── DEPLOYMENT.md           # Production deployment guide (Docker Compose, Nginx, SSL)
+├── screenshots/                # High-resolution platform UI captures
+├── docker-compose.self-hosted.yml # Full on-premise production stack (PG, Redis, Gitea, Judge0)
+├── docker-compose.gcp-vm.yml   # Hybrid cloud VM stack (Gitea + Judge0)
+└── Readme.md                   # Project master README
+```
+
+---
+
+## Quickstart & Local Setup
+
+### Prerequisites
+- **Node.js**: v20 or v22
+- **npm**: v10+
+- **Docker & Docker Compose**: (Required for PostgreSQL, Redis, Gitea, Judge0)
+
+### 1. Clone the Repository
 ```bash
-mkdir giteaforge-backend
-cd giteaforge-backend
-npm init -y
+git clone https://github.com/sudipto39/LMS.git
+cd LMS
 ```
 
-Install packages:
+### 2. Start Supporting Infrastructure (Docker)
+Start PostgreSQL and Redis locally:
 ```bash
-npm install express mongoose dotenv cors helmet morgan
-npm install bcryptjs jsonwebtoken
-npm install express-validator
-npm install multer
-npm install axios
-npm install uuid slugify
-npm install -D nodemon
+docker compose -f docker-compose.self-hosted.yml up -d lms-postgres lms-redis
 ```
 
-Create a `.env` file:
-```env
-PORT=5000
-MONGODB_URI=mongodb://localhost:27017/giteaforge
-JWT_SECRET=pick-a-long-random-string-here-abc123xyz
-JWT_EXPIRES_IN=24h
-GITEA_BASE_URL=http://localhost:3000
-GITEA_ADMIN_TOKEN=paste-your-gitea-token-here
-GITEA_ORG_NAME=institute
-FRONTEND_URL=http://localhost:5173
-```
-
-Create the main server file `index.js`:
-```javascript
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-require('dotenv').config();
-
-const app = express();
-
-// Allow frontend to talk to this server
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
-app.use(express.json());
-
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
-// Your routes will go here
-// app.use('/api/auth', require('./routes/auth'));
-// app.use('/api/projects', require('./routes/projects'));
-// ... etc
-
-// Test route
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'GiteaForge API is running' });
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
-```
-
-Add to `package.json` scripts:
-```json
-"scripts": {
-  "start": "node index.js",
-  "dev": "nodemon index.js"
-}
-```
-
-Start it:
+### 3. Setup and Run the Backend Server
 ```bash
+cd server
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your PostgreSQL credentials, JWT secrets, etc.
+
+# Initialize database schema and generate Prisma client
+npm run db:migrate
+npm run db:seed
+
+# Start development server
 npm run dev
 ```
+The API server will run on `http://localhost:5000` (API documentation accessible at `http://localhost:5000/api-docs`).
 
-**How to verify it works:**
-- Open http://localhost:5000/api/health
-- You should see: `{"status":"ok","message":"GiteaForge API is running"}`
-
----
-
-### STEP 4: Connect Frontend to Backend
-
-In the frontend project (this project), the `.env` file already has:
-```
-VITE_API_BASE_URL=http://localhost:5000/api
-```
-
-That's it. The frontend is already configured to talk to `localhost:5000`.
-
-**What's already done for you in the frontend:**
-
-| File | What it does |
-|------|-------------|
-| `src/api/client.ts` | Sets up HTTP requests, automatically adds the login token to every request |
-| `src/api/auth.ts` | Functions to call login, register, logout endpoints |
-| `src/api/projects.ts` | Functions to call all project-related endpoints |
-| `src/api/users.ts` | Functions to call user management endpoints |
-| `src/api/gitea.ts` | Functions to call Gitea-related endpoints |
-| `src/api/admin.ts` | Functions to call admin endpoints |
-| `src/hooks/useAuth.ts` | React hook for login/logout state |
-| `src/hooks/useAPI.ts` | React hook for loading data with loading/error states |
-
----
-
-### STEP 5: Build Backend Routes (What the Backend Dev Needs to Do)
-
-The backend developer needs to create API endpoints that match what the frontend expects.
-Here's exactly what each endpoint should do:
-
-#### 5A. Authentication Routes
-
-**POST /api/auth/login**
-- Frontend sends: `{ email: "rahul@ignou.ac.in", password: "mypassword" }`
-- Backend should:
-  1. Find user in MongoDB by email
-  2. Check if password matches (use bcryptjs to compare)
-  3. Create a JWT token
-  4. Send back: `{ token: "jwt...", refreshToken: "...", user: { _id, name, email, role } }`
-
-**POST /api/auth/register**
-- Frontend sends: `{ name, email, password, role, enrollmentId, department, batch }`
-- Backend should:
-  1. Check email doesn't already exist
-  2. Hash the password with bcryptjs
-  3. Save user to MongoDB
-  4. Send back: `{ message: "Account created", user: {...} }`
-
-**GET /api/auth/me**
-- Frontend sends: JWT token in header (automatic — client.ts does this)
-- Backend should:
-  1. Verify the JWT token
-  2. Find the user in MongoDB
-  3. Send back the user object (without password)
-
-**POST /api/auth/logout**
-- Frontend sends: `{ refreshToken }`
-- Backend should: remove that refresh token from the user's stored tokens
-
-#### 5B. Project Routes
-
-**GET /api/projects**
-- Automatically filters by role:
-  - If student: only return their projects
-  - If professor: only return projects assigned to them
-  - If admin: return all projects
-- Supports query params: `?status=in_progress&batch=BCA-2024&page=1&limit=20`
-- Send back: `{ data: [...projects], total: 5, page: 1, totalPages: 1 }`
-
-**POST /api/projects**
-- Frontend sends: `{ title, description, batch, course, professorId, techStack, repoOption }`
-- Backend should:
-  1. Save project to MongoDB
-  2. If `repoOption === 'create_new'`:
-     - Call Gitea API to create a private repo
-     - Add student as collaborator (write access)
-     - Add professor as collaborator (read access)
-     - Save repo URL back to the project
-  3. Send back the created project
-
-**GET /api/projects/:id**
-- Find project by ID, populate student and professor names
-- Send back the project object
-
-**POST /api/projects/:id/submit**
-- Change project status to "submitted"
-- Set submittedAt timestamp
-
-**POST /api/projects/:id/approve**
-- Professor approves. Change status to "approved"
-- Optionally save grade and comment
-
-**POST /api/projects/:id/reject**
-- Professor rejects. Change status to "rejected"
-- Save the rejection comment
-
-#### 5C. Milestone Routes
-
-**GET /api/projects/:id/milestones**
-- Return all milestones for that project
-
-**POST /api/projects/:id/milestones**
-- Create a new milestone: `{ title, description, dueDate, order }`
-
-**POST /api/projects/:id/milestones/:mid/complete**
-- Student marks as completed (status → "completed", set completedAt)
-
-**POST /api/projects/:id/milestones/:mid/approve**
-- Professor approves milestone (status → "approved")
-
-**POST /api/projects/:id/milestones/:mid/reject**
-- Professor rejects milestone (status → "rejected", save comment)
-
-#### 5D. Feedback Routes
-
-**GET /api/projects/:id/feedback**
-- Return all comments for that project, sorted by date
-
-**POST /api/projects/:id/feedback**
-- Add a comment: `{ content: "Great work on..." }`
-- Save who wrote it (from JWT token)
-
-#### 5E. File Upload Routes
-
-**POST /api/projects/:id/files**
-- Accept file upload (use multer middleware)
-- Save file to `./uploads/` folder
-- Save file info to MongoDB (name, size, type, path)
-
-**GET /api/projects/:id/files**
-- Return list of uploaded files for that project
-
-#### 5F. User Management Routes (Admin only)
-
-**GET /api/users**
-- Return all users (paginated)
-- Support filters: `?role=student&batch=BCA-2024`
-
-**POST /api/users**
-- Admin creates a user
-- Optionally create matching Gitea account
-
-**POST /api/users/bulk-import**
-- Accept CSV file upload
-- Parse CSV and create users in bulk
-
-#### 5G. Gitea Routes
-
-**GET /api/gitea/repos/:owner/:repo/commits**
-- Backend calls Gitea API: `GET /api/v1/repos/:owner/:repo/commits`
-- Forward the response to the frontend
-
-**POST /api/webhooks/gitea**
-- Gitea calls this when someone pushes code
-- Verify the webhook signature
-- Save the push event to MongoDB
-- Update the project's `lastPush` timestamp
-
-#### 5H. Admin Routes
-
-**GET /api/admin/dashboard**
-- Return counts: total users, projects, active projects, etc.
-
-**GET /api/admin/batches**
-- Return all batches
-
-**POST /api/admin/batches**
-- Create a new batch
-
-**GET /api/admin/audit-logs**
-- Return system logs (who did what, when)
-
----
-
-### STEP 6: Replace Mock Data with Real API Calls
-
-Once the backend is running, you need to change the frontend screens to use
-real data instead of mock data. Here's how:
-
-**Current code (using fake data):**
-```typescript
-// In StudentDashboard component
-import { mockProjects } from '@/data';
-
-function StudentDashboard() {
-  const studentProjects = mockProjects.filter(p => p.studentId === 'u1');
-  return <ProjectTable projects={studentProjects} />;
-}
-```
-
-**Change it to (using real API):**
-```typescript
-// In StudentDashboard component
-import { useAPI } from '@/hooks/useAPI';
-import { projectsAPI } from '@/api';
-
-function StudentDashboard() {
-  const { data, loading, error } = useAPI(
-    () => projectsAPI.getAll({ status: 'in_progress' })
-  );
-
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
-
-  return <ProjectTable projects={data.data} />;
-}
-```
-
-**For the login page, change:**
-```typescript
-// Current: just sets a role and navigates
-const handleLogin = (role) => { setRole(role); setPage('dashboard'); };
-
-// Change to: actually call the API
-import { useAuth } from '@/hooks/useAuth';
-
-function Login() {
-  const { login, isLoading, error } = useAuth();
-
-  const handleSubmit = async () => {
-    try {
-      const user = await login(email, password);
-      // user.role will be 'student', 'professor', or 'admin'
-      // Navigate to the right dashboard
-    } catch (err) {
-      // Show error message
-    }
-  };
-}
-```
-
-**Do this screen by screen:**
-1. Start with Login (most important — everything else needs auth)
-2. Then Dashboard (GET /api/projects)
-3. Then Create Project (POST /api/projects)
-4. Then Project Detail (GET /api/projects/:id)
-5. Then everything else
-
----
-
-### STEP 7: Set Up the Gitea Webhook
-
-This makes it so the system knows when a student pushes code.
-
-1. In your backend, create a route: `POST /api/webhooks/gitea`
-2. In Gitea, go to the Organization → Settings → Webhooks → Add Webhook
-3. Set the URL to: `http://your-server:5000/api/webhooks/gitea`
-4. Set Content Type to: `application/json`
-5. Set a Secret (same as your GITEA_WEBHOOK_SECRET in .env)
-6. Select events: Push, Create, Pull Request
-7. Click "Add Webhook"
-
-Now when anyone pushes code, Gitea will call your backend, and your backend
-can save the push event and update the project's "last push" time.
-
----
-
-### STEP 8: Deploy Everything
-
-For a college/institute server, the simplest setup:
-
-**Using Docker Compose (recommended):**
-
-Create a `docker-compose.yml`:
-```yaml
-version: '3.8'
-services:
-  mongo:
-    image: mongo:7
-    volumes:
-      - mongo_data:/data/db
-    ports:
-      - "27017:27017"
-
-  gitea:
-    image: gitea/gitea:latest
-    volumes:
-      - gitea_data:/data
-    ports:
-      - "3000:3000"
-      - "2222:22"
-
-  backend:
-    build: ./giteaforge-backend
-    environment:
-      - MONGODB_URI=mongodb://mongo:27017/giteaforge
-      - GITEA_BASE_URL=http://gitea:3000
-    ports:
-      - "5000:5000"
-    depends_on:
-      - mongo
-      - gitea
-
-  frontend:
-    build: ./giteaforge-frontend
-    ports:
-      - "80:80"
-
-volumes:
-  mongo_data:
-  gitea_data:
-```
-
-Then just run:
+### 4. Setup and Run the Frontend Client
+Open a second terminal:
 ```bash
-docker-compose up -d
+cd client
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+
+# Start Vite development server
+npm run dev
 ```
-
-Everything starts up and connects to each other automatically.
-
-**Put an Nginx reverse proxy in front for HTTPS:**
-- `projects.college.edu` → frontend (port 80)
-- `projects.college.edu/api` → backend (port 5000)
-- `git.college.edu` → Gitea (port 3000)
+Open `http://localhost:5173` in your browser.
 
 ---
 
-## Quick Reference: What Calls What
+## Configuration Reference
 
+### Backend Environment Variables (`server/.env`)
+
+| Variable | Description | Default / Example |
+|---|---|---|
+| `NODE_ENV` | Runtime environment (`development`, `production`, `test`) | `development` |
+| `PORT` | HTTP server port | `5000` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/lms_db` |
+| `REDIS_URL` | Redis connection string for session & token tracking | `redis://localhost:6379` |
+| `STORAGE_TYPE` | Storage engine (`local` for on-premise disk, `s3` for AWS) | `local` |
+| `UPLOAD_DIR` | Local disk upload directory (zero cloud cost) | `uploads` |
+| `JWT_ACCESS_SECRET` | Secret key for signing 15-minute access JWTs (min 32 chars) | `openssl rand -base64 48` |
+| `JWT_REFRESH_SECRET` | Secret key for signing 7-day refresh JWTs (min 32 chars) | `openssl rand -base64 48` |
+| `CLIENT_URL` | Allowed frontend origins for CORS | `http://localhost:5173` |
+| `GITEA_BASE_URL` | Self-hosted Gitea API gateway URL | `http://localhost:3000/api/v1` |
+| `GITEA_WEBHOOK_SECRET` | Secret key for verifying inbound Gitea webhooks | `your-webhook-secret` |
+| `GITEA_ADMIN_TOKEN` | Administrative API token for provisioning repos/users | `your-gitea-token` |
+| `JUDGE0_URL` | Judge0 CE code execution gateway | `http://localhost:2358` |
+| `EMAIL_VERIFICATION` | Enforce 6-digit OTP verification upon registration | `false` |
+| `SMTP_HOST` / `SMTP_USER` | SMTP server credentials for free email dispatch | `smtp.gmail.com` |
+
+---
+
+## Production Deployment
+
+### On-Premise University Server (Ubuntu)
+GiteaForge is fully packaged for single-node on-premise deployment via `docker-compose.self-hosted.yml`, orchestrating:
+1. `lms-postgres` (PostgreSQL 15)
+2. `lms-redis` (Redis 7)
+3. `lms-gitea` (Gitea Server)
+4. `judge0-server` (Judge0 API Gateway)
+5. `judge0-worker` (Privileged execution container with cgroups)
+6. `judge0-redis` & `judge0-postgres`
+
+```bash
+# Start all infrastructure containers
+docker compose -f docker-compose.self-hosted.yml up -d
+
+# Build and start server via PM2
+cd server && npm ci && npm run db:migrate:prod && npm run build
+pm2 start dist/index.js --name "giteaforge-api"
+
+# Build client
+cd ../client && npm ci && npm run build
 ```
-FRONTEND                    BACKEND                     DATABASE/GITEA
-────────                    ───────                     ──────────────
 
-User clicks "Login"    →    POST /api/auth/login    →   Check MongoDB users
-                       ←    { token, user }         ←   Return user data
+For complete step-by-step reverse proxy, SSL, and backup guides, refer to [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-User opens Dashboard   →    GET /api/projects       →   Query MongoDB projects
-                       ←    { data: [...] }         ←   Return filtered list
+---
 
-Student creates project →   POST /api/projects      →   Save to MongoDB
-                                                    →   Call Gitea: create repo
-                       ←    { project with repo }   ←   Return created project
+## Security & Regulatory Compliance
 
-Student pushes code    →    (goes to Gitea directly via git push)
-Gitea sends webhook    →    POST /api/webhooks/gitea →  Save push event to MongoDB
-                                                    →   Update project.lastPush
+GiteaForge LMS incorporates defense-in-depth security standards:
 
-Professor opens project →   GET /api/projects/:id   →   Query MongoDB
-                       ←    { project details }     ←   Return project
+- **Double-Submit Signed CSRF**: Cryptographically signed HMAC-SHA256 tokens validating all mutating HTTP requests.
+- **Refresh Token Rotation (RTR)**: Single-use refresh tokens with Redis revocation lists to prevent token theft and replay attacks.
+- **Sandboxed Code Execution**: Kernel-level cgroup and seccomp containerization isolating untrusted student code from the host system.
+- **Upload Hardening**: Randomized UUID filenames, binary magic-byte inspection, strict MIME allowlisting, and traversal guards (`path.basename()`).
+- **CSV Formula Injection Sanitization**: Client and server-side filtering (`sanitizeCsvCell`) protecting faculty spreadsheets from malicious formula injection (`=cmd|'...'`).
+- **Accreditation Ready**: Comprehensive audit logs and tamper-evident grade records meeting **NAAC**, **NBA**, and **ABET** continuous assessment documentation standards.
 
-Professor approves     →    POST /api/projects/:id/approve → Update MongoDB
-                       ←    { updated project }     ←   Return updated project
+For full threat modeling and vulnerability review, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## Testing & Quality Assurance
+
+```bash
+# Execute Jest unit and integration tests
+cd server
+npm run test
+
+# Run HTTP endpoint smoke tests
+npm run test:smoke
+
+# Run Autocannon concurrency & throughput stress test
+npm run test:stress
+
+# Run realistic academic session simulation
+npm run test:realistic
+
+# Validate TypeScript type safety
+npm run type-check
 ```
 
 ---
 
-## Common Mistakes to Avoid
+## Documentation Links
 
-1. **CORS errors**: Make sure your backend has `cors({ origin: 'http://localhost:5173' })`
-2. **JWT not sent**: The frontend client (`src/api/client.ts`) automatically adds it — just make sure you store the token in localStorage after login
-3. **Gitea connection fails**: Make sure the Gitea URL in your .env is reachable from the backend server (not from the browser)
-4. **Webhook not working**: The webhook URL must be reachable by the Gitea server (use internal network IP, not localhost if they're on different machines)
-5. **File uploads fail**: Make sure the `uploads/` folder exists and has write permissions
-6. **MongoDB connection string**: If using Docker, use the container name (`mongo`) not `localhost`
-
----
-
-## Files You Don't Need to Touch
-
-These frontend files are already done and work:
-- `src/api/*` — All API service files (ready to call your backend)
-- `src/hooks/*` — React hooks for auth and data fetching
-- `src/components/*` — All UI components
-- `.env` — Already configured for localhost:5000
+- [Complete REST API Specification](server/docs/API.md)
+- [System Architecture & Threat Model](docs/ARCHITECTURE.md)
+- [Production Deployment Guide](docs/DEPLOYMENT.md)
+- [Backend Engineering Guide](server/docs/Readme.md)
+- [Frontend Client Documentation](client/README.md)
 
 ---
 
-## Files the Backend Dev Needs to Create
+## License
 
-```
-giteaforge-backend/
-├── index.js              ← Main server file
-├── .env                  ← Environment variables
-├── package.json          ← Dependencies
-├── models/
-│   ├── User.js           ← User schema (name, email, password, role)
-│   ├── Project.js        ← Project schema (title, status, repo info)
-│   ├── Milestone.js      ← Milestone schema (title, due date, status)
-│   ├── Feedback.js       ← Comment schema (author, content)
-│   ├── PushEvent.js      ← Webhook data (commits, branch)
-│   └── AuditLog.js       ← System logs
-├── routes/
-│   ├── auth.js           ← Login, register, logout
-│   ├── projects.js       ← CRUD + milestones + feedback
-│   ├── users.js          ← User management (admin)
-│   ├── gitea.js          ← Gitea proxy routes
-│   ├── admin.js          ← Admin dashboard, batches
-│   └── webhooks.js       ← Gitea webhook receiver
-├── middleware/
-│   ├── auth.js           ← JWT verification
-│   └── roleGuard.js      ← Role checking
-├── services/
-│   └── giteaService.js   ← Gitea API wrapper (axios calls)
-└── uploads/              ← Uploaded files go here
-```
-
----
-
-## That's It!
-
-The order to build things:
-1. MongoDB + basic Express server (30 min)
-2. User model + auth routes (login/register) (2 hours)
-3. Project model + CRUD routes (2 hours)
-4. Connect frontend login to real API (30 min)
-5. Connect frontend dashboard to real API (1 hour)
-6. Gitea integration (2 hours)
-7. Webhooks (1 hour)
-8. File uploads (1 hour)
-9. Admin routes (2 hours)
-10. Testing and bug fixes (ongoing)
-
-Total estimated time for a backend dev: **2-3 days** for a working prototype.
-
-The detailed technical docs with all schemas, controller code, and Gitea service
-code are in `BACKEND_API_DOCS.md`.
+This project is licensed under the [ISC License](LICENSE).  
+Developed by **Sudipto Gayen** and contributors.

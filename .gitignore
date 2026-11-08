@@ -48,7 +48,9 @@ lms.pem
 uploads
 
 # Proposal/report artifacts
-screenshots/
 build_word_proposal.py
 university_proposal.html
 GiteaForge_LMS_University_Implementation_Proposal.*
+
+# Audit outputs
+audits/

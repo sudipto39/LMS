@@ -9,7 +9,7 @@
 
 1. [Overview](#overview)
 2. [Base URL & Versioning](#base-url--versioning)
-3. [Authentication](#authentication)
+3. [Authentication & Security](#authentication)
 4. [Rate Limiting](#rate-limiting)
 5. [Error Model](#error-model)
 6. [Resources](#resources)
@@ -17,17 +17,22 @@
    - [Auth](#auth)
    - [Users](#users)
    - [Courses](#courses)
+   - [Batches & Rosters](#batches)
    - [Projects](#projects)
-   - [Milestones](#milestones)
+   - [Milestones & Rubrics](#milestones)
    - [Supervisors](#supervisors)
    - [Admin](#admin)
    - [Activities](#activities)
    - [Gitea (Repository Proxy)](#gitea-repository-proxy)
    - [Webhooks](#webhooks)
-7. [File Uploads](#file-uploads)
-8. [Role Reference](#role-reference)
-9. [Data Models](#data-models)
-10. [Known Caveats & Likely Bugs](#known-caveats--likely-bugs)
+   - [Code Execution & Sandbox](#code-execution--sandbox)
+   - [Lab Assignments & Autograding](#lab-assignments--autograding)
+   - [Problem Statement Bank](#problem-statement-bank)
+   - [Continuous Evaluation Register](#continuous-evaluation-register)
+   - [File Storage & Presigned URLs](#file-storage--presigned-urls)
+7. [Role-Based Access Control](#role-reference)
+8. [Data Models](#data-models)
+9. [Security Hardening & Mitigations](#security-hardening--mitigations)
 
 ---
 
@@ -1169,33 +1174,254 @@ Receives push event webhooks from Gitea. **Not authenticated via JWT.**
 
 ---
 
-## File Uploads
+### Batches
 
-File uploads are handled by [Multer](https://github.com/expressjs/multer) on the `PATCH /milestones/:id/submit` endpoint.
+Mounted at `/api/v1/batches`.
 
-| Property | Value |
-|---|---|
-| Field name | `files` (array) |
-| Max files | 5 |
-| Max file size | 5 MB per file |
-| Allowed MIME types | `application/pdf`, `image/jpeg`, `image/png` |
-| Storage | Local disk — `uploads/` directory |
-| Filename | `<timestamp>-<random>.<ext>` |
-| Public URL | `GET /uploads/<filename>` |
+#### `GET /batches/courses`
+Public endpoint returning active courses with id, code, title, and duration for registration dropdowns.
 
-> ⚠️ **Known issue:** File paths are not persisted to the database. After upload, there is no way to retrieve which files were attached to a milestone via the API. This is a significant gap in the implementation.
+#### `GET /batches/courses/:courseId/batches`
+Public endpoint returning active batches for a given course ID for registration dropdowns.
+
+#### `GET /batches`
+Returns all batches with course details and enrolled student counts. Requires authentication (`STUDENT`, `SUPERVISOR`, `ADMIN`).
+
+#### `POST /batches`
+Creates an academic batch cohort. Requires `ADMIN`.
+- **Request Body:** `{ name: string, courseId: string, startYear: number, endYear: number }`
+
+#### `DELETE /batches/:id`
+Deletes a batch. Requires `ADMIN`.
+
+#### `GET /batches/:id/students`
+Returns student roster for a specific batch. Requires `ADMIN`.
+
+#### `POST /batches/:id/students`
+Enrolls a student into a batch. Requires `ADMIN`.
+- **Request Body:** `{ userId: string }`
+
+#### `DELETE /batches/:id/students/:userId`
+Removes a student from a batch cohort. Requires `ADMIN`.
+
+---
+
+### Code Execution & Sandbox
+
+Mounted at `/api/v1/execute`. Requires authenticated and email-verified user (`protect`, `requireVerifiedEmail`).
+
+#### `POST /execute`
+Executes code inside an ephemeral sandbox container (Judge0 CE) or fallback sandbox runner.
+- **Request Body:**
+```json
+{
+  "language": "python",
+  "sourceCode": "print('Hello, GiteaForge!')",
+  "stdin": ""
+}
+```
+- **Supported Languages:** `python`, `javascript`, `typescript`, `cpp`, `c`, `java`, `go`, `rust`, `csharp`.
+- **Response `200`:**
+```json
+{
+  "status": "success",
+  "data": {
+    "stdout": "Hello, GiteaForge!\n",
+    "stderr": null,
+    "compile_output": null,
+    "status": { "id": 3, "description": "Accepted" },
+    "time": "0.024",
+    "memory": 3120
+  }
+}
+```
+
+#### `GET /execute/languages`
+Returns list of all supported programming languages, compiler versions, and Judge0 language IDs.
+
+#### `GET /execute/templates/:language`
+Returns starter boilerplate code template for the specified programming language.
+
+---
+
+### Lab Assignments & Autograding
+
+Mounted at `/api/v1/lab-assignments`. Requires authenticated and email-verified user.
+
+#### `GET /lab-assignments`
+Lists lab assignments filtered by the current user's batch and role. Students see assignments for their enrolled batch.
+
+#### `GET /lab-assignments/:id`
+Retrieves single assignment details. Student view automatically strips hidden test cases; supervisors/admins see all rubrics and test definitions.
+
+#### `POST /lab-assignments/:id/run`
+Runs code against public test cases only without submitting.
+- **Request Body:** `{ code: string, language: string }`
+
+#### `POST /lab-assignments/:id/submit`
+Submits source code for official evaluation against both public and hidden test cases. Evaluates test scores, memory, and runtime.
+- **Request Body:** `{ code: string, language: string }`
+
+#### `POST /lab-assignments/:id/submit-report`
+Submits a PDF lab report / documentation deliverable via `multipart/form-data`.
+- **Form Data:** `file` (PDF, max 10MB), `studentNotes` (optional).
+
+#### `POST /lab-assignments/:id/request-reupload`
+Student requests permission to resubmit an evaluated or locked lab assignment.
+- **Request Body:** `{ reason: string }`
+
+#### `PATCH /lab-assignments/submissions/:submissionId/reupload-permission`
+Supervisor or Admin reviews student resubmission request (`APPROVED` or `REJECTED`).
+- **Request Body:** `{ status: "APPROVED" | "REJECTED", notes?: string }`
+
+#### `POST /lab-assignments`
+Creates a new laboratory experiment. Requires `SUPERVISOR` or `ADMIN`.
+- **Request Body:**
+```json
+{
+  "title": "Implementation of Dijkstra Algorithm",
+  "objective": "Graph traversal and shortest path computation",
+  "description": "Implement Dijkstra using a min-heap priority queue...",
+  "subject": "Data Structures & Algorithms",
+  "batchId": "cuid...",
+  "submissionType": "CODING",
+  "language": "cpp",
+  "starterCode": "#include <iostream>...",
+  "testCases": [
+    { "input": "5 6\n1 2 2...", "expectedOutput": "0 2 3...", "isHidden": false, "weight": 20 }
+  ],
+  "timeLimit": 2.0,
+  "memoryLimit": 128000,
+  "totalPoints": 100,
+  "dueDate": "2026-12-15T23:59:59Z"
+}
+```
+
+#### `PATCH /lab-assignments/:id`
+Updates assignment details, dates, or test cases. Requires `SUPERVISOR` or `ADMIN`.
+
+#### `DELETE /lab-assignments/:id`
+Deletes an assignment. Requires `SUPERVISOR` or `ADMIN`.
+
+#### `GET /lab-assignments/:id/submissions`
+Returns submission roster for all students in the batch for this lab. Requires `SUPERVISOR` or `ADMIN`.
+
+#### `PATCH /lab-assignments/submissions/:submissionId/grade`
+Manually adjusts scores, sets notebook/performance/viva marks, and leaves supervisor feedback.
+- **Request Body:**
+```json
+{
+  "score": 95,
+  "manualScoreAdjust": 5,
+  "notebookScore": 2.0,
+  "performanceScore": 2.0,
+  "vivaScore": 10.0,
+  "supervisorFeedback": "Clean graph representation and optimal runtime."
+}
+```
+
+#### Folder Management Endpoints
+- `PATCH /lab-assignments/folders/rename` — Renames subject directory (`SUPERVISOR` / `ADMIN`).
+- `PATCH /lab-assignments/folders/status` — Toggles active status of all labs in a subject folder.
+- `POST /lab-assignments/folders/delete` — Deletes empty subject folder.
+
+---
+
+### Problem Statement Bank
+
+Mounted at `/api/v1/problem-statements`.
+
+#### `GET /problem-statements/catalog`
+Returns approved problem statement repository visible to students for capstone selection. Filterable by domain, difficulty, and tech stack.
+
+#### `GET /problem-statements/mine`
+Returns proposals created by the current supervisor. Requires `SUPERVISOR`.
+
+#### `GET /problem-statements/admin/pending`
+Returns pending proposals awaiting administrative vetting. Requires `ADMIN`.
+
+#### `POST /problem-statements`
+Proposes a new problem statement. Requires `SUPERVISOR` or `ADMIN`.
+- **Request Body:** `{ title, description, domain, technologies, difficulty, expectedOutcomes, prerequisites }`
+
+#### `PATCH /problem-statements/:id/review`
+Admin approves or rejects a proposed problem statement. Requires `ADMIN`.
+- **Request Body:** `{ status: "APPROVED" | "REJECTED", adminFeedback?: string }`
+
+---
+
+### Continuous Evaluation Register
+
+Mounted at `/api/v1/evaluations`. Aligned with university 100-mark statutory practical examination rubrics. Requires `SUPERVISOR` or `ADMIN`.
+
+#### `GET /evaluations/course/:courseCode`
+Returns evaluation register for an entire course cohort with student marks across all 10 experiments, internal viva, end-sem lab test, and end-sem viva. Computes totals and class averages.
+
+#### `PUT /evaluations/course/:courseCode/student/:studentId`
+Upserts continuous evaluation marks for a student.
+- **Request Body:**
+```json
+{
+  "experiments": [
+    { "exp": 1, "notebook": 2.0, "performance": 2.0 },
+    { "exp": 2, "notebook": 2.0, "performance": 1.5 }
+  ],
+  "internalViva": 9.0,
+  "endSemLabTest": 28.0,
+  "endSemViva": 18.0,
+  "remarks": "Exemplary performance throughout semester."
+}
+```
+**Scoring Formula:**
+- `experimentsTotal` = $\sum (\text{notebook} + \text{performance})$ across up to 10 experiments (Max 40 marks).
+- `totalInternal` = `experimentsTotal` + `internalViva` (Max 50 marks).
+- `totalEndSem` = `endSemLabTest` (Max 30) + `endSemViva` (Max 20) = Max 50 marks.
+- `finalMarks` = `totalInternal` + `totalEndSem` = Max 100 marks.
+
+#### `POST /evaluations/course/:courseCode/bulk`
+Bulk upserts marks for multiple students in a single transaction.
+
+---
+
+### File Storage & Presigned URLs
+
+Mounted at `/api/v1/uploads`. Supports local disk storage (`uploads/`) with path traversal guards and optional AWS S3 presigned URLs.
+
+#### `POST /uploads/file`
+Uploads a single document or attachment (e.g. faculty lab manual, milestone report). Requires authentication.
+- **Request Body:** `multipart/form-data` with field `file`.
+- **Security:** Verified with magic-byte inspection, UUID renaming, and extension allowlisting.
+- **Response `201`:**
+```json
+{
+  "status": "success",
+  "data": {
+    "url": "/api/v1/uploads/files/1727600000-a1b2c3d4.pdf",
+    "key": "1727600000-a1b2c3d4.pdf",
+    "name": "lab-manual-dsa.pdf",
+    "size": 1048576,
+    "mimetype": "application/pdf"
+  }
+}
+```
+
+#### `GET /uploads/files/:filename`
+Downloads or previews an uploaded file.
+- **Security:** Requires authentication. Verifies that the requesting user owns the submission, is the assigned supervisor, belongs to the enrolled batch, or is an Administrator.
+- **Headers:** Injects `X-Content-Type-Options: nosniff`, sanitizes Content-Disposition filenames, and applies restrictive Content-Security-Policy headers.
+
+#### `GET /uploads/presigned/*key`
+Returns presigned download URL for AWS S3 stored assets with permission verification.
 
 ---
 
 ## Role Reference
 
-| Role | Description |
+| Role | Permissions & Authority |
 |---|---|
-| `STUDENT` | Default role. Can create projects, milestones, submit milestones. |
-| `SUPERVISOR` | Assigned to projects by admin. Can review/approve/reject milestones. |
-| `ADMIN` | Full platform access. Manages users, courses, assigns supervisors. |
-
-Roles are assigned at registration (`STUDENT` or `SUPERVISOR` only — `ADMIN` must be set directly in the database).
+| `STUDENT` | Create & develop capstone projects, select problem statements, push Git code, submit milestone deliverables, execute code in sandbox, run & submit lab assignments, request resubmission permissions, inspect continuous marksheet. |
+| `SUPERVISOR` | Oversee assigned capstone projects, approve/reject milestone gates, conduct line-by-line code reviews, create & publish lab experiments, grade coding and report submissions, review re-upload requests, enter continuous practical evaluation marks (100-mark register), propose problem statements. |
+| `ADMIN` | Complete governance: system settings, user directory management, supervisor assignments, CSV roster import with formula sanitization, degree course and batch lifecycle, Gitea infrastructure configuration, audit log inspection. |
 
 ---
 
@@ -1203,87 +1429,144 @@ Roles are assigned at registration (`STUDENT` or `SUPERVISOR` only — `ADMIN` m
 
 ### User
 ```
-id               String   (CUID)
-name             String
-email            String   (unique)
-role             STUDENT | SUPERVISOR | ADMIN
-isEmailVerified  Boolean
-giteaUsername    String?  (unique)
-createdAt        DateTime
-updatedAt        DateTime
+id                  String            (CUID)
+name                String
+email               String            (unique)
+password            String            (bcrypt hash)
+role                STUDENT | SUPERVISOR | ADMIN
+isEmailVerified     Boolean
+universityId        String?           (unique)
+department          String?
+phoneNumber         String?
+giteaUsername       String?           (unique)
+refreshToken        String?           (Redis primary / DB fallback)
+createdAt           DateTime
+updatedAt           DateTime
 ```
 
-### Course
+### Course & Batch
 ```
-id           String   (CUID)
-title        String
-description  String?
-createdAt    DateTime
-updatedAt    DateTime
-batches      Batch[]
+Course:
+  id            String   (CUID)
+  code          String?  (unique, e.g. "BTCSE-CS")
+  title         String
+  description   String?
+  durationYears Int
+  isActive      Boolean
+
+Batch:
+  id        String   (CUID)
+  name      String   (unique, e.g. "B.Tech CSE 2022-2026")
+  courseId  String   → Course
+  startYear Int
+  endYear   Int
+  isActive  Boolean
 ```
 
-### Batch
+### Project & Milestone
 ```
-id        String   (CUID)
-name      String   (unique)
-courseId  String
-createdAt DateTime
+Project:
+  id              String            (CUID)
+  title           String
+  description     String?
+  repoName        String?           (Gitea repo slug)
+  repoUrl         String?           (Gitea clone/web URL)
+  ownerId         String            → User
+  supervisorId    String?           → User
+  batchId         String            → Batch
+  status          DRAFT | IN_PROGRESS | SUBMITTED | APPROVED | REJECTED | ARCHIVED
+  technologies    String[]
+  phase           Int               (1 to 4)
+  members         ProjectMember[]
+  milestones      Milestone[]
+  evaluation      RubricEvaluation?
+
+Milestone:
+  id            String          (CUID)
+  title         String
+  description   String?
+  dueDate       DateTime?
+  status        PENDING | IN_PROGRESS | SUBMITTED | APPROVED | REJECTED
+  projectId     String          → Project
+  order         Int
+  attachments   Json?           (Array of { name, key, url, size, mimetype })
+  studentNotes  String?
+  feedback      String?
+  submittedById String?         → User
+  reviewedById  String?         → User
 ```
 
-### Project
+### LabAssignment & LabSubmission
 ```
-id           String   (CUID)
-title        String
-description  String?
-repoName     String?  (unique — Gitea repo name)
-repoUrl      String?  (Gitea HTML URL)
-ownerId      String   → User
-supervisorId String?  → User
-batchId      String   → Batch
-createdAt    DateTime
-updatedAt    DateTime
+LabAssignment:
+  id             String           (CUID)
+  title          String
+  subject        String?
+  objective      String
+  description    String
+  submissionType CODING | PDF_REPORT
+  language       String?
+  manualUrl      String?
+  starterCode    String?
+  testCases      Json?            (Array of { id, input, expectedOutput, isHidden, weight })
+  timeLimit      Float            (seconds)
+  memoryLimit    Int              (KB)
+  totalPoints    Int
+  dueDate        DateTime?
+  status         DRAFT | PUBLISHED | CLOSED | ARCHIVED
+  batchId        String           → Batch
+  creatorId      String           → User
+
+LabSubmission:
+  id                 String           (CUID)
+  assignmentId       String           → LabAssignment
+  studentId          String           → User
+  code               String?          (source code)
+  language           String?
+  fileUrl            String?          (submitted PDF report)
+  testsPassed        Int
+  totalTests         Int
+  testResults        Json?
+  score              Float
+  notebookScore      Float?           (Max 2)
+  performanceScore   Float?           (Max 2)
+  vivaScore          Float?           (Max 10)
+  status             PENDING | RUNNING | EVALUATED | PASSED | FAILED
+  reuploadStatus     String?          (PENDING | APPROVED | REJECTED | CONSUMED)
+  attemptNumber      Int
 ```
 
-### Milestone
+### LabContinuousEvaluation
 ```
-id          String   (CUID)
-title       String
-description String?
-dueDate     DateTime?
-status      PENDING | SUBMITTED | APPROVED | REJECTED
-projectId   String   → Project (cascade delete)
-feedback    String?
-submittedAt DateTime?
-reviewedAt  DateTime?
-createdAt   DateTime
-updatedAt   DateTime
-```
-
-### Activity
-```
-id        String   (CUID)
-type      String   (PROJECT_CREATED | MILESTONE_SUBMITTED | MILESTONE_APPROVED | MILESTONE_REJECTED | PUSH)
-payload   Json
-userId    String?  → User
-projectId String?  → Project
-createdAt DateTime
+id                String   (CUID)
+studentId         String   → User
+courseCode        String
+batchId           String?  → Batch
+evaluatorId       String?  → User
+experiments       Json     ([{ exp: 1, notebook: 2, performance: 2 }, ...])
+experimentsTotal  Float    (Max 40)
+internalViva      Float    (Max 10)
+totalInternal     Float    (Max 50)
+endSemLabTest     Float    (Max 30)
+endSemViva        Float    (Max 20)
+totalEndSem       Float    (Max 50)
+finalMarks        Float    (Max 100)
+remarks           String?
 ```
 
 ---
 
-## Known Caveats & Likely Bugs
+## Security Hardening & Mitigations
 
-| # | Severity | Location | Description |
-|---|---|---|---|
-| 1 | 🔴 High | `POST /projects/create` | Webhook URL uses `CLIENT_URL` (frontend origin) instead of the server's own URL. Gitea webhooks will point to the wrong host if frontend and backend are on different domains. |
-| 2 | 🔴 High | `POST /gitea/repos` | Passes `req.user.id` (internal CUID) as the Gitea owner username. Will fail at the Gitea API level. Should use `giteaUsername`. |
-| 3 | 🔴 High | `PATCH /milestones/:id/submit` | Uploaded files are saved to disk but their paths are never stored in the database. File attachments are effectively untrackable after upload. |
-| 4 | 🟡 Medium | `GET /projects/:projectId/milestones` | No ownership or role check. Any authenticated user can read milestones for any project ID. |
-| 5 | 🟡 Medium | `GET /activities/project/:projectId` | No access control. Any authenticated user can read activity for any project. |
-| 6 | 🟡 Medium | `PATCH /auth/reset-password` schema | `resetPasswordSchema` validates `params.token` but the route has no URL parameter. The `params` block is dead code; the actual reset uses `email` + `code` from the body. |
-| 7 | 🟡 Medium | Duplicate endpoints | `GET /users/supervisors` and `GET /supervisors/allsupervisors` return identical data. `PATCH /supervisors/milestones/:id/review` duplicates `PATCH /milestones/:id/approve` and `PATCH /milestones/:id/reject`. |
-| 8 | 🟡 Medium | `requireVerifiedEmail` middleware | Defined in `authMiddleware.ts` but never applied to any route. Email verification status is not enforced on any protected endpoint. |
-| 9 | 🟢 Low | `POST /auth/register` | `ADMIN` role cannot be self-assigned (schema only allows `STUDENT`/`SUPERVISOR`), but there is no admin-creation endpoint. Admins must be seeded directly in the database. |
-| 10 | 🟢 Low | Activity limits | `getMyActivity` returns max 20, `getSupervisorActivity` max 30, `getAdminActivity` max 50. No pagination is implemented anywhere. |
-| 11 | 🟢 Low | Batch management | The `Batch` and `BatchEnrollment` models exist in the schema but there are no API endpoints to create batches, list batches, or enroll students. `batchId` is required when creating a project, but batches can only be created directly in the database. |
+The platform's security posture has been systematically audited, hardened, and verified:
+
+| Surface | Implemented Defense | Verification Status |
+|---|---|---|
+| **CSRF Defense** | Double-submit signed CSRF cookie with HMAC-SHA256 signature and timestamp validation. Mutating endpoints rejected if cookie/header mismatch or missing. | Verified in `app.ts` & test suite |
+| **Session & Tokens** | Dual-token JWT (15-min access token + 7-day HTTP-only refresh token) with Refresh Token Rotation (RTR) backed by Redis revocation lists. | Verified in `authService.ts` & `refreshToken.test.ts` |
+| **Webhook Authenticity** | Gitea webhooks validated with HMAC-SHA256 via constant-time comparison (`crypto.timingSafeEqual`). | Verified in `webhookRoutes.ts` |
+| **File Traversal & Poisoning** | Strict filename sanitization using `path.basename()`, UUID disk renaming, binary magic byte header validation, and ownership authorization checks on download. | Verified in `uploadRoutes.ts` & `fileUploadMiddleware.ts` |
+| **Object Authorization (IDOR/BOLA)** | Student lab responses strip hidden test cases; continuous evaluation updates verify supervisor batch assignment; project files restricted to enrolled members. | Verified in route controllers & `securityHardening.test.ts` |
+| **SSRF Prevention** | Gitea integration config validates hostnames, resolves DNS, and blocks RFC1918 private, loopback, and link-local ranges. | Verified in `adminController.ts` |
+| **CSV Formula Injection** | Admin roster CSV imports sanitize dangerous leading characters (`=`, `+`, `-`, `@`, `\t`, `\r`) to protect faculty spreadsheet applications. | Verified in `client/src/utils/security.ts` |
+
